@@ -35,20 +35,25 @@ async function currentBranch(cwd: string): Promise<string | null> {
   }
 }
 
-/** Paths with uncommitted changes (staged, unstaged, or untracked).
- *  `--porcelain` v1 columns are fixed-width, so the path starts at 3. */
-async function uncommittedPaths(cwd: string): Promise<string[]> {
-  const out = await git(cwd, ['status', '--porcelain'])
-  if (!out) return []
-  return out
+/** Parse `git status --porcelain` v1 output into paths. The two status
+ *  columns are fixed-width and the first is a space for unstaged-only
+ *  changes, so lines must NOT be left-trimmed before slicing. */
+export function parsePorcelainPaths(stdout: string): string[] {
+  return stdout
     .split('\n')
-    .map((line) => line.slice(3).trim())
+    .filter((line) => line.trim().length > 0)
+    .map((line) => line.slice(3).trimEnd())
     .filter(Boolean)
     .map((p) => {
       // Renames are recorded as "old -> new"; the new path is what exists.
       const arrow = p.indexOf(' -> ')
       return arrow >= 0 ? p.slice(arrow + 4) : p
     })
+}
+
+async function uncommittedPaths(cwd: string): Promise<string[]> {
+  const { stdout } = await execFileAsync('git', ['status', '--porcelain'], { cwd })
+  return parsePorcelainPaths(stdout)
 }
 
 /** Whether the source worktree's committed history is reachable from the
