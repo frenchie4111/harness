@@ -16,7 +16,8 @@ import {
   mergeWorktreesPreservingFailures,
   worktreeListsEqual,
   type Worktree,
-  type PendingWorktree
+  type PendingWorktree,
+  type ForkSource
 } from '../shared/state/worktrees'
 import type { AgentKind } from '../shared/state/terminals'
 
@@ -70,7 +71,11 @@ interface WorktreesFSMOptions {
     teleportSessionId?: string
     agentKind?: AgentKind
     model?: string
-  }) => void
+    forkSource?: ForkSource
+    /** The ref the new branch was cut from, when the caller specified one.
+     *  Only used to explain provenance in the fork relocation preamble. */
+    baseRef?: string
+  }) => void | Promise<void>
 }
 
 /** How long `refreshListDebounced` waits after the last call before
@@ -158,6 +163,9 @@ export class WorktreesFSM {
     teleportSessionId?: string
     agentKind?: AgentKind
     model?: string
+    /** When set, the new worktree's first agent tab resumes a copy of this
+     *  session's conversation instead of starting empty. */
+    forkSource?: ForkSource
     /** When set, check out an existing branch instead of creating one
      * with `-b`. Used when the user picks from the existing-branches
      * dropdown — git resolves names like `origin/foo` to a local
@@ -169,14 +177,15 @@ export class WorktreesFSM {
      * instead of from the repo's default base. */
     baseRef?: string
   }): Promise<PendingOutcome> {
-    const { id, repoRoot, branchName, initialPrompt, teleportSessionId, agentKind, model, checkoutExisting, baseRef } = params
+    const { id, repoRoot, branchName, initialPrompt, teleportSessionId, agentKind, model, forkSource, checkoutExisting, baseRef } = params
     const pending: PendingWorktree = {
       id,
       repoRoot,
       branchName,
       status: 'creating',
       initialPrompt,
-      teleportSessionId
+      teleportSessionId,
+      forkSource
     }
     this.store.dispatch({ type: 'worktrees/pendingAdded', payload: pending })
 
@@ -197,7 +206,9 @@ export class WorktreesFSM {
         initialPrompt,
         teleportSessionId,
         agentKind,
-        model
+        model,
+        forkSource,
+        baseRef
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -280,8 +291,10 @@ export class WorktreesFSM {
     teleportSessionId?: string
     agentKind?: AgentKind
     model?: string
+    forkSource?: ForkSource
+    baseRef?: string
   }): Promise<PendingOutcome> {
-    const { id, repoRoot, created, initialPrompt, teleportSessionId, agentKind, model } = args
+    const { id, repoRoot, created, initialPrompt, teleportSessionId, agentKind, model, forkSource, baseRef } = args
 
     const setupCmd = this.resolveSetupCmd(repoRoot)
     let setupFailed = false
@@ -312,12 +325,16 @@ export class WorktreesFSM {
 
     this.applySharedClaudeSettings(repoRoot, created.path)
 
-    this.opts.onWorktreeCreated({
+    // Awaited: a conversation fork has to copy the transcript and probe git
+    // for the relocation preamble before the first agent tab spawns.
+    await this.opts.onWorktreeCreated({
       createdPath: created.path,
       initialPrompt,
       teleportSessionId,
       agentKind,
-      model
+      model,
+      forkSource,
+      baseRef
     })
     await this.refreshList()
 
@@ -397,7 +414,8 @@ export class WorktreesFSM {
       repoRoot: current.repoRoot,
       branchName: current.branchName,
       initialPrompt: current.initialPrompt,
-      teleportSessionId: current.teleportSessionId
+      teleportSessionId: current.teleportSessionId,
+      forkSource: current.forkSource
     })
   }
 

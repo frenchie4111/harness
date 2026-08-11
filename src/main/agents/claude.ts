@@ -187,7 +187,8 @@ export function buildSpawnArgs(opts: AgentSpawnOpts): string {
   }
 
   const exists = sessionFileExists(opts.cwd, opts.sessionId)
-  if (exists) return `${cmd} --resume ${opts.sessionId}`
-  const base = `${cmd} --session-id ${opts.sessionId}`
+  const base = exists
+    ? `${cmd} --resume ${opts.sessionId}`
+    : `${cmd} --session-id ${opts.sessionId}`
   return opts.initialPrompt ? `${base} ${shellQuote(opts.initialPrompt)}` : base
 }

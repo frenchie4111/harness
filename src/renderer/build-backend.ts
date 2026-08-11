@@ -39,6 +39,7 @@ import type {
   StateEventListener
 } from '../shared/transport/transport'
 import type { ElectronAPI, AgentKind } from './types'
+import type { ForkSource } from '../shared/state/worktrees'
 import type {
   SidebarDetailPrefsByMode,
   PreventSleepMode,
@@ -109,6 +110,7 @@ export function buildBackend(
       teleportSessionId?: string
       agentKind?: AgentKind
       model?: string
+      forkSource?: ForkSource
       checkoutExisting?: boolean
       baseRef?: string
     }) => req('worktrees:runPending', params),

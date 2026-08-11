@@ -28,8 +28,10 @@ import {
   RotateCcw,
   ShieldAlert,
   Sparkles,
-  GitBranch
+  GitBranch,
+  GitBranchPlus
 } from 'lucide-react'
+import { openForkIntoWorktree } from './NewWorktreeScreen'
 import { useJsonClaudeSession, useSettings } from '../store'
 import { useBackend } from '../backend'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
@@ -1621,6 +1623,12 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     },
     [backend, sessionId]
   )
+  // Unlike the in-place fork, this carries the WHOLE conversation, so
+  // there's no fork point to resolve and no assistant-message guard.
+  const performForkIntoWorktree = useCallback(() => {
+    setRewindMenu(null)
+    openForkIntoWorktree({ sessionId, worktreePath })
+  }, [sessionId, worktreePath])
   useEffect(() => {
     if (!rewindMenu) return
     const onAway = (): void => setRewindMenu(null)
@@ -2205,6 +2213,22 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
               <span>Fork chat here</span>
               <span className="text-xs text-muted">
                 {rewindMenu.forkDisabledReason ?? 'opens a new tab with history up to here'}
+              </span>
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              performForkIntoWorktree()
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-fg-bright hover:bg-panel cursor-pointer"
+          >
+            <GitBranchPlus className="icon-xs shrink-0" />
+            <div className="flex flex-col">
+              <span>Fork into new worktree…</span>
+              <span className="text-xs text-muted">
+                carries this whole conversation to a new branch
               </span>
             </div>
           </button>

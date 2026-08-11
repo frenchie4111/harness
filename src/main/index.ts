@@ -12,7 +12,8 @@ import { randomUUID } from 'crypto'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { ApprovalBridge } from './approval-bridge'
-import { JsonClaudeManager, bundledClaudeBinPath } from './json-claude-manager'
+import { JsonClaudeManager, bundledClaudeBinPath, forkTranscript } from './json-claude-manager'
+import { buildRelocationPreamble } from './fork-relocation'
 import { shellQuote } from './shell-quote'
 import {
   readAttachmentImage,
@@ -87,6 +88,7 @@ import { resolveRepoPath } from './repo-resolve'
 import { registerRepoRoot } from './repo-roots'
 import type { AddRepoResult } from '../shared/repo-pick'
 import { isWorktreeMerged } from '../shared/state/prs'
+import type { ForkSource } from '../shared/state/worktrees'
 import { MAX_WAKE } from '../shared/state/snooze'
 import { hasScratchpadNote } from '../shared/state/scratchpad'
 import { normalizeAlias } from '../shared/state/aliases'
@@ -926,9 +928,37 @@ const worktreesFSM = new WorktreesFSM(store, {
   getRepoRoots: () => config.repoRoots || [],
   getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
   getWorktreeBaseMode: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
-  onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId, agentKind, model }) => {
+  onWorktreeCreated: async ({ createdPath, initialPrompt, teleportSessionId, agentKind, model, forkSource, baseRef }) => {
     void prPoller.refreshAll()
-    panesFSM.ensureInitialized(createdPath, { initialPrompt, teleportSessionId, agentKind, model })
+    let forkedSessionId: string | undefined
+    let kickoffPrompt = initialPrompt
+    if (forkSource) {
+      const outcome = forkTranscript({
+        sourceSessionId: forkSource.sessionId,
+        sourceWorktreePath: forkSource.worktreePath,
+        destWorktreePath: createdPath
+      })
+      if (outcome.ok && outcome.newSessionId) {
+        forkedSessionId = outcome.newSessionId
+        const preamble = await buildRelocationPreamble({
+          sourceWorktreePath: forkSource.worktreePath,
+          destWorktreePath: createdPath,
+          baseRef
+        })
+        kickoffPrompt = `${preamble}${initialPrompt ?? ''}`
+      } else {
+        // Degrade to a normal empty session rather than failing creation —
+        // the worktree already exists on disk at this point.
+        log('worktrees', `conversation fork into ${createdPath} failed: ${outcome.reason}`)
+      }
+    }
+    panesFSM.ensureInitialized(createdPath, {
+      initialPrompt: kickoffPrompt,
+      teleportSessionId,
+      agentKind,
+      model,
+      forkedSessionId
+    })
     if (teleportSessionId) {
       setTimeout(() => void worktreesFSM.refreshList(), 10_000)
     }
@@ -1309,6 +1339,7 @@ function registerIpcHandlers(): void {
       teleportSessionId?: string
       agentKind?: AgentKind
       model?: string
+      forkSource?: ForkSource
       checkoutExisting?: boolean
       baseRef?: string
     }) => {
