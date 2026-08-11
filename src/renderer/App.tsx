@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze, useAnnouncements, useAssignedPRs, useConfigLoadError, useAliasForPath } from './store'
+import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useAnnouncements, useAssignedPRs, useConfigLoadError, useAliasForPath } from './store'
 import { useBackend } from './backend'
 import { useTailLineBuffer } from './hooks/useTailLineBuffer'
 import { useTabHandlers } from './hooks/useTabHandlers'
 import { useHotkeyHandlers } from './hooks/useHotkeyHandlers'
 import { useWorktreeHandlers } from './hooks/useWorktreeHandlers'
-import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig, PaneNode } from './types'
+import { useWorktreeCollapse } from './hooks/useWorktreeCollapse'
+import { useWorktreeListModel, useTabsByWorktree } from './hooks/useWorktreeListModel'
+import type { Worktree, TerminalTab, PtyStatus, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig, PaneNode } from './types'
 import { getLeaves, findLeaf } from '../shared/state/terminals'
 import { CheckCircle2, FolderOpen } from 'lucide-react'
 import { BUILT_IN_THEMES_BY_MODE } from './themes'
@@ -54,7 +56,6 @@ import { ConfirmCloseTabModal } from './components/ConfirmCloseTabModal'
 import { Toasts } from './components/Toasts'
 import { focusTerminalById } from './components/XTerminal'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { type GroupKey } from './worktree-sort'
 import { useViewport } from './hooks/useViewport'
 import { MobileApp } from './components/MobileApp'
 import { harnessReleaseNotesUrl } from '../shared/constants'
@@ -139,13 +140,7 @@ function DesktopApp(): JSX.Element {
 
   // Derived flat-tab views — preserved so the read-heavy parts of the app
   // (status aggregation, hotkeys, PR refresh) don't need pane awareness.
-  const terminalTabs = useMemo<Record<string, TerminalTab[]>>(() => {
-    const out: Record<string, TerminalTab[]> = {}
-    for (const [wtPath, tree] of Object.entries(panes)) {
-      out[wtPath] = getLeaves(tree).flatMap((l) => l.tabs)
-    }
-    return out
-  }, [panes])
+  const terminalTabs = useTabsByWorktree()
   const activeTabId = useMemo<Record<string, string>>(() => {
     const out: Record<string, string> = {}
     for (const [wtPath, tree] of Object.entries(panes)) {
@@ -170,12 +165,6 @@ function DesktopApp(): JSX.Element {
   const prStatuses = prs.byPath
   const mergedPaths = prs.mergedByPath
   const prLoading = prs.loading
-  const snoozeState = useSnooze()
-  const snoozedPaths = useMemo(() => {
-    const m: Record<string, true> = {}
-    for (const p of Object.keys(snoozeState.byPath)) m[p] = true
-    return m
-  }, [snoozeState.byPath])
   // Per-worktree last-active timestamps — derived in main by the
   // activity-deriver, dispatched as terminals/lastActiveChanged events.
   const lastActive = useLastActive()
@@ -220,44 +209,18 @@ function DesktopApp(): JSX.Element {
   useEffect(() => {
     localStorage.setItem('harness:rightPanelWidth', String(rightPanelWidth))
   }, [rightPanelWidth])
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem('harness:collapsedGroups')
-      return saved ? JSON.parse(saved) : {}
-    } catch {
-      return {}
-    }
-  })
-  useEffect(() => {
-    localStorage.setItem('harness:collapsedGroups', JSON.stringify(collapsedGroups))
-  }, [collapsedGroups])
-  const [collapsedRepos, setCollapsedRepos] = useState<Record<string, boolean>>({})
-  const [unifiedRepos, setUnifiedRepos] = useState<boolean>(() => {
-    const saved = localStorage.getItem('harness:unifiedRepos')
-    return saved === null ? true : saved === '1'
-  })
-  useEffect(() => {
-    localStorage.setItem('harness:unifiedRepos', unifiedRepos ? '1' : '0')
-  }, [unifiedRepos])
-  const isGroupCollapsed = useCallback(
-    (scope: string, key: GroupKey): boolean => {
-      const composite = `${scope}:${key}`
-      if (composite in collapsedGroups) return collapsedGroups[composite]
-      return key === 'merged' || key === 'snoozed'
-    },
-    [collapsedGroups]
-  )
-  const toggleGroup = useCallback((scope: string, key: GroupKey) => {
-    const composite = `${scope}:${key}`
-    setCollapsedGroups((prev) => {
-      const current =
-        composite in prev ? prev[composite] : key === 'merged' || key === 'snoozed'
-      return { ...prev, [composite]: !current }
-    })
-  }, [])
-  const toggleRepo = useCallback((repoRoot: string) => {
-    setCollapsedRepos((prev) => ({ ...prev, [repoRoot]: !prev[repoRoot] }))
-  }, [])
+  const collapse = useWorktreeCollapse()
+  const {
+    collapsedRepos,
+    setCollapsedRepos,
+    setCollapsedGroups,
+    unifiedRepos,
+    setUnifiedRepos,
+    isGroupCollapsed,
+    toggleGroup,
+    toggleRepo
+  } = collapse
+  const worktreeListModel = useWorktreeListModel(collapse)
   const handleSidebarResize = useCallback((delta: number) => {
     setSidebarWidth((w) => Math.max(160, Math.min(SIDEBAR_MAX_PX, w + delta)))
   }, [])
@@ -886,34 +849,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
     }
   }, [backend, hotkeyActions])
 
-  // Compute aggregate status per worktree (worst status wins)
-  const worktreeStatuses: Record<string, PtyStatus> = {}
-  const worktreePendingTools: Record<string, PendingTool | null> = {}
-  for (const wt of worktrees) {
-    const tabs = terminalTabs[wt.path] || []
-    let worstStatus: PtyStatus = 'idle'
-    let pending: PendingTool | null = null
-    for (const tab of tabs) {
-      const s = statuses[tab.id]
-      if (s === 'needs-approval') {
-        worstStatus = 'needs-approval'
-        pending = pendingTools[tab.id] || null
-        break
-      }
-      if (s === 'waiting') worstStatus = 'waiting'
-      if (s === 'processing' && worstStatus === 'idle') worstStatus = 'processing'
-    }
-    worktreeStatuses[wt.path] = worstStatus
-    worktreePendingTools[wt.path] = pending
-  }
-
-  const worktreeShellActivity: Record<string, boolean> = {}
-  for (const wt of worktrees) {
-    const tabs = terminalTabs[wt.path] || []
-    worktreeShellActivity[wt.path] = tabs.some(
-      (tab) => tab.type === 'shell' && shellActivity[tab.id]?.active
-    )
-  }
+  // Per-worktree aggregates come from the shared list model so the sidebar,
+  // command center and command palette can't disagree about a status.
+  const worktreeStatuses = worktreeListModel.statusByPath
+  const worktreePendingTools = worktreeListModel.pendingToolByPath
 
   // Activity-log transitions are recorded by main's activity-deriver
   // (see src/main/activity-deriver.ts). The renderer no longer pings
@@ -1542,21 +1481,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
         )}
         {!singleScreenMode && sidebarVisible && (
           <div className="shrink-0 flex flex-col overflow-hidden" style={{ width: effectiveSidebarWidth }}><div className="drag-region h-10 shrink-0 flex items-stretch border-b border-border-strong bg-panel pl-20"><AppTitleSegment fillParent /></div><div className="flex-1 min-h-0 flex"><Sidebar
-            worktrees={worktrees}
-            pendingWorktrees={pendingWorktrees}
-            pendingDeletions={pendingDeletions}
+            model={worktreeListModel}
             activeWorktreeId={activeWorktreeId}
-            statuses={worktreeStatuses}
-            pendingTools={worktreePendingTools}
-            shellActivity={worktreeShellActivity}
-            prStatuses={prStatuses}
-            mergedPaths={mergedPaths}
-            viewerLogin={settings.viewerLogin}
-            snoozedPaths={snoozedPaths}
-            snoozeByPath={snoozeState.byPath}
             snoozeDefaultDays={settings.snoozeDefaultDays}
             prLoading={prLoading}
-            assignedPRsByRepo={assignedPRs.byRepo}
             onOpenAssignedPR={handleOpenAssignedPR}
             agentCount={agentWorktreeCount}
             onSelectWorktree={(path) => {
@@ -1575,7 +1503,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onDeleteWorktree={handleDeleteWorktree}
             onPruneWorktrees={handlePruneWorktrees}
             onRefresh={handleRefreshWorktrees}
-            repoRoots={repoRoots}
+            repoCount={repoRoots.length}
             onAddRepo={handleAddRepo}
             onRemoveRepo={handleRemoveRepo}
             onOpenSettings={() => setShowSettings(true)}
@@ -1592,10 +1520,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenNewProject={() => setShowNewProject(true)}
             onOpenMyWeek={() => setShowMyWeek(true)}
             width={effectiveSidebarWidth}
-            collapsedGroups={collapsedGroups}
             onToggleGroup={toggleGroup}
-            isGroupCollapsed={isGroupCollapsed}
-            collapsedRepos={collapsedRepos}
             onToggleRepo={toggleRepo}
             unifiedRepos={unifiedRepos}
             onToggleUnifiedRepos={() => setUnifiedRepos((v) => !v)}
