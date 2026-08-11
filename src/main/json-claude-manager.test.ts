@@ -543,4 +543,36 @@ describe('JsonClaudeManager', () => {
       expect(entry.text).toBe('fix the build')
     })
   })
+
+  describe('entry ids across a sleep/wake', () => {
+    it('does not reuse an entryId after the subprocess is respawned', () => {
+      const store = new Store()
+      const mgr = makeManager(store)
+      const sessionId = 'sess-wake'
+      const cwd = '/tmp/wt'
+      // Mirrors startJsonClaudeSession: dispatch then spawn, on both the
+      // initial start and the wake.
+      const start = (): void => {
+        store.dispatch({
+          type: 'jsonClaude/sessionStarted',
+          payload: { sessionId, worktreePath: cwd }
+        })
+        mgr.create(sessionId, cwd)
+      }
+      start()
+      mgr.send(sessionId, 'first')
+      // Sleep tears the subprocess down but deliberately leaves the
+      // entries in the slice so the transcript is still readable.
+      mgr.kill(sessionId)
+      start()
+      mgr.send(sessionId, 'after wake')
+
+      const entries =
+        store.getSnapshot().state.jsonClaude.sessions[sessionId]?.entries ?? []
+      const userEntries = entries.filter((e) => e.kind === 'user')
+      expect(userEntries.map((e) => e.text)).toEqual(['first', 'after wake'])
+      const ids = entries.map((e) => e.entryId)
+      expect(new Set(ids).size).toBe(ids.length)
+    })
+  })
 })
