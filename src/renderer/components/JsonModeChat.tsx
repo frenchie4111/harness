@@ -17,6 +17,7 @@ import { InsightCard } from './InsightCard'
 import {
   AlertOctagon,
   AlertTriangle,
+  Bot,
   Brain,
   ChevronDown,
   ChevronUp,
@@ -44,7 +45,10 @@ import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
 import { CLAUDE_MODELS } from '../../shared/agent-registry'
 import 'highlight.js/styles/github-dark.css'
-import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
+import type {
+  JsonClaudeAutomationSource,
+  JsonClaudeChatEntry
+} from '../../shared/state/json-claude'
 import {
   COMPACT_BODY_TEXT,
   FindContext,
@@ -666,6 +670,81 @@ function RateLimitErrorCard({
   )
 }
 
+const AUTOMATION_LABELS: Record<JsonClaudeAutomationSource, string> = {
+  'ci-failure': 'Harness · CI failure'
+}
+
+/** A user turn Harness injected on the human's behalf. Sits on the user
+ *  side of the transcript because that's what it is on the wire, but is
+ *  toned and labelled so nobody mistakes it for something they typed. */
+function AutomatedTurnCard({
+  source,
+  text,
+  isQueued,
+  onCancelQueued
+}: {
+  source: JsonClaudeAutomationSource
+  text: string
+  isQueued: boolean
+  onCancelQueued: () => void
+}): JSX.Element {
+  return (
+    <div className="flex justify-end">
+      <div
+        className={`border border-warning/40 bg-warning/5 overflow-hidden ${
+          isQueued ? 'opacity-70' : ''
+        }`}
+        style={{
+          maxWidth: 'var(--chat-bubble-max)',
+          borderRadius: 'var(--chat-bubble-radius)'
+        }}
+      >
+        <div
+          className="flex items-center gap-2 bg-warning/10 border-b border-warning/30"
+          style={{
+            paddingInline: 'var(--chat-chrome-px)',
+            paddingBlock: 'var(--chat-chrome-py)',
+            fontSize: 'var(--chat-chrome-text)'
+          }}
+        >
+          <Bot className="icon-xs text-warning shrink-0" />
+          <span
+            className="font-semibold shrink-0 text-warning"
+            style={{ fontFamily: 'var(--chat-tool-name-family)' }}
+          >
+            {AUTOMATION_LABELS[source]}
+          </span>
+          <span className="text-muted truncate">sent automatically</span>
+          {isQueued && (
+            <div className="flex items-center gap-1 shrink-0 ml-auto">
+              <span
+                className="uppercase tracking-wide text-muted bg-panel/60 border border-border px-1.5 py-0.5 rounded"
+                style={{ fontSize: 'var(--chat-meta-text)' }}
+              >
+                queued
+              </span>
+              <button
+                onClick={onCancelQueued}
+                className="p-1 rounded hover:bg-panel text-muted hover:text-fg cursor-pointer"
+                title="Cancel queued message"
+                aria-label="Cancel queued message"
+              >
+                <X className="icon-xs" />
+              </button>
+            </div>
+          )}
+        </div>
+        <div
+          className="px-3 py-2 whitespace-pre-wrap break-words"
+          style={{ fontSize: 'var(--chat-body-text)' }}
+        >
+          <HighlightedText text={text} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface RenderContext {
   resultsByToolUseId: Map<string, { content: string; isError: boolean }>
   childrenByParentToolUseId: Map<string, JsonClaudeChatEntry[]>
@@ -693,6 +772,22 @@ function renderEntries(
 ): RenderedRow[] {
   const rows: RenderedRow[] = []
   for (const entry of entries) {
+    if (entry.kind === 'user' && entry.automation) {
+      rows.push({
+        key: entry.entryId,
+        entryId: entry.entryId,
+        type: 'text',
+        node: (
+          <AutomatedTurnCard
+            source={entry.automation}
+            text={entry.text ?? ''}
+            isQueued={!!entry.isQueued}
+            onCancelQueued={() => ctx.onCancelQueued(entry.entryId)}
+          />
+        )
+      })
+      continue
+    }
     if (entry.kind === 'user') {
       const queued = !!entry.isQueued
       rows.push({

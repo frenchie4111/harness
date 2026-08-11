@@ -44,6 +44,47 @@ export interface JsonClaudeMessageBlock {
   isError?: boolean
 }
 
+/** Sources of a user turn that Harness injected on the human's behalf.
+ *  Extend the union when a new automation learns to talk to the chat. */
+export type JsonClaudeAutomationSource = 'ci-failure'
+
+const AUTOMATION_SOURCES: readonly string[] = ['ci-failure']
+
+const AUTOMATION_TAG = 'harness-automated-message'
+const AUTOMATION_OPEN = /^<harness-automated-message source="([a-z-]+)">\n/
+const AUTOMATION_CLOSE = `\n</${AUTOMATION_TAG}>`
+
+/** Wrap an injected turn in a sentinel so the model can see it wasn't typed
+ *  by the human, and so `parseAutomatedMessage` can recover that fact later.
+ *
+ *  The marker has to live in the message TEXT rather than alongside it: the
+ *  only thing that survives a tab going to sleep is claude's own .jsonl
+ *  transcript, which stores the raw string we wrote to stdin and knows
+ *  nothing about our slice fields. */
+export function wrapAutomatedMessage(
+  source: JsonClaudeAutomationSource,
+  body: string
+): string {
+  return `<${AUTOMATION_TAG} source="${source}">\n${body}${AUTOMATION_CLOSE}`
+}
+
+/** Inverse of `wrapAutomatedMessage`. Returns null for ordinary turns, which
+ *  is every turn a human typed. */
+export function parseAutomatedMessage(
+  text: string | undefined
+): { source: JsonClaudeAutomationSource; body: string } | null {
+  if (!text) return null
+  const open = AUTOMATION_OPEN.exec(text)
+  if (!open || !text.endsWith(AUTOMATION_CLOSE)) return null
+  // A source this build doesn't know about would render an empty label, so
+  // treat the turn as ordinary rather than half-decorating it.
+  if (!AUTOMATION_SOURCES.includes(open[1])) return null
+  return {
+    source: open[1] as JsonClaudeAutomationSource,
+    body: text.slice(open[0].length, text.length - AUTOMATION_CLOSE.length)
+  }
+}
+
 export interface JsonClaudeChatEntry {
   /** Monotonic per-session id so React can key rows stably. */
   entryId: string
@@ -75,6 +116,12 @@ export interface JsonClaudeChatEntry {
    *  renderer styles these as dashed/muted "queued" bubbles with
    *  a cancel affordance. Cleared on the next `result`. */
   isQueued?: boolean
+  /** For kind === 'user'. Set when Harness injected the turn itself rather
+   *  than the human typing it, so the renderer can style the bubble as an
+   *  automated notification. Derived from the sentinel in the wire text by
+   *  `parseAutomatedMessage`, on both the live and the transcript-hydration
+   *  path — `text` here is the sentinel-stripped body. */
+  automation?: JsonClaudeAutomationSource
   /** Image attachments sent with this user message. Only the on-disk
    *  path + media type live in the slice — bytes would balloon the
    *  state event payload. The renderer lazy-fetches each path via the

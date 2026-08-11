@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   initialJsonClaude,
   jsonClaudeReducer,
+  parseAutomatedMessage,
   stripJsonClaudeEntries,
+  wrapAutomatedMessage,
   type JsonClaudeState,
   type JsonClaudeChatEntry
 } from './json-claude'
@@ -1414,5 +1416,50 @@ describe('stripJsonClaudeEntries', () => {
     expect(stripped.sessions[SID]).not.toBe(state.sessions[SID])
     expect(stripped.sessions[SID].entries).toEqual([])
     expect(stripped.sessions[SID].entriesHydrated).toBe(false)
+  })
+})
+
+describe('automated message sentinel', () => {
+  it('round-trips a wrapped body', () => {
+    const body = 'CI is failing on PR #7 (feat/thing).\n\n- build: exit 1'
+    const parsed = parseAutomatedMessage(wrapAutomatedMessage('ci-failure', body))
+    expect(parsed).toEqual({ source: 'ci-failure', body })
+  })
+
+  it('names the automation in the wire text so the model can see it', () => {
+    const wire = wrapAutomatedMessage('ci-failure', 'body')
+    expect(wire.startsWith('<harness-automated-message source="ci-failure">\n')).toBe(true)
+    expect(wire.endsWith('\n</harness-automated-message>')).toBe(true)
+  })
+
+  it('treats ordinary turns as not automated', () => {
+    expect(parseAutomatedMessage('fix the build')).toBeNull()
+    expect(parseAutomatedMessage('')).toBeNull()
+    expect(parseAutomatedMessage(undefined)).toBeNull()
+  })
+
+  it('ignores a turn that merely mentions the tag', () => {
+    expect(
+      parseAutomatedMessage('what does <harness-automated-message source="ci-failure"> do?')
+    ).toBeNull()
+  })
+
+  it('ignores an unterminated sentinel', () => {
+    expect(
+      parseAutomatedMessage('<harness-automated-message source="ci-failure">\nbody')
+    ).toBeNull()
+  })
+
+  it('ignores a source this build does not know about', () => {
+    expect(
+      parseAutomatedMessage(
+        '<harness-automated-message source="from-the-future">\nbody\n</harness-automated-message>'
+      )
+    ).toBeNull()
+  })
+
+  it('preserves a body that itself contains newlines and angle brackets', () => {
+    const body = 'line one\n<not-a-tag>\nline three'
+    expect(parseAutomatedMessage(wrapAutomatedMessage('ci-failure', body))?.body).toBe(body)
   })
 })

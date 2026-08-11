@@ -8,6 +8,7 @@ import { initialState, type AppState } from '../shared/state'
 import type { PRStatus, CheckStatus } from '../shared/state/prs'
 import type { JsonClaudeSession } from '../shared/state/json-claude'
 import type { PaneNode } from '../shared/state/terminals'
+import { parseAutomatedMessage } from '../shared/state/json-claude'
 
 const A = '/wt/a'
 const B = '/wt/b'
@@ -437,6 +438,12 @@ describe('CiNotifier waking a slept tab', () => {
 })
 
 describe('buildCiFailureMessage', () => {
+  it('marks the turn as automated so the model knows nobody typed it', () => {
+    const parsed = parseAutomatedMessage(buildCiFailureMessage(pr()))
+    expect(parsed?.source).toBe('ci-failure')
+    expect(parsed?.body).toContain('CI is failing on PR #7')
+  })
+
   it('lists failing checks with descriptions and detail urls', () => {
     const msg = buildCiFailureMessage(
       pr({

@@ -3,6 +3,7 @@ import type { AppState, StateEvent } from '../shared/state'
 import type { PRStatus } from '../shared/state/prs'
 import { getLeaves } from '../shared/state/terminals'
 import { isCiNotifyEnabled } from '../shared/state/ci-notify'
+import { wrapAutomatedMessage } from '../shared/state/json-claude'
 import { log } from './debug'
 
 type ChecksOverall = PRStatus['checksOverall']
@@ -30,20 +31,20 @@ export function buildCiFailureMessage(pr: PRStatus): string {
   ]
   if (failing.length === 0) {
     lines.push('No individual failing check was reported — see ' + pr.url)
-    return lines.join('\n')
+  } else {
+    lines.push('Failing checks:')
+    for (const check of failing.slice(0, MAX_LISTED_CHECKS)) {
+      const detail = check.description?.trim()
+      const parts = [`- ${check.name}`]
+      if (detail) parts.push(`: ${detail}`)
+      if (check.detailsUrl) parts.push(` — ${check.detailsUrl}`)
+      lines.push(parts.join(''))
+    }
+    if (failing.length > MAX_LISTED_CHECKS) {
+      lines.push(`- …and ${failing.length - MAX_LISTED_CHECKS} more`)
+    }
   }
-  lines.push('Failing checks:')
-  for (const check of failing.slice(0, MAX_LISTED_CHECKS)) {
-    const detail = check.description?.trim()
-    const parts = [`- ${check.name}`]
-    if (detail) parts.push(`: ${detail}`)
-    if (check.detailsUrl) parts.push(` — ${check.detailsUrl}`)
-    lines.push(parts.join(''))
-  }
-  if (failing.length > MAX_LISTED_CHECKS) {
-    lines.push(`- …and ${failing.length - MAX_LISTED_CHECKS} more`)
-  }
-  return lines.join('\n')
+  return wrapAutomatedMessage('ci-failure', lines.join('\n'))
 }
 
 /** Subscribes to the store and injects a "CI is failing" message into a

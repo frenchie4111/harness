@@ -30,6 +30,7 @@ import type {
   JsonClaudePermissionMode,
   JsonClaudeSessionState
 } from '../shared/state/json-claude'
+import { parseAutomatedMessage } from '../shared/state/json-claude'
 import type { ClaudeLaunchSettings } from './claude-launch'
 import { log } from './debug'
 import { shellQuote } from './shell-quote'
@@ -311,11 +312,13 @@ export class JsonClaudeManager {
           ) {
             continue
           }
+          const automated = parseAutomatedMessage(content)
           seededEntries.push({
             kind: 'user',
-            text: content,
+            text: automated ? automated.body : content,
             timestamp: Date.now(),
             entryId: `${sessionId}-seed-u-${counter++}`,
+            ...(automated ? { automation: automated.source } : {}),
             ...(transcriptUuid ? { transcriptUuid } : {})
           })
         } else if (Array.isArray(content)) {
@@ -738,11 +741,15 @@ export class JsonClaudeManager {
     extra: { entryId: string; isQueued?: boolean }
   ): void {
     const hasImages = !!images && images.length > 0
+    // The sentinel is for claude's benefit on the wire; the slice keeps the
+    // stripped body plus a flag so the renderer can style the bubble.
+    const automated = parseAutomatedMessage(text)
     this.appendEntry(inst, {
       kind: 'user',
-      text,
+      text: automated ? automated.body : text,
       timestamp: Date.now(),
       entryId: extra.entryId,
+      ...(automated ? { automation: automated.source } : {}),
       ...(extra.isQueued ? { isQueued: true } : {}),
       ...(hasImages
         ? {
