@@ -979,7 +979,8 @@ const activityDeriver = new ActivityDeriver(store)
 // chat sessions.
 const ciNotifier = new CiNotifier(store, {
   send: (sessionId, text) => jsonClaudeManager.send(sessionId, text),
-  hasSession: (sessionId) => jsonClaudeManager.hasSession(sessionId)
+  hasSession: (sessionId) => jsonClaudeManager.hasSession(sessionId),
+  wake: (worktreePath, tabId) => panesFSM.wakeJsonClaudeTab(worktreePath, tabId)
 })
 
 // Tears down idle json-mode subprocesses (yellow-dot tabs older than

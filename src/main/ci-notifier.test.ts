@@ -7,9 +7,14 @@ import { CiNotifier, buildCiFailureMessage } from './ci-notifier'
 import { initialState, type AppState } from '../shared/state'
 import type { PRStatus, CheckStatus } from '../shared/state/prs'
 import type { JsonClaudeSession } from '../shared/state/json-claude'
+import type { PaneNode } from '../shared/state/terminals'
 
 const A = '/wt/a'
 const B = '/wt/b'
+
+/** Delivery is deferred via setImmediate so it lands outside the store's
+ *  dispatch fan-out. Tests must flush that queue before asserting. */
+const flush = () => new Promise((resolve) => setImmediate(resolve))
 
 function check(name: string, state: CheckStatus['state']): CheckStatus {
   return { name, state, description: `${name} said no` }
@@ -59,9 +64,31 @@ function session(
   }
 }
 
+/** A pane tree with one leaf holding the given json-claude tabs. */
+function panes(
+  tabs: Array<{ id: string; mode?: 'awake' | 'asleep' }>,
+  activeTabId = tabs[0]?.id ?? ''
+): PaneNode {
+  return {
+    type: 'leaf',
+    id: 'p1',
+    tabs: tabs.map((t) => ({
+      id: t.id,
+      type: 'json-claude' as const,
+      label: 'Chat',
+      ...(t.mode ? { mode: t.mode } : {})
+    })),
+    activeTabId
+  }
+}
+
 function makeState(
   sessions: Record<string, JsonClaudeSession>,
-  opts: { globalDefault?: boolean; overrides?: Record<string, boolean> } = {}
+  opts: {
+    globalDefault?: boolean
+    overrides?: Record<string, boolean>
+    panes?: Record<string, PaneNode>
+  } = {}
 ): AppState {
   return {
     ...initialState,
@@ -70,7 +97,8 @@ function makeState(
       notifyChatOnCiFailure: opts.globalDefault ?? true
     },
     ciNotify: { byPath: { ...(opts.overrides ?? {}) } },
-    jsonClaude: { ...initialState.jsonClaude, sessions }
+    jsonClaude: { ...initialState.jsonClaude, sessions },
+    terminals: { ...initialState.terminals, panes: { ...(opts.panes ?? {}) } }
   }
 }
 
@@ -79,58 +107,69 @@ function setup(
   liveSessionIds: string[] = Object.keys(state.jsonClaude.sessions)
 ) {
   const store = new Store(state)
+  const live = new Set(liveSessionIds)
   const send = vi.fn()
+  // Mirrors panesFSM.wakeJsonClaudeTab: only asleep tabs wake, and the
+  // subprocess is live by the time it returns.
+  const wake = vi.fn((_wt: string, tabId: string) => {
+    live.add(tabId)
+  })
   const notifier = new CiNotifier(store, {
     send,
-    hasSession: (id) => liveSessionIds.includes(id)
+    hasSession: (id) => live.has(id),
+    wake
   })
   notifier.start()
-  return { store, send, notifier }
+  return { store, send, wake, notifier }
 }
 
-function bulk(store: Store, payload: Record<string, PRStatus | null>): void {
+async function bulk(
+  store: Store,
+  payload: Record<string, PRStatus | null>
+): Promise<void> {
   store.dispatch({ type: 'prs/bulkStatusChanged', payload })
+  await flush()
 }
 
 describe('CiNotifier transitions', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('notifies when checks transition into failure', () => {
+  it('notifies when checks transition into failure', async () => {
     const { store, send } = setup(makeState({ s1: session(A, 100) }))
-    bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
     expect(send).not.toHaveBeenCalled()
-    bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
     expect(send).toHaveBeenCalledTimes(1)
     expect(send.mock.calls[0][0]).toBe('s1')
     expect(send.mock.calls[0][1]).toContain('CI is failing on PR #7')
   })
 
-  it('does not notify on the first poll for an already-failing PR', () => {
+  it('does not notify on the first poll for an already-failing PR', async () => {
     const { store, send } = setup(makeState({ s1: session(A, 100) }))
-    bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
     expect(send).not.toHaveBeenCalled()
   })
 
-  it('seeds from pre-existing store state so a pre-start poll is not a transition', () => {
+  it('seeds from pre-existing store state so a pre-start poll is not a transition', async () => {
     const state = makeState({ s1: session(A, 100) })
     const store = new Store({
       ...state,
       prs: { ...state.prs, byPath: { [A]: pr({ checksOverall: 'failure' }) } }
     })
     const send = vi.fn()
-    new CiNotifier(store, { send, hasSession: () => true }).start()
-    bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    new CiNotifier(store, { send, hasSession: () => true, wake: () => {} }).start()
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
     expect(send).not.toHaveBeenCalled()
   })
 
-  it('does not notify on success or pending', () => {
+  it('does not notify on success or pending', async () => {
     const { store, send } = setup(makeState({ s1: session(A, 100) }))
-    bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
-    bulk(store, { [A]: pr({ checksOverall: 'success' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'success' }) })
     expect(send).not.toHaveBeenCalled()
   })
 
-  it('handles prs/statusChanged the same way as a bulk update', () => {
+  it('handles prs/statusChanged the same way as a bulk update', async () => {
     const { store, send } = setup(makeState({ s1: session(A, 100) }))
     store.dispatch({
       type: 'prs/statusChanged',
@@ -140,18 +179,19 @@ describe('CiNotifier transitions', () => {
       type: 'prs/statusChanged',
       payload: { path: A, status: pr({ checksOverall: 'failure' }) }
     })
+    await flush()
     expect(send).toHaveBeenCalledTimes(1)
   })
 
-  it('only notifies the worktree whose checks went red', () => {
+  it('only notifies the worktree whose checks went red', async () => {
     const { store, send } = setup(
       makeState({ s1: session(A, 100), s2: session(B, 100) })
     )
-    bulk(store, {
+    await bulk(store, {
       [A]: pr({ checksOverall: 'pending' }),
       [B]: pr({ checksOverall: 'pending' })
     })
-    bulk(store, {
+    await bulk(store, {
       [A]: pr({ checksOverall: 'failure' }),
       [B]: pr({ checksOverall: 'success' })
     })
@@ -163,50 +203,93 @@ describe('CiNotifier transitions', () => {
 describe('CiNotifier dedup', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('notifies once per head commit even when the failure flaps', () => {
+  it('notifies once per head commit even when the failure flaps', async () => {
     const { store, send } = setup(makeState({ s1: session(A, 100) }))
-    bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
-    bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
-    bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
-    bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
     expect(send).toHaveBeenCalledTimes(1)
   })
 
-  it('re-notifies when a new head commit also fails', () => {
+  it('re-notifies when a new head commit also fails', async () => {
     const { store, send } = setup(makeState({ s1: session(A, 100) }))
-    bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
-    bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
-    bulk(store, { [A]: pr({ headSha: 'def456', checksOverall: 'pending' }) })
-    bulk(store, { [A]: pr({ headSha: 'def456', checksOverall: 'failure' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    await bulk(store, { [A]: pr({ headSha: 'def456', checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ headSha: 'def456', checksOverall: 'failure' }) })
     expect(send).toHaveBeenCalledTimes(2)
   })
 
-  it('repeated failure polls without an intervening state change notify once', () => {
+  it('repeated failure polls without an intervening state change notify once', async () => {
     const { store, send } = setup(makeState({ s1: session(A, 100) }))
-    bulk(store, { [A]: pr({ checksOverall: 'success' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'success' }) })
     for (let i = 0; i < 5; i++) {
-      bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+      await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
     }
     expect(send).toHaveBeenCalledTimes(1)
   })
 
-  it('falls back to the PR number when headSha is absent', () => {
+  it('claims the commit synchronously so a second poll cannot double-notify', async () => {
     const { store, send } = setup(makeState({ s1: session(A, 100) }))
-    bulk(store, { [A]: pr({ headSha: undefined, checksOverall: 'pending' }) })
-    bulk(store, { [A]: pr({ headSha: undefined, checksOverall: 'failure' }) })
-    bulk(store, { [A]: pr({ headSha: undefined, checksOverall: 'pending' }) })
-    bulk(store, { [A]: pr({ headSha: undefined, checksOverall: 'failure' }) })
+    store.dispatch({
+      type: 'prs/bulkStatusChanged',
+      payload: { [A]: pr({ checksOverall: 'pending' }) }
+    })
+    // Both failure polls land before the deferred delivery runs.
+    store.dispatch({
+      type: 'prs/bulkStatusChanged',
+      payload: { [A]: pr({ checksOverall: 'success' }) }
+    })
+    store.dispatch({
+      type: 'prs/bulkStatusChanged',
+      payload: { [A]: pr({ checksOverall: 'failure' }) }
+    })
+    store.dispatch({
+      type: 'prs/bulkStatusChanged',
+      payload: { [A]: pr({ checksOverall: 'success' }) }
+    })
+    store.dispatch({
+      type: 'prs/bulkStatusChanged',
+      payload: { [A]: pr({ checksOverall: 'failure' }) }
+    })
+    await flush()
     expect(send).toHaveBeenCalledTimes(1)
   })
 
-  it('drops caches when a worktree leaves the payload', () => {
+  it('falls back to the PR number when headSha is absent', async () => {
     const { store, send } = setup(makeState({ s1: session(A, 100) }))
-    bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
-    bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    await bulk(store, { [A]: pr({ headSha: undefined, checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ headSha: undefined, checksOverall: 'failure' }) })
+    await bulk(store, { [A]: pr({ headSha: undefined, checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ headSha: undefined, checksOverall: 'failure' }) })
     expect(send).toHaveBeenCalledTimes(1)
-    bulk(store, {})
+  })
+
+  it('drops caches when a worktree leaves the payload', async () => {
+    const { store, send } = setup(makeState({ s1: session(A, 100) }))
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    expect(send).toHaveBeenCalledTimes(1)
+    await bulk(store, {})
     // Re-appearing is a first observation again — record, don't notify.
-    bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases the commit claim when delivery finds nowhere to send', async () => {
+    const { store, send, wake } = setup(makeState({}))
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    expect(send).not.toHaveBeenCalled()
+    expect(wake).not.toHaveBeenCalled()
+    // Same commit, but a chat tab exists now — the released claim lets it fire.
+    store.dispatch({
+      type: 'terminals/panesForWorktreeChanged',
+      payload: { worktreePath: A, panes: panes([{ id: 't1', mode: 'asleep' }]) }
+    })
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
     expect(send).toHaveBeenCalledTimes(1)
   })
 })
@@ -214,36 +297,36 @@ describe('CiNotifier dedup', () => {
 describe('CiNotifier enablement', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('does nothing when the global default is off and there is no override', () => {
+  it('does nothing when the global default is off and there is no override', async () => {
     const { store, send } = setup(
       makeState({ s1: session(A, 100) }, { globalDefault: false })
     )
-    bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
-    bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
     expect(send).not.toHaveBeenCalled()
   })
 
-  it('a per-worktree true override beats a false global default', () => {
+  it('a per-worktree true override beats a false global default', async () => {
     const { store, send } = setup(
       makeState(
         { s1: session(A, 100) },
         { globalDefault: false, overrides: { [A]: true } }
       )
     )
-    bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
-    bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
     expect(send).toHaveBeenCalledTimes(1)
   })
 
-  it('a per-worktree false override beats a true global default', () => {
+  it('a per-worktree false override beats a true global default', async () => {
     const { store, send } = setup(
       makeState(
         { s1: session(A, 100) },
         { globalDefault: true, overrides: { [A]: false } }
       )
     )
-    bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
-    bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
     expect(send).not.toHaveBeenCalled()
   })
 })
@@ -251,38 +334,105 @@ describe('CiNotifier enablement', () => {
 describe('CiNotifier session selection', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('skips worktrees with no chat session', () => {
-    const { store, send } = setup(makeState({ s1: session(B, 100) }))
-    bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
-    bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
-    expect(send).not.toHaveBeenCalled()
-  })
-
-  it('skips sessions with no live subprocess', () => {
-    const { store, send } = setup(makeState({ s1: session(A, 100) }), [])
-    bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
-    bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
-    expect(send).not.toHaveBeenCalled()
-  })
-
-  it('picks the most recently active session when a worktree has several', () => {
+  it('picks the most recently active session when a worktree has several', async () => {
     const { store, send } = setup(
       makeState({ s1: session(A, 100), s2: session(A, 900), s3: session(A, 500) })
     )
-    bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
-    bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
     expect(send).toHaveBeenCalledTimes(1)
     expect(send.mock.calls[0][0]).toBe('s2')
   })
 
-  it('ignores non-live sessions when picking the most recent', () => {
+  it('ignores non-live sessions when picking the most recent', async () => {
     const { store, send } = setup(
       makeState({ s1: session(A, 100), s2: session(A, 900) }),
       ['s1']
     )
-    bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
-    bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
     expect(send.mock.calls[0][0]).toBe('s1')
+  })
+})
+
+describe('CiNotifier waking a slept tab', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('wakes a slept chat tab and sends to it', async () => {
+    const { store, send, wake } = setup(
+      makeState({}, { panes: { [A]: panes([{ id: 't1', mode: 'asleep' }]) } })
+    )
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    expect(wake).toHaveBeenCalledWith(A, 't1')
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send.mock.calls[0][0]).toBe('t1')
+  })
+
+  it('prefers a live session over waking a slept tab', async () => {
+    const { store, send, wake } = setup(
+      makeState(
+        { s1: session(A, 100) },
+        { panes: { [A]: panes([{ id: 't1', mode: 'asleep' }]) } }
+      )
+    )
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    expect(wake).not.toHaveBeenCalled()
+    expect(send.mock.calls[0][0]).toBe('s1')
+  })
+
+  it("prefers the pane's active tab among several slept tabs", async () => {
+    const { store, send } = setup(
+      makeState(
+        {},
+        {
+          panes: {
+            [A]: panes(
+              [
+                { id: 't1', mode: 'asleep' },
+                { id: 't2', mode: 'asleep' }
+              ],
+              't2'
+            )
+          }
+        }
+      )
+    )
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    expect(send.mock.calls[0][0]).toBe('t2')
+  })
+
+  it('leaves awake-but-dead tabs alone — the renderer respawns those on focus', async () => {
+    const { store, send, wake } = setup(
+      makeState({}, { panes: { [A]: panes([{ id: 't1', mode: 'awake' }]) } })
+    )
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    expect(wake).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('does nothing for a worktree with no chat tab at all', async () => {
+    const { store, send, wake } = setup(makeState({ s1: session(B, 100) }))
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    expect(wake).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('does not send when the wake fails to produce a live session', async () => {
+    const store = new Store(
+      makeState({}, { panes: { [A]: panes([{ id: 't1', mode: 'asleep' }]) } })
+    )
+    const send = vi.fn()
+    const wake = vi.fn()
+    new CiNotifier(store, { send, hasSession: () => false, wake }).start()
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ checksOverall: 'failure' }) })
+    expect(wake).toHaveBeenCalledWith(A, 't1')
+    expect(send).not.toHaveBeenCalled()
   })
 })
 
