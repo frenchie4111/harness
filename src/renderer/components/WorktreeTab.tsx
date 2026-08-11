@@ -15,6 +15,13 @@ import { useAliasForPath, useAppState } from '../store'
 import { useBackend } from '../backend'
 import { displayLabel } from '../worktree-display'
 import { ALIAS_MAX_LEN } from '../../shared/state/aliases'
+import {
+  STATUS_COLORS,
+  STATUS_LABELS,
+  detachedLikeTooltip,
+  prIconStyle,
+  prIconTitle
+} from '../worktree-row-style'
 
 interface WorktreeTabProps {
   worktree: Worktree
@@ -53,48 +60,6 @@ interface WorktreeTabProps {
   onEndAliasEdit?: () => void
 }
 
-const STATUS_COLORS: Record<PtyStatus | 'merged', string> = {
-  idle: 'bg-faint',
-  processing: 'bg-success animate-pulse',
-  waiting: 'bg-warning',
-  'needs-approval': 'bg-danger animate-pulse',
-  merged: 'bg-accent'
-}
-
-const STATUS_LABELS: Record<PtyStatus | 'merged', string> = {
-  idle: 'Idle',
-  processing: 'Working...',
-  waiting: 'Waiting for input',
-  'needs-approval': 'Needs approval',
-  merged: 'Merged'
-}
-
-const PR_ICON_COLOR: Record<string, string> = {
-  success: 'text-success',
-  failure: 'text-danger',
-  pending: 'text-warning',
-  none: 'text-dim'
-}
-
-const DETACHED_LIKE_PREFIXES = ['rebasing', 'bisecting', 'cherry-picking']
-
-function detachedLikeTooltip(branch: string): string | null {
-  if (branch === '(detached)') return 'Detached HEAD'
-  for (const prefix of DETACHED_LIKE_PREFIXES) {
-    if (branch === prefix || branch.startsWith(`${prefix} `) || branch.startsWith(`${prefix}(`)) {
-      return `In progress: ${branch}`
-    }
-  }
-  return null
-}
-
-const PR_STATE_COLOR: Record<string, string> = {
-  open: 'text-success',
-  draft: 'text-dim',
-  merged: 'text-accent',
-  closed: 'text-danger'
-}
-
 export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, isSnoozed, snoozeWakeAt, onClick, onDelete, onContinue, onSnooze, onUnsnooze, onPrune, isEditingAlias, onStartAliasEdit, onEndAliasEdit }: WorktreeTabProps): JSX.Element {
   const metaHeld = useMetaHeld()
   const density = useAppState((s) => s.settings.sidebarDensity)
@@ -106,22 +71,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
   const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
   const showPendingTool = displayStatus === 'needs-approval' && pendingTool
   const canContinue = !!onContinue && isPRMerged(prStatus)
-  // Priority: merged/closed state always wins, then merge conflict, then check
-  // status, then PR state
-  let iconColor = ''
-  let iconTitleSuffix = ''
-  if (prStatus) {
-    if (prStatus.state === 'merged') iconColor = PR_STATE_COLOR.merged
-    else if (prStatus.state === 'closed') iconColor = PR_STATE_COLOR.closed
-    else if (prStatus.hasConflict === true) {
-      iconColor = PR_ICON_COLOR.failure
-      iconTitleSuffix = ' \u2014 merge conflict'
-    }
-    else if (prStatus.checksOverall === 'failure') iconColor = PR_ICON_COLOR.failure
-    else if (prStatus.checksOverall === 'pending') iconColor = PR_ICON_COLOR.pending
-    else if (prStatus.checksOverall === 'success') iconColor = PR_ICON_COLOR.success
-    else iconColor = PR_STATE_COLOR[prStatus.state]
-  }
+  const { iconColor } = prIconStyle(prStatus)
 
   return (
     <div
@@ -155,10 +105,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
           aria-label="Shell activity" />
       )}
       {prStatus && (
-        <span
-          className="relative shrink-0"
-          title={`PR #${prStatus.number}${prStatus.checksOverall !== 'none' ? ` \u2014 checks ${prStatus.checksOverall}` : ''}${iconTitleSuffix}${prStatus.reviewDecision === 'approved' ? ' \u2014 approved' : prStatus.reviewDecision === 'changes_requested' ? ' \u2014 changes requested' : ''}`}
-        >
+        <span className="relative shrink-0" title={prIconTitle(prStatus)}>
           <GitPullRequest className={`icon-sm ${iconColor}`} />
           {prStatus.reviewDecision === 'approved' && (
             <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-success ring-1 ring-panel" />
