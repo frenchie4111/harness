@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ExternalLink, GitMerge, GitMergeConflict, ChevronDown, Check, GitPullRequest, RefreshCw, Loader2, ArrowDown, CircleDot, CircleCheck } from 'lucide-react'
-import { useRepoConfigs, useSettings } from '../store'
+import { useCiNotify, useRepoConfigs, useSettings } from '../store'
+import { isCiNotifyEnabled } from '../../shared/state/ci-notify'
 import { useBackend } from '../backend'
 import type {
   PRStatus,
@@ -837,6 +838,7 @@ export function PRStatusPanel({
   const needsGithubToken = hasGithubToken === false
 
   const settings = useSettings()
+  const ciNotify = useCiNotify()
   const mergeAction = usePRMergeAction(pr, worktree, needsGithubToken)
   const approveAction = usePRApproveAction(pr, worktree, settings.viewerLogin, needsGithubToken)
 
@@ -1146,8 +1148,56 @@ export function PRStatusPanel({
               })}
             </div>
           )}
+
+          {worktree && (
+            <CiNotifyToggle
+              worktreePath={worktree.path}
+              enabled={isCiNotifyEnabled(
+                ciNotify,
+                worktree.path,
+                settings.notifyChatOnCiFailure
+              )}
+              globalDefault={settings.notifyChatOnCiFailure}
+            />
+          )}
         </div>
       )}
     </RightPanel>
+  )
+}
+
+/** Per-worktree opt in/out of the "tell the agent when CI fails" injection.
+ *  Toggling back to the global default drops the override entirely so the
+ *  worktree tracks future changes to the setting. */
+function CiNotifyToggle({
+  worktreePath,
+  enabled,
+  globalDefault
+}: {
+  worktreePath: string
+  enabled: boolean
+  globalDefault: boolean
+}): JSX.Element {
+  const backend = useBackend()
+  return (
+    <label
+      className="flex items-center gap-1.5 cursor-pointer text-xs text-dim hover:text-fg mt-1.5"
+      title={`Post a message naming the failing checks into this worktree's agent chat when CI goes red. Default for all worktrees: ${globalDefault ? 'on' : 'off'}.`}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <input
+        type="checkbox"
+        checked={enabled}
+        onChange={(e) => {
+          const next = e.target.checked
+          void backend.setCiNotifyOverride(
+            worktreePath,
+            next === globalDefault ? null : next
+          )
+        }}
+        className="accent-current icon-base cursor-pointer"
+      />
+      <span>Tell the agent when CI fails</span>
+    </label>
   )
 }

@@ -380,6 +380,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     autoApprovePermissions,
     autoApproveSteerInstructions,
     snoozeDefaultDays,
+    notifyChatOnCiFailure,
     expandedDiagnosticLoggingEnabled,
     showAssignedPRs,
     preventSleepMode,
@@ -2869,6 +2870,25 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     />
                     <span className="text-xs text-dim">days</span>
                   </div>
+
+                  <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Notify chat on CI failure</h3>
+                  <p className="text-xs text-dim mb-3">
+                    When a worktree's PR checks start failing, post a message
+                    naming the failing checks into its agent chat so the agent
+                    can start investigating. Fires once per failing commit, and
+                    only for worktrees with a live chat tab. Individual
+                    worktrees can opt in or out from the PR panel.
+                  </p>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notifyChatOnCiFailure}
+                      onChange={(e) => { void backend.setNotifyChatOnCiFailure(e.target.checked) }}
+                      className="accent-current icon-base cursor-pointer" />
+                    <span className="text-sm text-fg">
+                      Tell the agent when CI fails
+                    </span>
+                  </label>
 
                   <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Share Claude Code permissions</h3>
                   <p className="text-xs text-dim mb-3">

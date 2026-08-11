@@ -10,6 +10,7 @@ import { initialCosts } from '../shared/state/costs'
 import { initialBrowser } from '../shared/state/browser'
 import { initialJsonClaude } from '../shared/state/json-claude'
 import { initialSnooze } from '../shared/state/snooze'
+import { initialCiNotify } from '../shared/state/ci-notify'
 import { initialAnnouncements } from '../shared/state/announcements'
 import { initialScratchpad } from '../shared/state/scratchpad'
 import { initialSshBootstrap } from '../shared/state/ssh-bootstrap'
@@ -80,6 +81,7 @@ export function buildInitialAppState(
     browser: initialBrowser,
     jsonClaude: initialJsonClaude,
     snooze: config.snooze ? { byPath: { ...config.snooze } } : initialSnooze,
+    ciNotify: config.ciNotify ? { byPath: { ...config.ciNotify } } : initialCiNotify,
     announcements: initialAnnouncements,
     scratchpad: { byWorktreePath: flattenScratchpadNotes(config.scratchpadNotes) },
     sshBootstrap: initialSshBootstrap,
@@ -162,6 +164,7 @@ export function buildInitialAppState(
           ? Math.floor(config.autoSleepMinutes)
           : 30,
       snoozeDefaultDays: Math.max(1, Math.floor(config.snoozeDefaultDays ?? 7)),
+      notifyChatOnCiFailure: config.notifyChatOnCiFailure === true,
       expandedDiagnosticLoggingEnabled: config.expandedDiagnosticLoggingEnabled === true,
       prReviewPrompt: config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT,
       dismissedAnnouncementIds: Array.isArray(config.dismissedAnnouncementIds)

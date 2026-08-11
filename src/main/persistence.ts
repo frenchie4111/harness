@@ -302,6 +302,13 @@ export interface Config {
   snooze?: Record<string, SnoozeEntry>
   // Default duration (days) for plain-click snooze. Min 1, default 7.
   snoozeDefaultDays?: number
+  // Per-worktree overrides for the "notify agent chat on CI failure"
+  // behaviour, keyed by absolute path. Absent path = inherit
+  // notifyChatOnCiFailure.
+  ciNotify?: Record<string, boolean>
+  // Global default for injecting a "CI failed" message into a worktree's
+  // agent chat when its PR checks start failing. Default off.
+  notifyChatOnCiFailure?: boolean
   // When true, high-volume diagnostic log categories (currently
   // [github-api] per-call lines) are written to debug.log. Default off.
   expandedDiagnosticLoggingEnabled?: boolean

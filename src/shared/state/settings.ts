@@ -300,6 +300,10 @@ export interface SettingsState {
    *  disables auto-sleep entirely. */
   autoSleepMinutes: number
   snoozeDefaultDays: number
+  /** Global default for "when a worktree's PR checks transition into
+   *  failure, inject a message into its agent chat". Per-worktree
+   *  overrides live in the `ciNotify` slice and win over this. */
+  notifyChatOnCiFailure: boolean
   /** When true, high-volume diagnostic categories are written to
    *  debug.log — currently per-GitHub-API-call `[github-api]` lines (URL,
    *  method, status, duration). Off by default because the per-call
@@ -406,6 +410,7 @@ export type SettingsEvent =
     }
   | { type: 'settings/autoSleepMinutesChanged'; payload: number }
   | { type: 'settings/snoozeDefaultDaysChanged'; payload: number }
+  | { type: 'settings/notifyChatOnCiFailureChanged'; payload: boolean }
   | { type: 'settings/expandedDiagnosticLoggingEnabledChanged'; payload: boolean }
   | { type: 'settings/prReviewPromptChanged'; payload: string }
   | { type: 'settings/announcementDismissed'; payload: string }
@@ -472,6 +477,7 @@ export const initialSettings: SettingsState = {
   jsonModeDefaultPermissionMode: 'acceptEdits',
   autoSleepMinutes: 30,
   snoozeDefaultDays: 7,
+  notifyChatOnCiFailure: false,
   expandedDiagnosticLoggingEnabled: false,
   prReviewPrompt: DEFAULT_PR_REVIEW_PROMPT,
   dismissedAnnouncementIds: [],
@@ -611,6 +617,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, autoSleepMinutes: event.payload }
     case 'settings/snoozeDefaultDaysChanged':
       return { ...state, snoozeDefaultDays: event.payload }
+    case 'settings/notifyChatOnCiFailureChanged':
+      return { ...state, notifyChatOnCiFailure: event.payload }
     case 'settings/expandedDiagnosticLoggingEnabledChanged':
       return { ...state, expandedDiagnosticLoggingEnabled: event.payload }
     case 'settings/prReviewPromptChanged':

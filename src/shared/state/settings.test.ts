@@ -634,6 +634,20 @@ describe('settingsReducer', () => {
     expect(next.snoozeDefaultDays).toBe(3)
   })
 
+  it('notifyChatOnCiFailureChanged toggles the global default', () => {
+    expect(initialSettings.notifyChatOnCiFailure).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/notifyChatOnCiFailureChanged',
+      payload: true
+    })
+    expect(on.notifyChatOnCiFailure).toBe(true)
+    const off = apply(on, {
+      type: 'settings/notifyChatOnCiFailureChanged',
+      payload: false
+    })
+    expect(off.notifyChatOnCiFailure).toBe(false)
+  })
+
   it('announcementDismissed appends the id and dedups', () => {
     expect(initialSettings.dismissedAnnouncementIds).toEqual([])
     const once = apply(initialSettings, {

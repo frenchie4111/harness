@@ -46,6 +46,7 @@ import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
 import { sweepWorktreeTrashOnBoot } from './worktree-trash'
 import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
+import { CiNotifier } from './ci-notifier'
 import { AutoSleepMonitor } from './auto-sleep-monitor'
 import { WakeLockController } from './wake-lock-controller'
 import { WorktreeWatcher } from './worktree-watcher'
@@ -598,6 +599,19 @@ store.subscribe((event) => {
   }
 })
 
+// Persist per-worktree CI-notify overrides so they survive restart.
+store.subscribe((event) => {
+  if (event.type.startsWith('ciNotify/')) {
+    const byPath = store.getSnapshot().state.ciNotify.byPath
+    if (Object.keys(byPath).length === 0) {
+      delete config.ciNotify
+    } else {
+      config.ciNotify = byPath
+    }
+    saveConfig(config)
+  }
+})
+
 // Persist alias map through to disk so aliases survive restart.
 store.subscribe((event) => {
   if (event.type.startsWith('aliases/')) {
@@ -960,6 +974,14 @@ store.subscribe((event) => {
 
 const activityDeriver = new ActivityDeriver(store)
 
+// Injects a "CI is failing" message into a worktree's agent chat when its
+// PR checks go red. Kept out of PRPoller so the poller stays ignorant of
+// chat sessions.
+const ciNotifier = new CiNotifier(store, {
+  send: (sessionId, text) => jsonClaudeManager.send(sessionId, text),
+  hasSession: (sessionId) => jsonClaudeManager.hasSession(sessionId)
+})
+
 // Tears down idle json-mode subprocesses (yellow-dot tabs older than
 // settings.autoSleepMinutes). Constructed after panesFSM since it
 // drives panesFSM.sleepJsonClaudeTab.
@@ -1105,6 +1127,19 @@ store.subscribe((event) => {
   for (const path of Object.keys(byPath)) {
     if (!live.has(path)) {
       store.dispatch({ type: 'snooze/clear', payload: path })
+    }
+  }
+})
+
+// Same for CI-notify overrides — a removed worktree's override would
+// otherwise linger and silently apply to a future worktree at the same path.
+store.subscribe((event) => {
+  if (event.type !== 'worktrees/listChanged') return
+  const live = new Set(store.getSnapshot().state.worktrees.list.map((w) => w.path))
+  const byPath = store.getSnapshot().state.ciNotify.byPath
+  for (const path of Object.keys(byPath)) {
+    if (!live.has(path)) {
+      store.dispatch({ type: 'ciNotify/clear', payload: path })
     }
   }
 })
@@ -4026,6 +4061,33 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest(
+    'ciNotify:setOverride',
+    (_ctx, path: string, enabled: boolean | null) => {
+      if (typeof path !== 'string' || !path) return false
+      if (enabled === null) {
+        store.dispatch({ type: 'ciNotify/clear', payload: path })
+      } else if (typeof enabled === 'boolean') {
+        store.dispatch({ type: 'ciNotify/set', payload: { path, enabled } })
+      } else {
+        return false
+      }
+      return true
+    }
+  )
+
+  transport.onRequest('config:setNotifyChatOnCiFailure', (_ctx, enabled: boolean) => {
+    if (typeof enabled !== 'boolean') return false
+    if (enabled) {
+      config.notifyChatOnCiFailure = true
+    } else {
+      delete config.notifyChatOnCiFailure
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/notifyChatOnCiFailureChanged', payload: enabled })
+    return true
+  })
+
   transport.onRequest('config:setSnoozeDefaultDays', (_ctx, days: number) => {
     const n = Number(days)
     if (!Number.isFinite(n)) return false
@@ -4109,6 +4171,8 @@ async function runBoot(): Promise<void> {
   // Start the activity deriver — it observes terminals/prs/panes events
   // and writes recordActivity + lastActive without renderer involvement.
   activityDeriver.start()
+
+  ciNotifier.start()
 
   autoSleepMonitor.start()
 

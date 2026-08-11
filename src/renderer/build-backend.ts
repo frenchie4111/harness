@@ -411,6 +411,10 @@ export function buildBackend(
     snooze: (path: string, wakeAt: number) => req('snooze:snooze', path, wakeAt),
     unsnooze: (path: string) => req('snooze:unsnooze', path),
     setSnoozeDefaultDays: (days: number) => req('config:setSnoozeDefaultDays', days),
+    setCiNotifyOverride: (path: string, enabled: boolean | null) =>
+      req('ciNotify:setOverride', path, enabled),
+    setNotifyChatOnCiFailure: (enabled: boolean) =>
+      req('config:setNotifyChatOnCiFailure', enabled),
     setAlias: (path: string, alias: string) => req('aliases:set', path, alias),
     clearAlias: (path: string) => req('aliases:clear', path),
 

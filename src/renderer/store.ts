@@ -623,6 +623,10 @@ export function useSnooze() {
   return useAppState((s) => s.snooze)
 }
 
+export function useCiNotify() {
+  return useAppState((s) => s.ciNotify)
+}
+
 export function useAssignedPRs() {
   return useAppState((s) => s.assignedPRs)
 }
