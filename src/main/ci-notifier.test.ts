@@ -222,6 +222,18 @@ describe('CiNotifier dedup', () => {
     expect(send).toHaveBeenCalledTimes(2)
   })
 
+  it('re-notifies when a new head commit fails with no non-failure poll in between', async () => {
+    // The realistic shape at multi-minute poll intervals: push a fix onto
+    // a red PR, CI goes red again, and the poller never happens to catch
+    // the pending window. Keying on the head commit rather than on a
+    // transition in checksOverall is what makes this fire.
+    const { store, send } = setup(makeState({ s1: session(A, 100) }))
+    await bulk(store, { [A]: pr({ checksOverall: 'pending' }) })
+    await bulk(store, { [A]: pr({ headSha: 'abc123', checksOverall: 'failure' }) })
+    await bulk(store, { [A]: pr({ headSha: 'def456', checksOverall: 'failure' }) })
+    expect(send).toHaveBeenCalledTimes(2)
+  })
+
   it('repeated failure polls without an intervening state change notify once', async () => {
     const { store, send } = setup(makeState({ s1: session(A, 100) }))
     await bulk(store, { [A]: pr({ checksOverall: 'success' }) })

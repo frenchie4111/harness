@@ -6,7 +6,12 @@ import { isCiNotifyEnabled } from '../shared/state/ci-notify'
 import { wrapAutomatedMessage } from '../shared/state/json-claude'
 import { log } from './debug'
 
-type ChecksOverall = PRStatus['checksOverall']
+/** Identity of a failure. Statuses cached by an older build carry no
+ *  headSha; falling back to the PR number still collapses a flapping
+ *  check down to one message. */
+function shaKeyFor(status: PRStatus): string {
+  return status.headSha || `pr-${status.number}`
+}
 
 export interface CiNotifierOptions {
   /** Injects a user turn into a running json-mode chat session. */
@@ -53,23 +58,23 @@ export function buildCiFailureMessage(pr: PRStatus): string {
  *  Lives here rather than in PRPoller so the poller stays ignorant of chat
  *  sessions — it only knows how to fetch PR status and dispatch it.
  *
- *  Two independent guards keep this from spamming:
+ *  The head commit is the identity of a failure: `handledSha` records the
+ *  commit we last made a decision about, so a failure that flaps
+ *  (failure → pending → failure on a re-run) notifies once while a fresh
+ *  push that also fails notifies again. Deliberately NOT keyed on a
+ *  transition in `checksOverall` — a push whose CI fails before the poller
+ *  ever observes a non-failure state is still a new failure, and with
+ *  multi-minute poll intervals that's the common case, not the edge.
  *
- *  - `lastOverall` tracks the previously-seen `checksOverall` per worktree
- *    so we only act on an actual transition INTO 'failure'. A path we've
- *    never seen before is recorded without notifying, which is what
- *    suppresses a burst on the first poll after boot for PRs that were
- *    already red before Harness started.
- *  - `notifiedSha` records the head commit we last notified about, so a
- *    failure that flaps (failure → pending → failure on a re-run) notifies
- *    once, while a fresh push that also fails notifies again.
+ *  `seen` exists only to suppress a burst on the first poll after boot,
+ *  where every already-red PR would otherwise read as fresh.
  *
  *  Delivery wakes a slept chat tab when it has to — see `deliver`. */
 export class CiNotifier {
   private store: Store
   private opts: CiNotifierOptions
-  private lastOverall = new Map<string, ChecksOverall>()
-  private notifiedSha = new Map<string, string>()
+  private seen = new Set<string>()
+  private handledSha = new Map<string, string>()
   private unsubscribe: (() => void) | null = null
 
   constructor(store: Store, opts: CiNotifierOptions) {
@@ -83,7 +88,14 @@ export class CiNotifier {
     // before we subscribed doesn't read as a fresh transition.
     const byPath = this.store.getSnapshot().state.prs.byPath
     for (const [path, status] of Object.entries(byPath)) {
-      if (status) this.lastOverall.set(path, status.checksOverall)
+      if (!status) continue
+      this.seen.add(path)
+      // Claim an already-red commit so boot stays quiet until a NEW one
+      // fails. Marking the path seen isn't enough on its own — the next
+      // poll would read as a fresh failure.
+      if (status.checksOverall === 'failure') {
+        this.handledSha.set(path, shaKeyFor(status))
+      }
     }
     this.unsubscribe = this.store.subscribe((event) => this.onEvent(event))
   }
@@ -106,10 +118,10 @@ export class CiNotifier {
       for (const path of Object.keys(event.payload)) {
         this.consider(path, event.payload[path])
       }
-      for (const path of this.lastOverall.keys()) {
+      for (const path of this.seen) {
         if (!(path in event.payload)) {
-          this.lastOverall.delete(path)
-          this.notifiedSha.delete(path)
+          this.seen.delete(path)
+          this.handledSha.delete(path)
         }
       }
       return
@@ -118,31 +130,35 @@ export class CiNotifier {
 
   private consider(path: string, status: PRStatus | null): void {
     if (!status) {
-      this.lastOverall.delete(path)
-      this.notifiedSha.delete(path)
+      this.seen.delete(path)
+      this.handledSha.delete(path)
       return
     }
-    const prev = this.lastOverall.get(path)
-    this.lastOverall.set(path, status.checksOverall)
+    const firstObservation = !this.seen.has(path)
+    this.seen.add(path)
     if (status.checksOverall !== 'failure') return
-    // First observation of this worktree — record only. Otherwise every
-    // launch would re-announce PRs that were already red.
-    if (prev === undefined || prev === 'failure') return
+
+    const shaKey = shaKeyFor(status)
+    if (this.handledSha.get(path) === shaKey) return
+    // Claim the commit before deciding anything else, so there's exactly
+    // one decision per head commit. That stops a poll landing during the
+    // deferred delivery below from notifying twice, and bounds the
+    // decline logging to one line per commit.
+    this.handledSha.set(path, shaKey)
+
+    if (firstObservation) {
+      // Already red the first time we looked. Staying quiet here is what
+      // keeps a launch from re-announcing every red PR in the workspace.
+      log('ci-notifier', `skip ${path} @ ${shaKey}: already failing at first poll`)
+      return
+    }
 
     const state = this.store.getSnapshot().state
     if (!isCiNotifyEnabled(state.ciNotify, path, state.settings.notifyChatOnCiFailure)) {
+      log('ci-notifier', `skip ${path} @ ${shaKey}: notifications off for this worktree`)
       return
     }
 
-    // Statuses cached by an older build carry no headSha; fall back to the
-    // PR number so dedup still collapses a flapping check to one message.
-    const shaKey = status.headSha || `pr-${status.number}`
-    if (this.notifiedSha.get(path) === shaKey) return
-
-    // Claim the commit before delivering. Delivery is deferred off the
-    // dispatch fan-out (below), so without claiming now a second poll
-    // landing in that window would notify twice.
-    this.notifiedSha.set(path, shaKey)
     const message = buildCiFailureMessage(status)
     // Waking a tab spawns a subprocess and replays its transcript from
     // disk. That's far too much work to run inside a store listener, so
@@ -164,13 +180,14 @@ export class CiNotifier {
       if (!slept) {
         // No chat tab at all (terminal-only worktree). Nothing to do —
         // the PR pane already shows the red checks.
-        this.notifiedSha.delete(worktreePath)
+        log('ci-notifier', `skip ${worktreePath} @ ${shaKey}: no chat tab to deliver to`)
+        this.handledSha.delete(worktreePath)
         return
       }
       this.opts.wake(worktreePath, slept)
       if (!this.opts.hasSession(slept)) {
         log('ci-notifier', `wake failed for tab=${slept} wt=${worktreePath}`)
-        this.notifiedSha.delete(worktreePath)
+        this.handledSha.delete(worktreePath)
         return
       }
       log('ci-notifier', `woke tab=${slept} wt=${worktreePath} to report CI failure`)
