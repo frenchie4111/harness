@@ -127,7 +127,7 @@ const TOOLS = [
   {
     name: 'create_worktree',
     description:
-      "Create a new git worktree in a Harness-managed repo. Either create a brand-new branch (set branchName) OR check out an existing GitHub PR for review (set prNumber). Harness will open a new agent chat tab inside the new worktree automatically. Defaults to the caller's current repo when repoRoot is omitted.",
+      "Create a new git worktree in a Harness-managed repo. Either create a brand-new branch (set branchName) OR check out an existing GitHub PR for review (set prNumber). Harness will open a new agent chat tab inside the new worktree automatically. Defaults to the caller's current repo when repoRoot is omitted. The new tab normally starts as a blank conversation seeded with initialPrompt; set forkConversation to instead hand it a copy of THIS conversation to continue from.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -172,6 +172,11 @@ const TOOLS = [
           type: 'string',
           description:
             'Optional display alias applied to the new worktree once creation succeeds. Same semantics as set_worktree_alias — trimmed and clamped to 80 chars, empty string is ignored. Useful when the user gave the task a memorable label ("call this one auth-refactor") so the sidebar/window title show that instead of the branch name.'
+        },
+        forkConversation: {
+          type: 'boolean',
+          description:
+            'Copy YOUR current conversation into the new worktree, so its agent resumes with everything discussed here instead of starting blank. Only works when you are a Harness Chat tab with existing history; otherwise the call is rejected and you should retry without it. Cannot be combined with prNumber.\n\nDEFAULT TO OMITTING THIS. A fresh worktree with a well-written initialPrompt is the right choice for most spin-offs: it is cheaper, and the new agent gets a clean context containing only what matters for its task.\n\nFork only when the work genuinely depends on context that would be expensive or lossy to re-explain — e.g. you spent many turns exploring an unfamiliar codebase, ruled out approaches, or converged on a design with the user, and the new worktree is meant to CONTINUE that same thread of work. The test: if you can write an initialPrompt that gets a new agent to the same place, write that instead.\n\nDo NOT fork for a task that is merely adjacent ("also fix the flaky test", "try the same thing on the other service"), for a fresh start after an approach failed, or for reviewing code. In those cases the history is noise the new agent has to read past, and it can mislead — the forked transcript is full of your earlier file edits, but a new branch cut from the base ref does NOT contain your uncommitted work and may not contain your commits either. Harness prepends a note telling the new agent where it is and which of those changes actually survived the move, but that note costs the agent a round of re-verification, which is wasted when the history was not needed.\n\nIf you fork, still pass initialPrompt — it is appended after that note and is what actually directs the new agent. Address it as a continuation ("now implement the plan we settled on, in this worktree"), not as a fresh briefing.'
         }
       }
     }
@@ -574,14 +579,19 @@ async function handleToolCall(name, args) {
       initialPrompt: args.initialPrompt,
       agentKind: args.agentKind,
       model: args.model,
-      alias: args.alias
+      alias: args.alias,
+      forkConversation: args.forkConversation === true
     })
     const agentLabel = args.agentKind === 'codex' ? 'Codex' : 'Claude'
     const modelSuffix = args.model ? ` (model: ${args.model})` : ''
     const aliasSuffix = args.alias && args.alias.trim() ? ` (alias: "${args.alias.trim()}")` : ''
+    const forkSuffix =
+      args.forkConversation === true
+        ? ' It resumes a copy of this conversation, and has been told where it is and which of your earlier changes came along.'
+        : ''
     return prNumber
       ? `Created worktree ${r.path} on branch ${r.branch} for PR #${prNumber}${aliasSuffix}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
-      : `Created worktree ${r.path} on branch ${r.branch}${aliasSuffix}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
+      : `Created worktree ${r.path} on branch ${r.branch}${aliasSuffix}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.${forkSuffix}`
   }
   if (name === 'list_worktrees') {
     const q =

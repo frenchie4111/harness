@@ -111,6 +111,11 @@ export interface ControlServerDeps {
   /** Returns the caller's current scope, or null if the terminal is not
    * associated with any known worktree (e.g. the worktree was deleted). */
   resolveCallerScope: (terminalId: string) => CallerScope | null
+  /** Whether the caller has a conversation transcript that can be forked
+   * into a new worktree. For Chat tabs the terminal id IS the session id;
+   * for terminal tabs it isn't, so this is how `forkConversation` gets
+   * rejected before the worktree is created. */
+  hasForkableTranscript: (sessionId: string, worktreePath: string) => boolean
   /** Current browser-tool permissions. Re-read on every request so user
    * toggles take effect mid-session without restarting the bridge. */
   getBrowserPerms: () => BrowserPerms
@@ -267,6 +272,29 @@ async function handleRequest(
       agentKind = rawAgent
     }
     const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : undefined
+    const baseBranch = typeof body.baseBranch === 'string' ? body.baseBranch : undefined
+
+    // Forking is always self-scoped: the caller's own conversation, resolved
+    // from its terminal id. Asking an agent to name a session id doesn't work
+    // — it can't reliably observe its own, and a cross-worktree lookup would
+    // need a session→worktree index for a use case nobody has asked for.
+    let forkSource: { sessionId: string; worktreePath: string } | undefined
+    if (body.forkConversation === true) {
+      if (prNumber !== undefined) {
+        return sendJson(res, 400, {
+          error:
+            'forkConversation cannot be combined with prNumber — a PR review worktree starts from the PR author\'s work, not from your conversation'
+        })
+      }
+      const { scope, terminalId } = resolveScope(req, deps)
+      if (!scope || !deps.hasForkableTranscript(terminalId, scope.worktreePath)) {
+        return sendJson(res, 400, {
+          error:
+            'forkConversation is only available from a Harness Chat tab that already has conversation history. Retry without forkConversation and describe the task in initialPrompt instead.'
+        })
+      }
+      forkSource = { sessionId: terminalId, worktreePath: scope.worktreePath }
+    }
 
     if (prNumber !== undefined) {
       if (branchName) {
@@ -300,8 +328,8 @@ async function handleRequest(
     const wtDir = defaultWorktreeDir(repoRoot)
     const mode = deps.getWorktreeBase()
     const created = await addWorktree(repoRoot, wtDir, branchName, {
-      baseBranch: typeof body.baseBranch === 'string' ? body.baseBranch : undefined,
-      fetchRemote: !body.baseBranch && mode === 'remote'
+      baseBranch,
+      fetchRemote: !baseBranch && mode === 'remote'
     })
     // runWorktreeSetup runs its synchronous symlink step before the first
     // await, so the broadcast below can fire immediately and the Claude tab
@@ -316,7 +344,9 @@ async function handleRequest(
       worktree: created,
       initialPrompt,
       agentKind,
-      model
+      model,
+      forkSource,
+      baseRef: baseBranch
     })
     return sendJson(res, 200, created)
   }

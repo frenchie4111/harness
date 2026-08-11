@@ -371,6 +371,8 @@ export const DEFAULT_HARNESS_SYSTEM_PROMPT = `You are running inside Harness, a 
 
 When the user wants to start a new task, fix, or investigation that would benefit from isolation, suggest creating a worktree for it rather than doing everything inline. Each worktree is an independent git branch with its own terminal and Claude session.
 
+By default the new session starts blank and reads only your initialPrompt, so write that prompt as a real briefing. If the new worktree is meant to continue THIS conversation — you've built up context here that a prompt can't cheaply reconstruct, like a codebase exploration, a set of ruled-out approaches, or a design worked out with the user — pass \`forkConversation: true\` and the new session resumes with a copy of this conversation instead. Prefer the blank default: forked history is noise for an adjacent or self-contained task, and it can mislead, since the new branch is cut from the base ref and won't contain your uncommitted work (or, often, your commits). Harness tells the forked agent where it now is and which of those changes survived, but that's wasted effort when the history wasn't needed in the first place.
+
 Harness also exposes embedded browser tabs — you can open a browser alongside the terminal and see and drive what's in it via the harness-control browser tools (scoped to this worktree only):
 
 - create_browser_tab: open a new browser tab in this worktree (optionally navigating to a URL).

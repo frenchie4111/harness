@@ -191,6 +191,15 @@ function transcriptPathFor(sessionId: string, worktreePath: string): string {
   )
 }
 
+/** Whether this session has a transcript on disk that `forkTranscript`
+ *  could copy. False for terminal-tab ids (which aren't session ids at all)
+ *  and for chat tabs that haven't produced a turn yet — lets the MCP path
+ *  reject a fork request up front instead of returning success and handing
+ *  the caller an empty chat. */
+export function hasForkableTranscript(sessionId: string, worktreePath: string): boolean {
+  return existsSync(transcriptPathFor(sessionId, worktreePath))
+}
+
 export interface RewindOutcome {
   ok: boolean
   reason?: string
