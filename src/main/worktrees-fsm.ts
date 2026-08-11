@@ -296,6 +296,15 @@ export class WorktreesFSM {
   }): Promise<PendingOutcome> {
     const { id, repoRoot, created, initialPrompt, teleportSessionId, agentKind, model, forkSource, baseRef } = args
 
+    // Publish the path as soon as it exists on disk. `git worktree add` has
+    // already made it visible to `git worktree list`, so any list refresh
+    // from here on would otherwise let the generic pane sweep initialize it
+    // before onWorktreeCreated gets to seed the first tab.
+    this.store.dispatch({
+      type: 'worktrees/pendingUpdated',
+      payload: { id, patch: { createdPath: created.path } }
+    })
+
     const setupCmd = this.resolveSetupCmd(repoRoot)
     let setupFailed = false
     if (setupCmd) {

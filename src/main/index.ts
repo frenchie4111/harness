@@ -1085,6 +1085,20 @@ let bootTimer: NodeJS.Timeout | null = null
 // boot freezes the UI for seconds while the renderer can't paint
 // between dispatches.
 const BOOT_INIT_BATCH_SIZE = 3
+
+// A worktree that's still mid-creation belongs to WorktreesFSM: its
+// onWorktreeCreated callback seeds the first agent tab with the kickoff
+// prompt and, for a conversation fork, the forked session id. The path is
+// already in `git worktree list` by then, so an unguarded sweep can win the
+// race — ensureInitialized is first-write-wins and silently drops the seeding.
+function isMidCreation(wtPath: string): boolean {
+  return store
+    .getSnapshot()
+    .state.worktrees.pending.some(
+      (p) => p.createdPath === wtPath && (p.status === 'creating' || p.status === 'setup')
+    )
+}
+
 async function drainBootInit(force: boolean): Promise<void> {
   if (bootDrained) return
   bootDrained = true
@@ -1097,7 +1111,7 @@ async function drainBootInit(force: boolean): Promise<void> {
   pendingBootInit.clear()
   for (let i = 0; i < paths.length; i++) {
     const path = paths[i]
-    if (force || !isWorktreeMerged(state.prs, path)) {
+    if ((force || !isWorktreeMerged(state.prs, path)) && !isMidCreation(path)) {
       panesFSM.ensureInitialized(path)
     }
     if (i + 1 < paths.length && (i + 1) % BOOT_INIT_BATCH_SIZE === 0) {
@@ -1110,7 +1124,9 @@ store.subscribe((event) => {
   if (event.type === 'worktrees/listChanged') {
     const list = store.getSnapshot().state.worktrees.list
     if (bootDrained) {
-      for (const wt of list) panesFSM.ensureInitialized(wt.path)
+      for (const wt of list) {
+        if (!isMidCreation(wt.path)) panesFSM.ensureInitialized(wt.path)
+      }
       return
     }
     for (const wt of list) pendingBootInit.add(wt.path)
@@ -2762,7 +2778,7 @@ function registerIpcHandlers(): void {
   // skips merged worktrees, so this is the only path that wakes them.
   // No-op for paths that already have panes.
   transport.onRequest('panes:ensureInitialized', (_ctx, wtPath: string) => {
-    panesFSM.ensureInitialized(wtPath)
+    if (!isMidCreation(wtPath)) panesFSM.ensureInitialized(wtPath)
     return true
   })
 

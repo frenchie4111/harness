@@ -20,7 +20,7 @@ vi.mock('./repo-config', () => ({
 
 import { Store } from './store'
 import { sanitizeHeadBranchForLocal, WorktreesFSM } from './worktrees-fsm'
-import { listWorktrees } from './worktree'
+import { listWorktrees, addWorktree, runWorktreeScript } from './worktree'
 
 describe('sanitizeHeadBranchForLocal', () => {
   it('returns the head ref unchanged for typical names', () => {
@@ -89,5 +89,41 @@ describe('WorktreesFSM.refreshListDebounced', () => {
 
     vi.advanceTimersByTime(60)
     expect(listWorktrees).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('WorktreesFSM.runPending', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(listWorktrees as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([])
+  })
+
+  it('publishes createdPath before running the setup script', async () => {
+    // The generic pane sweep skips mid-creation worktrees by matching this
+    // field. `git worktree add` has already made the path visible to
+    // `git worktree list`, so publishing it late loses the race and the
+    // first agent tab gets initialized without its kickoff prompt or
+    // forked session id.
+    ;(addWorktree as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      path: '/repo/wt/new',
+      branch: 'new'
+    })
+    const seenAtSetup: (string | undefined)[] = []
+    ;(runWorktreeScript as unknown as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      seenAtSetup.push(store.getSnapshot().state.worktrees.pending[0]?.createdPath)
+      return { ok: true, exitCode: 0 }
+    })
+
+    const store = new Store()
+    const fsm = new WorktreesFSM(store, {
+      getRepoRoots: () => ['/repo'],
+      getWorktreeSetupCmd: () => 'echo hi',
+      getWorktreeBaseMode: () => 'remote',
+      onWorktreeCreated: () => {}
+    })
+
+    await fsm.runPending({ id: 'pending:1', repoRoot: '/repo', branchName: 'new' })
+
+    expect(seenAtSetup).toEqual(['/repo/wt/new'])
   })
 })
