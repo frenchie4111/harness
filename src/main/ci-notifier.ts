@@ -1,9 +1,9 @@
 import type { Store } from './store'
-import type { AppState, StateEvent } from '../shared/state'
+import type { StateEvent } from '../shared/state'
 import type { PRStatus } from '../shared/state/prs'
-import { getLeaves } from '../shared/state/terminals'
 import { isCiNotifyEnabled } from '../shared/state/ci-notify'
 import { wrapAutomatedMessage } from '../shared/state/json-claude'
+import { deliverToWorktreeChat, type ChatDeliveryDeps } from './chat-delivery'
 import { log } from './debug'
 
 /** Identity of a failure. Statuses cached by an older build carry no
@@ -13,15 +13,7 @@ function shaKeyFor(status: PRStatus): string {
   return status.headSha || `pr-${status.number}`
 }
 
-export interface CiNotifierOptions {
-  /** Injects a user turn into a running json-mode chat session. */
-  send: (sessionId: string, text: string) => void
-  /** True when the session has a live subprocess to receive the message. */
-  hasSession: (sessionId: string) => boolean
-  /** Re-spawns a slept json-claude tab's subprocess. Synchronous — the
-   *  session is live by the time this returns (or the spawn failed). */
-  wake: (worktreePath: string, tabId: string) => void
-}
+export type CiNotifierOptions = ChatDeliveryDeps
 
 const MAX_LISTED_CHECKS = 10
 
@@ -166,71 +158,23 @@ export class CiNotifier {
     setImmediate(() => this.deliver(path, message, shaKey))
   }
 
-  /** Route the message to a chat session, waking a slept tab if that's
-   *  what it takes. Every persisted json-claude tab hydrates as 'asleep'
-   *  at app launch and the auto-sleep monitor puts idle ones back to
-   *  sleep, so "no live session" is the *normal* state for exactly the
-   *  worktrees this feature exists to serve — refusing to wake would
-   *  make it fire almost never. */
+  /** Hand the message to the shared chat router. A failure to deliver
+   *  releases the commit claim so a later poll can retry — the tab may
+   *  have been asleep mid-spawn, or the worktree may not have had a chat
+   *  tab yet. */
   private deliver(worktreePath: string, message: string, shaKey: string): void {
     const state = this.store.getSnapshot().state
-    let sessionId = this.pickLiveSession(state, worktreePath)
-    if (!sessionId) {
-      const slept = this.pickSleptTab(state, worktreePath)
-      if (!slept) {
-        // No chat tab at all (terminal-only worktree). Nothing to do —
-        // the PR pane already shows the red checks.
-        log('ci-notifier', `skip ${worktreePath} @ ${shaKey}: no chat tab to deliver to`)
-        this.handledSha.delete(worktreePath)
-        return
-      }
-      this.opts.wake(worktreePath, slept)
-      if (!this.opts.hasSession(slept)) {
-        log('ci-notifier', `wake failed for tab=${slept} wt=${worktreePath}`)
-        this.handledSha.delete(worktreePath)
-        return
-      }
-      log('ci-notifier', `woke tab=${slept} wt=${worktreePath} to report CI failure`)
-      sessionId = slept
+    const result = deliverToWorktreeChat(state, this.opts, worktreePath, message)
+    if (!result.ok) {
+      // No chat tab (terminal-only worktree) is not a problem to solve
+      // here — the PR pane already shows the red checks.
+      log('ci-notifier', `skip ${worktreePath} @ ${shaKey}: ${result.reason}`)
+      this.handledSha.delete(worktreePath)
+      return
     }
-    this.opts.send(sessionId, message)
-    log('ci-notifier', `notified ${sessionId} of CI failure on ${worktreePath} @ ${shaKey}`)
-  }
-
-  /** Most recently active session for this worktree that still has a live
-   *  subprocess. */
-  private pickLiveSession(state: AppState, worktreePath: string): string | null {
-    let best: string | null = null
-    let bestTs = -1
-    for (const [sessionId, session] of Object.entries(state.jsonClaude.sessions)) {
-      if (session.worktreePath !== worktreePath) continue
-      if (!this.opts.hasSession(sessionId)) continue
-      const last = session.entries[session.entries.length - 1]
-      const ts = last?.timestamp ?? 0
-      if (ts > bestTs || (ts === bestTs && (best === null || sessionId < best))) {
-        best = sessionId
-        bestTs = ts
-      }
+    if (result.woke) {
+      log('ci-notifier', `woke tab=${result.sessionId} wt=${worktreePath} to report CI failure`)
     }
-    return best
-  }
-
-  /** A slept json-claude tab to wake, preferring whichever tab its pane
-   *  had focused. Only genuinely-asleep tabs qualify: a tab marked awake
-   *  with a dead subprocess is the renderer's to respawn on focus, and
-   *  racing it here would double-spawn. */
-  private pickSleptTab(state: AppState, worktreePath: string): string | null {
-    const tree = state.terminals.panes[worktreePath]
-    if (!tree) return null
-    let fallback: string | null = null
-    for (const leaf of getLeaves(tree)) {
-      for (const tab of leaf.tabs) {
-        if (tab.type !== 'json-claude') continue
-        if ((tab.mode ?? 'awake') !== 'asleep') continue
-        if (tab.id === leaf.activeTabId) return tab.id
-        fallback ??= tab.id
-      }
-    }
-    return fallback
+    log('ci-notifier', `notified ${result.sessionId} of CI failure on ${worktreePath} @ ${shaKey}`)
   }
 }
