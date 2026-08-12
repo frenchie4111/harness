@@ -231,6 +231,27 @@ const TOOLS = [
     }
   },
   {
+    name: 'send_message',
+    description:
+      "Send a message to the agent working in another Harness worktree. It arrives as a turn in that agent's chat, labelled with your worktree as the sender, and wakes the tab if it was asleep. Use it to hand off work (\"the API change landed, you can rebase now\"), ask a question, or report that something you were asked to do is finished.\n\nThere is no separate reply channel. If you want an answer, say so in the message and ask them to send_message back to you — name your own worktree so they know where to reply. Then end your turn: you'll be woken when their message arrives, so there is no need to poll or wait.\n\nDelivery is immediate or not at all — nothing is queued. If the target worktree has no agent chat tab the call fails and the message is lost, so report that to the user rather than assuming it landed. The recipient always sees which worktree you are; the sender name cannot be set by you.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        worktree: {
+          type: 'string',
+          description:
+            'Which worktree to message — its display alias, its branch name, or its absolute path. Call list_worktrees first if you are unsure what exists.'
+        },
+        message: {
+          type: 'string',
+          description:
+            'What to say. Write it for an agent who has none of your context: state what you did, what you need, and what you want them to do next.'
+        }
+      },
+      required: ['worktree', 'message']
+    }
+  },
+  {
     name: 'list_browser_tabs',
     description:
       'List the browser tabs currently open in the SAME worktree as the calling agent. Returns [{id, url, title}]. Use the returned ids with screenshot_tab, get_tab_dom, get_tab_url, and get_tab_console_logs.',
@@ -613,6 +634,26 @@ async function handleToolCall(name, args) {
       worktreePath: args && args.worktreePath
     })
     return 'Cleared alias for ' + r.worktreePath
+  }
+  if (name === 'send_message') {
+    if (!args || typeof args.worktree !== 'string' || !args.worktree.trim()) {
+      throw new Error('worktree is required')
+    }
+    if (typeof args.message !== 'string' || !args.message.trim()) {
+      throw new Error('message is required')
+    }
+    const r = await callControl('POST', '/messages', {
+      worktree: args.worktree,
+      message: args.message
+    })
+    return (
+      'Delivered to ' +
+      r.worktreePath +
+      ', sent as "' +
+      r.from +
+      '"' +
+      (r.woke ? ' (woke its sleeping chat tab)' : '')
+    )
   }
   if (name === 'list_browser_tabs') {
     const r = await callControl('GET', '/browser/tabs')

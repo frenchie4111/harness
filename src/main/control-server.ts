@@ -3,6 +3,8 @@ import { randomBytes, randomUUID } from 'crypto'
 import type { AgentKind } from '../shared/state/terminals'
 import { addWorktree, listWorktrees, defaultWorktreeDir, WorktreeInfo } from './worktree'
 import { normalizeAlias } from '../shared/state/aliases'
+import type { ChatDeliveryResult } from './chat-delivery'
+import { wrapAutomatedMessage } from '../shared/state/json-claude'
 import { log } from './debug'
 
 export interface BrowserTabSummary {
@@ -72,6 +74,18 @@ export interface ShellQueries {
   killShell: (shellId: string) => void
 }
 
+export interface MessagingQueries {
+  /** Resolve a caller-supplied handle — absolute path, branch name, or
+   * alias — to a known worktree path. */
+  resolveTarget: (query: string) => { path: string } | { error: string }
+  /** Human label for a worktree: its alias when set, else its branch. Names
+   * the sender in the delivered message. */
+  describe: (worktreePath: string) => string
+  /** Route a message into a worktree's agent chat, waking a slept tab if
+   * that's what delivery takes. */
+  send: (worktreePath: string, message: string) => ChatDeliveryResult
+}
+
 /** Scope derived from the caller's terminal id on every request. The
  * source of truth — env vars injected into the MCP bridge can go stale
  * (teleport sessions, deleted worktrees), so each tool call re-resolves. */
@@ -116,6 +130,7 @@ export interface ControlServerDeps {
   getBrowserPerms: () => BrowserPerms
   browser: BrowserQueries
   shell: ShellQueries
+  messaging: MessagingQueries
   /** Trim + 80-char clamp + dispatch. Matches the aliases:set IPC handler.
    * Empty-after-trim routes to clearAlias — never stores an empty alias. */
   setAlias: (worktreePath: string, alias: string) => void
@@ -596,6 +611,58 @@ async function handleRequest(
     res.writeHead(404)
     res.end('shell endpoint not found')
     return
+  }
+
+  // send_message — deliver a message into another worktree's agent chat.
+  // Unlike the browser/shell tools this deliberately crosses the worktree
+  // boundary; that's the entire feature. What does NOT cross is sender
+  // identity: `from` comes from the caller's resolved scope, never from the
+  // body, so an agent can't claim to be someone else.
+  if (req.method === 'POST' && path === '/messages') {
+    const { scope, terminalId } = resolveScope(req, deps)
+    if (!terminalId) {
+      return sendJson(res, 400, { error: 'X-Harness-Terminal-Id header required' })
+    }
+    if (!scope) {
+      return sendJson(res, 404, {
+        error: 'caller terminal is not associated with a worktree'
+      })
+    }
+    const body = await readJson(req)
+    const target = typeof body.worktree === 'string' ? body.worktree.trim() : ''
+    const message = typeof body.message === 'string' ? body.message.trim() : ''
+    if (!target) return sendJson(res, 400, { error: 'worktree required' })
+    if (!message) return sendJson(res, 400, { error: 'message required' })
+
+    const resolved = deps.messaging.resolveTarget(target)
+    if ('error' in resolved) return sendJson(res, 404, { error: resolved.error })
+    if (resolved.path === scope.worktreePath) {
+      return sendJson(res, 400, {
+        error: 'cannot send a message to your own worktree'
+      })
+    }
+
+    const from = deps.messaging.describe(scope.worktreePath)
+    const result = deps.messaging.send(
+      resolved.path,
+      wrapAutomatedMessage('worktree-message', message, { from })
+    )
+    if (!result.ok) {
+      // Nothing is queued for later — say so plainly so the caller can decide
+      // whether to retry, open a chat tab, or just tell the user.
+      const error =
+        result.reason === 'no-chat-tab'
+          ? `worktree ${resolved.path} has no agent chat tab to deliver to — the message was not sent`
+          : `failed to wake the agent chat in ${resolved.path} — the message was not sent`
+      return sendJson(res, 409, { error })
+    }
+    log('control', `message ${scope.worktreePath} -> ${resolved.path} (woke=${result.woke})`)
+    return sendJson(res, 200, {
+      delivered: true,
+      worktreePath: resolved.path,
+      from,
+      woke: result.woke
+    })
   }
 
   // /scope — returns the caller's current scope. The MCP bridge calls this

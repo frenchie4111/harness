@@ -56,6 +56,45 @@ function pickSleptTab(state: AppState, worktreePath: string): string | null {
   return fallback
 }
 
+/** Resolve a caller-supplied worktree handle. Absolute path wins outright;
+ *  otherwise alias and branch are matched case-insensitively. An ambiguous
+ *  handle is an error rather than a guess — silently picking one of two
+ *  worktrees would deliver a message somewhere the sender didn't intend. */
+export function resolveWorktreeQuery(
+  state: AppState,
+  query: string
+): { path: string } | { error: string } {
+  const q = query.trim()
+  if (!q) return { error: 'worktree required' }
+  // A prunable worktree's directory is already gone, so nothing can be
+  // running in it to receive the message.
+  const list = state.worktrees.list.filter((w) => !w.prunable)
+  if (list.some((w) => w.path === q)) return { path: q }
+  const lower = q.toLowerCase()
+  const matches = new Set<string>()
+  for (const w of list) {
+    const alias = state.aliases.byPath[w.path]
+    if (alias?.toLowerCase() === lower || w.branch.toLowerCase() === lower) {
+      matches.add(w.path)
+    }
+  }
+  if (matches.size === 1) return { path: [...matches][0] }
+  if (matches.size > 1) {
+    return {
+      error: `"${q}" matches ${matches.size} worktrees — pass the absolute path instead`
+    }
+  }
+  return { error: `no worktree matching "${q}"` }
+}
+
+/** Human label for a worktree: alias when the user set one, else its branch. */
+export function describeWorktree(state: AppState, worktreePath: string): string {
+  const alias = state.aliases.byPath[worktreePath]
+  if (alias) return alias
+  const wt = state.worktrees.list.find((w) => w.path === worktreePath)
+  return wt?.branch || worktreePath
+}
+
 /** Route a message to a worktree's agent chat, waking a slept tab if that's
  *  what it takes. Every persisted json-claude tab hydrates as 'asleep' at
  *  app launch and the auto-sleep monitor puts idle ones back to sleep, so

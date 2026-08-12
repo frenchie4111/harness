@@ -115,6 +115,11 @@ import { listDir as fsListDir, resolveHome as fsResolveHome } from './fs-listing
 import { listConfiguredHosts } from './ssh-config'
 import { SshTunnelManager } from './ssh-tunnel-manager'
 import { startControlServer } from './control-server'
+import {
+  deliverToWorktreeChat,
+  describeWorktree,
+  resolveWorktreeQuery
+} from './chat-delivery'
 import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
 import { getControlServerInfo } from './control-server'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
@@ -974,14 +979,19 @@ store.subscribe((event) => {
 
 const activityDeriver = new ActivityDeriver(store)
 
+// How anything in main reaches a worktree's agent chat. Shared by the CI
+// notifier and the send_message MCP tool so both route (and wake) alike.
+const chatDeliveryDeps = {
+  send: (sessionId: string, text: string) => jsonClaudeManager.send(sessionId, text),
+  hasSession: (sessionId: string) => jsonClaudeManager.hasSession(sessionId),
+  wake: (worktreePath: string, tabId: string) =>
+    panesFSM.wakeJsonClaudeTab(worktreePath, tabId)
+}
+
 // Injects a "CI is failing" message into a worktree's agent chat when its
 // PR checks go red. Kept out of PRPoller so the poller stays ignorant of
 // chat sessions.
-const ciNotifier = new CiNotifier(store, {
-  send: (sessionId, text) => jsonClaudeManager.send(sessionId, text),
-  hasSession: (sessionId) => jsonClaudeManager.hasSession(sessionId),
-  wake: (worktreePath, tabId) => panesFSM.wakeJsonClaudeTab(worktreePath, tabId)
-})
+const ciNotifier = new CiNotifier(store, chatDeliveryDeps)
 
 // Tears down idle json-mode subprocesses (yellow-dot tabs older than
 // settings.autoSleepMinutes). Constructed after panesFSM since it
@@ -4312,6 +4322,19 @@ async function runBoot(): Promise<void> {
     },
     clearAlias: (worktreePath) => {
       store.dispatch({ type: 'aliases/cleared', payload: { path: worktreePath } })
+    },
+    messaging: {
+      resolveTarget: (query) =>
+        resolveWorktreeQuery(store.getSnapshot().state, query),
+      describe: (worktreePath) =>
+        describeWorktree(store.getSnapshot().state, worktreePath),
+      send: (worktreePath, message) =>
+        deliverToWorktreeChat(
+          store.getSnapshot().state,
+          chatDeliveryDeps,
+          worktreePath,
+          message
+        )
     },
     browser: {
       listTabsForWorktree: (wtPath) => {
