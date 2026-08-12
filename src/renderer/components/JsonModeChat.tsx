@@ -1055,6 +1055,9 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   const sendHotkeyAria = sendOnEnter ? 'Enter' : `${modKeyWord}+Enter`
   // Interrupt & send is the same combo in both sendOnEnter modes — Shift
   // disambiguates it from plain send either way.
+  const interruptSendHotkeyLabel = isMac
+    ? `${modKeySymbol}⇧↵`
+    : `${modKeySymbol}Shift+Enter`
   const interruptSendHotkeyAria = `${modKeyWord}+Shift+Enter`
   const composerPlaceholder = sendOnEnter
     ? 'Message Claude — Enter to send, Shift+Enter for newline'
@@ -2613,7 +2616,14 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                 }
               >
                 <Square fill="currentColor" className="icon-2xs" />
-                {hasOutgoing ? 'interrupt & send' : 'interrupt'}
+                {hasOutgoing ? (
+                  <>
+                    <span>interrupt &amp; send</span>
+                    <span className="opacity-60">{interruptSendHotkeyLabel}</span>
+                  </>
+                ) : (
+                  'interrupt'
+                )}
               </button>
             )}
             <button
