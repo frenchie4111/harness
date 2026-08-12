@@ -670,8 +670,17 @@ function RateLimitErrorCard({
   )
 }
 
-const AUTOMATION_LABELS: Record<JsonClaudeAutomationSource, string> = {
-  'ci-failure': 'Harness · CI failure'
+function automationLabel(
+  source: JsonClaudeAutomationSource,
+  from?: string
+): { label: string; note: string } {
+  if (source === 'worktree-message') {
+    return {
+      label: from ? `Harness · from ${from}` : 'Harness · worktree message',
+      note: 'sent by another worktree'
+    }
+  }
+  return { label: 'Harness · CI failure', note: 'sent automatically' }
 }
 
 /** A user turn Harness injected on the human's behalf. Sits on the user
@@ -679,15 +688,18 @@ const AUTOMATION_LABELS: Record<JsonClaudeAutomationSource, string> = {
  *  toned and labelled so nobody mistakes it for something they typed. */
 function AutomatedTurnCard({
   source,
+  from,
   text,
   isQueued,
   onCancelQueued
 }: {
   source: JsonClaudeAutomationSource
+  from?: string
   text: string
   isQueued: boolean
   onCancelQueued: () => void
 }): JSX.Element {
+  const { label, note } = automationLabel(source, from)
   return (
     <div className="flex justify-end">
       <div
@@ -712,9 +724,9 @@ function AutomatedTurnCard({
             className="font-semibold shrink-0 text-warning"
             style={{ fontFamily: 'var(--chat-tool-name-family)' }}
           >
-            {AUTOMATION_LABELS[source]}
+            {label}
           </span>
-          <span className="text-muted truncate">sent automatically</span>
+          <span className="text-muted truncate">{note}</span>
           {isQueued && (
             <div className="flex items-center gap-1 shrink-0 ml-auto">
               <span
@@ -780,6 +792,7 @@ function renderEntries(
         node: (
           <AutomatedTurnCard
             source={entry.automation}
+            from={entry.automationFrom}
             text={entry.text ?? ''}
             isQueued={!!entry.isQueued}
             onCancelQueued={() => ctx.onCancelQueued(entry.entryId)}

@@ -333,6 +333,7 @@ export class JsonClaudeManager {
             timestamp: Date.now(),
             entryId: `${sessionId}-seed-u-${counter++}`,
             ...(automated ? { automation: automated.source } : {}),
+            ...(automated?.from ? { automationFrom: automated.from } : {}),
             ...(transcriptUuid ? { transcriptUuid } : {})
           })
         } else if (Array.isArray(content)) {
@@ -763,6 +764,7 @@ export class JsonClaudeManager {
       timestamp: Date.now(),
       entryId: extra.entryId,
       ...(automated ? { automation: automated.source } : {}),
+      ...(automated?.from ? { automationFrom: automated.from } : {}),
       ...(extra.isQueued ? { isQueued: true } : {}),
       ...(hasImages
         ? {
