@@ -624,6 +624,11 @@ export interface ElectronAPI {
   getJsonClaudeEntries(sessionId: string): Promise<JsonClaudeChatEntry[]>
   killJsonClaude(id: string): Promise<boolean>
   interruptJsonClaude(id: string): Promise<boolean>
+  interruptAndSendJsonClaude(
+    id: string,
+    text: string,
+    images?: Array<{ mediaType: string; data: string; path: string }>
+  ): Promise<{ ok: boolean; reason?: string }>
   rewindJsonClaudeTo(
     id: string,
     entryId: string

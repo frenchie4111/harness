@@ -618,6 +618,11 @@ export function buildBackend(
       req('jsonClaude:getEntries', sessionId),
     killJsonClaude: (id: string) => req('jsonClaude:kill', id),
     interruptJsonClaude: (id: string) => req('jsonClaude:interrupt', id),
+    interruptAndSendJsonClaude: (
+      id: string,
+      text: string,
+      images?: Array<{ mediaType: string; data: string; path: string }>
+    ) => req('jsonClaude:interruptAndSend', id, text, images),
     rewindJsonClaudeTo: (id: string, entryId: string) =>
       req('jsonClaude:rewindTo', id, entryId),
     forkJsonClaudeAt: (id: string, entryId: string) =>

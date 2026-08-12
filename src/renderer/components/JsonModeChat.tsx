@@ -1053,6 +1053,9 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       ? `${modKeySymbol}↵`
       : `${modKeySymbol}Enter`
   const sendHotkeyAria = sendOnEnter ? 'Enter' : `${modKeyWord}+Enter`
+  // Interrupt & send is the same combo in both sendOnEnter modes — Shift
+  // disambiguates it from plain send either way.
+  const interruptSendHotkeyAria = `${modKeyWord}+Shift+Enter`
   const composerPlaceholder = sendOnEnter
     ? 'Message Claude — Enter to send, Shift+Enter for newline'
     : `Message Claude — ${modKeyWord}+Enter to send`
@@ -2013,7 +2016,23 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     }
   }
 
-  function send(textOverride?: string): void {
+  function clearComposer(): void {
+    setDraft('')
+    setAttachments([])
+    setMentionDismissed(null)
+  }
+
+  /** Shared draft→wire step for both delivery paths (send, interrupt &
+   *  send): validates, maps attachments, handles client-side slash
+   *  commands, and clears the composer. Returns null when there's
+   *  nothing left for the caller to deliver — either the draft was
+   *  empty/unsendable or it was a slash command already handled here. */
+  function takeDraft(
+    textOverride?: string
+  ): {
+    text: string
+    images?: Array<{ mediaType: string; data: string; path: string }>
+  } | null {
     const text = (textOverride ?? draft).trim()
     const images = attachments.map((a) => ({
       mediaType: a.mediaType,
@@ -2022,8 +2041,8 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       // "no path known", just sends bytes with no path annotation.
       path: a.path ?? ''
     }))
-    if (!session || state === 'exited') return
-    if (!text && images.length === 0) return
+    if (!session || state === 'exited') return null
+    if (!text && images.length === 0) return null
     // /model handled entirely client-side: swap the running subprocess
     // to the requested model (empty = clear override). This catches
     // Cmd+Enter bypass of the popover, or any dismissed-popover path
@@ -2034,20 +2053,18 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       void backend.setJsonClaudeTabModel(sessionId, arg).catch(() => {
         /* toast surface TBD — for now silently fail. */
       })
-      setDraft('')
-      setAttachments([])
-      setMentionDismissed(null)
-      return
+      clearComposer()
+      return null
     }
-    backend.sendJsonClaudeMessage(
-      sessionId,
-      text,
-      images.length > 0 ? images : undefined
-    )
-    setDraft('')
-    setAttachments([])
-    setMentionDismissed(null)
+    clearComposer()
     setUserScrolledUp(false)
+    return { text, images: images.length > 0 ? images : undefined }
+  }
+
+  function send(textOverride?: string): void {
+    const outgoing = takeDraft(textOverride)
+    if (!outgoing) return
+    backend.sendJsonClaudeMessage(sessionId, outgoing.text, outgoing.images)
   }
 
   async function attachImageFile(
@@ -2094,8 +2111,29 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     void backend.interruptJsonClaude(sessionId)
   }
 
+  /** Abort the in-flight turn and deliver the draft as a fresh one
+   *  instead of queueing it behind the turn the way send() does. Main
+   *  owns the sequencing — see the jsonClaude:interruptAndSend handler.
+   *  With nothing in flight there's nothing to interrupt, so this
+   *  degrades to a plain send (matches the button, which reads "send"
+   *  when idle because the interrupt affordance is hidden). */
+  function interruptAndSend(): void {
+    if (!busy) {
+      send()
+      return
+    }
+    const outgoing = takeDraft()
+    if (!outgoing) return
+    void backend.interruptAndSendJsonClaude(
+      sessionId,
+      outgoing.text,
+      outgoing.images
+    )
+  }
+
   const state = session?.state ?? 'idle'
   const busy = !!session?.busy
+  const hasOutgoing = draft.trim().length > 0 || attachments.length > 0
   const permissionMode = session?.permissionMode ?? 'default'
 
   function cyclePermissionMode(): void {
@@ -2505,6 +2543,15 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                 // IME composition guard — don't send while composing
                 // CJK input.
                 if (e.nativeEvent.isComposing || e.keyCode === 229) return
+                // Cmd/Ctrl+Shift+Enter → interrupt & send. Must be
+                // checked before wantsSend: in the !sendOnEnter mode
+                // wantsSend is just meta||ctrl, so this combo would
+                // otherwise be swallowed as a plain (queueing) send.
+                if ((e.metaKey || e.ctrlKey) && e.shiftKey) {
+                  e.preventDefault()
+                  interruptAndSend()
+                  return
+                }
                 const wantsSend = sendOnEnter
                   ? !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey
                   : e.metaKey || e.ctrlKey
@@ -2552,11 +2599,21 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             <div className="flex-1" />
             {busy && (
               <button
-                onClick={interrupt}
+                onClick={hasOutgoing ? interruptAndSend : interrupt}
                 className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-danger hover:bg-danger/10 cursor-pointer"
-                title="Interrupt the current model turn"
+                aria-label={
+                  hasOutgoing
+                    ? `Interrupt and send (${interruptSendHotkeyAria})`
+                    : 'Interrupt the current model turn'
+                }
+                title={
+                  hasOutgoing
+                    ? `Stop the current turn and send this message instead (${interruptSendHotkeyAria})`
+                    : 'Interrupt the current model turn'
+                }
               >
-                <Square fill="currentColor" className="icon-2xs" /> interrupt
+                <Square fill="currentColor" className="icon-2xs" />
+                {hasOutgoing ? 'interrupt & send' : 'interrupt'}
               </button>
             )}
             <button
