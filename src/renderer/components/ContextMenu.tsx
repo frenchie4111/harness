@@ -35,12 +35,13 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps): JSX.Ele
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose()
     }
+    // No 'blur' listener: macOS fires one at the window the moment Command
+    // arms the native menu bar, which dismissed the menu out from under
+    // anyone reaching for a Cmd-chord.
     window.addEventListener('mousedown', close)
-    window.addEventListener('blur', close)
     window.addEventListener('keydown', onKey)
     return () => {
       window.removeEventListener('mousedown', close)
-      window.removeEventListener('blur', close)
       window.removeEventListener('keydown', onKey)
     }
   }, [onClose])
