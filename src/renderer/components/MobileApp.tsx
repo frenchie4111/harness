@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose } from 'lucide-react'
+import { ChevronDown, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose, Layers, Rows3 } from 'lucide-react'
 import { useWorktrees, usePanes, useTerminals, usePrs, useSettings, useAliases } from '../store'
 import { useBackend } from '../backend'
 import { getLeaves } from '../../shared/state/terminals'
@@ -434,6 +434,7 @@ function WorktreePickerSheet({
   // hotkey badges render.
   const model = useWorktreeListModel(collapse, { assignOrdinals: false })
   const snoozeDefaultDays = useSettings().snoozeDefaultDays
+  const repoCount = useWorktrees().repoRoots.length
   const [editingAliasPath, setEditingAliasPath] = useState<string | null>(null)
 
   return (
@@ -441,6 +442,14 @@ function WorktreePickerSheet({
       <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-border bg-panel">
         <span className="text-xs uppercase tracking-wider text-dim font-semibold">Worktrees</span>
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => collapse.setUnifiedRepos((v) => !v)}
+            disabled={repoCount <= 1}
+            className="inline-flex items-center justify-center w-11 h-11 rounded text-dim active:bg-surface disabled:opacity-40 disabled:active:bg-transparent"
+            aria-label={collapse.unifiedRepos ? 'Split by repo' : 'Merge repos into one list'}
+          >
+            {collapse.unifiedRepos ? <Rows3 className="icon-base" /> : <Layers className="icon-base" />}
+          </button>
           <button
             onClick={onRefresh}
             className="inline-flex items-center justify-center w-11 h-11 rounded text-dim active:bg-surface"
