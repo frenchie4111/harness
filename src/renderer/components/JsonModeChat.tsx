@@ -37,6 +37,7 @@ import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
 import { Tooltip } from './Tooltip'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
+import { HarnessIcon } from './json-mode-cards/tool-icons'
 import { ToolGroup } from './json-mode-cards/ToolGroup'
 import { TaskCard } from './json-mode-cards/TaskCard'
 import { buildChildrenMap, isSubAgentToolName } from './json-mode-cards/grouping'
@@ -670,17 +671,21 @@ function RateLimitErrorCard({
   )
 }
 
+/** `brand` picks the gradient chrome the harness-control tool cards use.
+ *  A CI failure keeps the warning tone — it's a problem report, not a
+ *  Harness feature showing off. */
 function automationLabel(
   source: JsonClaudeAutomationSource,
   from?: string
-): { label: string; note: string } {
+): { label: string; note: string; brand: boolean } {
   if (source === 'worktree-message') {
     return {
-      label: from ? `Harness · from ${from}` : 'Harness · worktree message',
-      note: 'sent by another worktree'
+      label: from ? `Agent Message · from ${from}` : 'Agent Message',
+      note: 'sent by another worktree',
+      brand: true
     }
   }
-  return { label: 'Harness · CI failure', note: 'sent automatically' }
+  return { label: 'Harness · CI failure', note: 'sent automatically', brand: false }
 }
 
 /** A user turn Harness injected on the human's behalf. Sits on the user
@@ -699,29 +704,37 @@ function AutomatedTurnCard({
   isQueued: boolean
   onCancelQueued: () => void
 }): JSX.Element {
-  const { label, note } = automationLabel(source, from)
+  const { label, note, brand } = automationLabel(source, from)
+  const Icon = brand ? HarnessIcon : Bot
   return (
     <div className="flex justify-end">
       <div
-        className={`border border-warning/40 bg-warning/5 overflow-hidden ${
-          isQueued ? 'opacity-70' : ''
-        }`}
+        className={`group border overflow-hidden ${
+          brand ? 'border-warning/40 bg-panel' : 'border-warning/40 bg-warning/5'
+        } ${isQueued ? 'opacity-70' : ''}`}
         style={{
           maxWidth: 'var(--chat-bubble-max)',
           borderRadius: 'var(--chat-bubble-radius)'
         }}
       >
+        {brand && <div className="brand-gradient-bg h-0.5" />}
         <div
-          className="flex items-center gap-2 bg-warning/10 border-b border-warning/30"
+          className={`flex items-center gap-2 border-b ${
+            brand ? 'bg-app/40 border-border' : 'bg-warning/10 border-warning/30'
+          }`}
           style={{
             paddingInline: 'var(--chat-chrome-px)',
             paddingBlock: 'var(--chat-chrome-py)',
             fontSize: 'var(--chat-chrome-text)'
           }}
         >
-          <Bot className="icon-xs text-warning shrink-0" />
+          <Icon className={brand ? 'icon-sm shrink-0' : 'icon-xs shrink-0 text-warning'} />
           <span
-            className="font-semibold shrink-0 text-warning"
+            className={`font-semibold shrink-0 ${
+              brand
+                ? 'brand-gradient-text brand-gradient-flow-text-hover'
+                : 'text-warning'
+            }`}
             style={{ fontFamily: 'var(--chat-tool-name-family)' }}
           >
             {label}
