@@ -4,6 +4,6 @@ import {describe, expect, it} from 'vitest'
 // This PR is not meant to be merged — delete this file before merging.
 describe('intentional CI failure', () => {
   it('fails on purpose', () => {
-    expect(1 + 1).toBe(6)
+    expect(1 + 1).toBe(7)
   })
 })
