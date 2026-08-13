@@ -26,6 +26,7 @@ import { createConnection } from 'node:net'
 import { ApprovalBridge } from './approval-bridge'
 import type { Store } from './store'
 import { initialState, rootReducer, type StateEvent } from '../shared/state'
+import { buildQuestionResult, parseQuestions } from '../shared/ask-user-question'
 
 function claudeInstalled(): boolean {
   try {
@@ -205,6 +206,169 @@ describe('approval bridge — claude integration', () => {
       expect(existsSync(targetFile)).toBe(true)
       const content = readFileSync(targetFile, 'utf8')
       expect(content).toBe('REWRITTEN_BY_APPROVER\n')
+    } finally {
+      unsubApproval()
+      try { proc.kill('SIGTERM') } catch { /* ignore */ }
+      bridge.stopSession(sessionId)
+      try {
+        rmSync(tempDir, { recursive: true, force: true })
+      } catch {
+        /* ignore */
+      }
+    }
+  }, 180_000)
+})
+
+describe('approval bridge — AskUserQuestion answers', () => {
+  // The AskUserQuestion contract is undocumented: the user's answers ride
+  // back inside updatedInput.answers on the PermissionResult, and the tool
+  // reads them as its own input. This test drives a real claude subprocess
+  // and asserts the binary rendered our answer into the tool_result — i.e.
+  // that the encoding in shared/ask-user-question.ts is still correct. If
+  // a release changes the contract, this fails instead of silently
+  // regressing to "the user did not answer the questions".
+  it('delivers answers to the model through updatedInput', async () => {
+    if (!claudeInstalled()) {
+      console.warn('[approval-bridge.test] skipping — `claude` not on PATH')
+      return
+    }
+    const mcpScript = bundledMcpPath()
+    if (!mcpScript) {
+      console.warn('[approval-bridge.test] skipping — resources/permission-prompt-mcp.js missing')
+      return
+    }
+
+    const tempDir = mkdtempSync(join(tmpdir(), 'harness-question-test-'))
+    const store = new TestStore()
+    const bridge = new ApprovalBridge(store as unknown as Store)
+    const sessionId = randomUUID()
+    const socketPath = bridge.startSession(sessionId)
+
+    const mcpConfig = {
+      mcpServers: {
+        'harness-permissions': {
+          command: 'node',
+          args: [mcpScript],
+          env: {
+            HARNESS_APPROVAL_SOCKET: socketPath,
+            HARNESS_JSON_CLAUDE_SESSION_ID: sessionId
+          }
+        }
+      }
+    }
+
+    const proc = spawn(
+      'claude',
+      [
+        '-p',
+        '--input-format', 'stream-json',
+        '--output-format', 'stream-json',
+        '--verbose',
+        '--permission-mode', 'default',
+        '--permission-prompt-tool', 'mcp__harness-permissions__approve',
+        '--mcp-config', JSON.stringify(mcpConfig),
+        '--session-id', sessionId
+      ],
+      {
+        cwd: tempDir,
+        env: { ...process.env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' },
+        stdio: ['pipe', 'pipe', 'pipe']
+      }
+    )
+
+    let stderr = ''
+    proc.stderr.on('data', (c: Buffer) => {
+      stderr += c.toString('utf8')
+    })
+
+    // Answer with whichever label the model actually offered, so the
+    // assertion doesn't depend on the model echoing our wording.
+    let chosenLabel: string | null = null
+    const unsubApproval = store.subscribe((event) => {
+      if (event.type !== 'jsonClaude/approvalRequested') return
+      if (event.payload.toolName !== 'AskUserQuestion') return
+      const questions = parseQuestions(event.payload.input)
+      const first = questions[0]
+      if (!first || first.options.length === 0) return
+      chosenLabel = first.options[0]!.label
+      bridge.resolveApproval(
+        event.payload.requestId,
+        buildQuestionResult(event.payload.input, questions, {
+          [first.question]: { selected: [chosenLabel], custom: '' }
+        })
+      )
+    })
+
+    proc.stdin.write(
+      JSON.stringify({
+        type: 'user',
+        message: {
+          role: 'user',
+          content:
+            'Use the AskUserQuestion tool to ask me which colour I prefer, ' +
+            'with exactly two options. Then stop and tell me what I picked.'
+        }
+      }) + '\n'
+    )
+
+    // Collect tool_result blocks — the binary renders the answers it
+    // accepted into the result text it feeds back to the model.
+    const toolResults: string[] = []
+    const resultPromise = new Promise<void>((resolveResult, rejectResult) => {
+      let buf = ''
+      proc.stdout.on('data', (chunk: Buffer) => {
+        buf += chunk.toString('utf8')
+        let idx: number
+        while ((idx = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, idx).trim()
+          buf = buf.slice(idx + 1)
+          if (!line) continue
+          try {
+            const parsed = JSON.parse(line) as {
+              type?: string
+              message?: { content?: unknown }
+            }
+            if (parsed.type === 'user' && Array.isArray(parsed.message?.content)) {
+              for (const block of parsed.message.content as Array<
+                Record<string, unknown>
+              >) {
+                if (block['type'] === 'tool_result') {
+                  toolResults.push(JSON.stringify(block['content']))
+                }
+              }
+            }
+            if (parsed.type === 'result') {
+              resolveResult()
+              return
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+      })
+      proc.on('exit', (code) => {
+        if (code === 0) resolveResult()
+        else rejectResult(new Error(`claude exited with ${code}\nstderr:\n${stderr}`))
+      })
+    })
+
+    const timeout = new Promise<never>((_, r) =>
+      setTimeout(() => r(new Error('test timed out')), 120_000)
+    )
+
+    try {
+      await Promise.race([resultPromise, timeout])
+      if (chosenLabel === null) {
+        console.warn(
+          '[approval-bridge.test] model did not call AskUserQuestion — contract not exercised'
+        )
+        return
+      }
+      const joined = toolResults.join('\n')
+      // The binary emits `"<question>"="<label>"` for an accepted answer,
+      // and "The user did not answer the questions." when answers is empty.
+      expect(joined).toContain(chosenLabel)
+      expect(joined).not.toContain('did not answer the questions')
     } finally {
       unsubApproval()
       try { proc.kill('SIGTERM') } catch { /* ignore */ }

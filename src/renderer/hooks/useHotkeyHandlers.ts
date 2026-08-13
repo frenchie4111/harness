@@ -15,6 +15,7 @@ import {
 } from '../store'
 import { useBackend } from '../backend'
 import { SCALES } from '../../shared/state/settings'
+import { QUESTION_TOOL_NAME } from '../../shared/state/json-claude'
 import { advancePreventSleep, PREVENT_SLEEP_META, PREVENT_SLEEP_TOAST_KEY } from '../prevent-sleep'
 import { showToast } from '../toast'
 
@@ -394,6 +395,9 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       },
       approveToolUse: () => {
         if (!activeApproval) return
+        // Approving a question without answers resolves it as "the user
+        // did not answer" — the question card owns this interaction.
+        if (activeApproval.toolName === QUESTION_TOOL_NAME) return
         // Scroll first so the resolved card is visible for the split
         // second it's still mounted — otherwise the state update drops
         // it from the DOM before scrollIntoView can find the node.
@@ -407,6 +411,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       },
       denyToolUse: () => {
         if (!activeApproval) return
+        if (activeApproval.toolName === QUESTION_TOOL_NAME) return
         document
           .getElementById(activeApproval.requestId)
           ?.scrollIntoView({ block: 'center', behavior: 'smooth' })

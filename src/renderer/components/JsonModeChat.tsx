@@ -34,6 +34,7 @@ import { useJsonClaudeSession, useSettings } from '../store'
 import { useBackend } from '../backend'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
+import { JsonClaudeQuestionCard } from './JsonClaudeQuestionCard'
 import { Tooltip } from './Tooltip'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
 import { ToolGroup } from './json-mode-cards/ToolGroup'
@@ -44,7 +45,10 @@ import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
 import { CLAUDE_MODELS } from '../../shared/agent-registry'
 import 'highlight.js/styles/github-dark.css'
-import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
+import {
+  QUESTION_TOOL_NAME,
+  type JsonClaudeChatEntry
+} from '../../shared/state/json-claude'
 import {
   COMPACT_BODY_TEXT,
   FindContext,
@@ -1369,6 +1373,14 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     if (!toolUseId) return null
     const approval = approvalByToolUseId.get(toolUseId)
     if (!approval) return null
+    if (approval.toolName === QUESTION_TOOL_NAME) {
+      return (
+        <JsonClaudeQuestionCard
+          approval={approval}
+          onResolve={(result) => resolve(approval.requestId, result)}
+        />
+      )
+    }
     return (
       <JsonClaudeApprovalCard
         approval={approval}
