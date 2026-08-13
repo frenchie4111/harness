@@ -133,6 +133,38 @@ describe('WorktreesFSM.refreshList', () => {
     expect(listedAt).toBeLessThanOrEqual(wroteLinkAt)
   })
 
+  it('does not let a slow older refresh clobber a newer list', async () => {
+    // The first call resolves LAST with a snapshot taken before the new
+    // worktree existed. It must not overwrite the second call's result,
+    // which is what used to make a freshly-created worktree (and its
+    // linked ticket) vanish until some unrelated refresh came along.
+    const stale = fakeWt('/repo/old', 'old', '/repo')
+    const fresh = fakeWt('/repo/new', 'new', '/repo')
+    vi.mocked(listWorktreesMock)
+      .mockImplementationOnce(async () => {
+        await new Promise((r) => setTimeout(r, 20))
+        return [stale]
+      })
+      .mockImplementationOnce(async () => [stale, fresh])
+
+    const store = new Store()
+    const fsm = new WorktreesFSM(store, {
+      getRepoRoots: () => ['/repo'],
+      getWorktreeSetupCmd: () => '',
+      getWorktreeBaseMode: () => 'local',
+      onWorktreeCreated: () => {}
+    })
+
+    const slow = fsm.refreshList()
+    const quick = fsm.refreshList()
+    await Promise.all([slow, quick])
+
+    expect(store.getSnapshot().state.worktrees.list.map((w) => w.path)).toEqual([
+      '/repo/old',
+      '/repo/new'
+    ])
+  })
+
   it('returns the git-derived list unchanged when no side-table getter is wired', async () => {
     const wt = fakeWt('/repo/x', 'x', '/repo')
     vi.mocked(listWorktreesMock).mockResolvedValue([wt])

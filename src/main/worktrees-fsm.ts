@@ -102,6 +102,14 @@ export class WorktreesFSM {
   private store: Store
   private opts: WorktreesFSMOptions
   private refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
+  /** Monotonic ticket handed to each refreshList, plus the highest one that
+   *  has actually reached the store. `listWorktrees` calls overlap freely
+   *  (poller, watchers, post-create), and they don't resolve in issue
+   *  order — without this guard an older, staler snapshot can land last and
+   *  clobber a newer list, briefly dropping a just-created worktree (and
+   *  its linked ticket) until some later refresh happens to fix it. */
+  private refreshSeq = 0
+  private lastDispatchedRefreshSeq = -1
 
   constructor(store: Store, opts: WorktreesFSMOptions) {
     this.store = store
@@ -112,6 +120,7 @@ export class WorktreesFSM {
    * worktrees/listChanged. Safe to call repeatedly. */
   async refreshList(): Promise<Worktree[]> {
     const roots = this.opts.getRepoRoots()
+    const seq = ++this.refreshSeq
     // Captured BEFORE the listing so the prune below can tell which links
     // this snapshot is actually entitled to judge.
     const listedAt = Date.now()
@@ -134,7 +143,12 @@ export class WorktreesFSM {
           return link ? { ...wt, linkedTicket: link } : wt
         })
       : flat
-    this.store.dispatch({ type: 'worktrees/listChanged', payload: decorated })
+    // A newer refresh already reached the store — this snapshot is older
+    // than what's live, so publishing it would move the list backwards.
+    if (seq > this.lastDispatchedRefreshSeq) {
+      this.lastDispatchedRefreshSeq = seq
+      this.store.dispatch({ type: 'worktrees/listChanged', payload: decorated })
+    }
     return decorated
   }
 
