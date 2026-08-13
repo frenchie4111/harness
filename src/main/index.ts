@@ -2345,6 +2345,20 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setConversationForkEnabled', (_ctx, enabled: boolean) => {
+    if (enabled) {
+      delete config.conversationForkEnabled
+    } else {
+      config.conversationForkEnabled = false
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/conversationForkEnabledChanged',
+      payload: config.conversationForkEnabled !== false
+    })
+    return true
+  })
+
   transport.onRequest('config:setBrowserToolsMode', (_ctx, mode: 'view' | 'full') => {
     const next = mode === 'view' ? 'view' : 'full'
     if (next === 'full') {
@@ -4300,6 +4314,7 @@ async function runBoot(): Promise<void> {
     getPrReviewPrompt: () => config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT,
     resolveCallerScope,
     hasForkableTranscript,
+    getConversationForkEnabled: () => config.conversationForkEnabled !== false,
     getBrowserPerms: () => ({
       enabled: config.browserToolsEnabled !== false,
       mode: config.browserToolsMode === 'view' ? 'view' : 'full'

@@ -16,7 +16,7 @@ import {
   removeLeaf
 } from '../shared/state/terminals'
 import type { PersistedPaneNode } from './persistence'
-import { agentDisplayName, getAgentInfo } from '../shared/agent-registry'
+import { agentDisplayName, getAgentInfo, supportsConversationFork } from '../shared/agent-registry'
 import { log } from './debug'
 
 interface PanesFSMOptions {
@@ -244,7 +244,17 @@ export class PanesFSM {
       return sleeping
     }
 
-    const agentKind = opts?.agentKind ?? this.opts.getDefaultAgentKind?.() ?? 'claude'
+    let agentKind = opts?.agentKind ?? this.opts.getDefaultAgentKind?.() ?? 'claude'
+    if (opts?.forkedSessionId && !supportsConversationFork(agentKind)) {
+      // The transcript is already written to disk keyed by this id; handing it
+      // to an agent that assigns its own session id would strand it forever.
+      // Callers are supposed to pin Claude themselves — log loudly if one didn't.
+      log(
+        'panes-fsm',
+        `forkedSessionId supplied for ${agentKind}, which can't resume a fork — forcing claude wtPath=${wtPath}`
+      )
+      agentKind = 'claude'
+    }
     const agentInfo = getAgentInfo(agentKind)
     const model = opts?.model && opts.model.trim() ? opts.model.trim() : undefined
     const shellTabId = `shell-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`

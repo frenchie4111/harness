@@ -123,11 +123,18 @@ function callControl(method, path, body) {
   })
 }
 
+// Appended to create_worktree's description, and removed again by
+// stripForkAffordance when the feature is off. Kept as its own constant so the
+// two stay in sync — a literal that drifts would silently stop being stripped.
+const FORK_DESCRIPTION_SENTENCE =
+  ' The new tab normally starts as a blank conversation seeded with initialPrompt; set forkConversation to instead hand it a copy of THIS conversation to continue from.'
+
 const TOOLS = [
   {
     name: 'create_worktree',
     description:
-      "Create a new git worktree in a Harness-managed repo. Either create a brand-new branch (set branchName) OR check out an existing GitHub PR for review (set prNumber). Harness will open a new agent chat tab inside the new worktree automatically. Defaults to the caller's current repo when repoRoot is omitted. The new tab normally starts as a blank conversation seeded with initialPrompt; set forkConversation to instead hand it a copy of THIS conversation to continue from.",
+      "Create a new git worktree in a Harness-managed repo. Either create a brand-new branch (set branchName) OR check out an existing GitHub PR for review (set prNumber). Harness will open a new agent chat tab inside the new worktree automatically. Defaults to the caller's current repo when repoRoot is omitted." +
+      FORK_DESCRIPTION_SENTENCE,
     inputSchema: {
       type: 'object',
       properties: {
@@ -528,16 +535,29 @@ const FULL_CONTROL_BROWSER_TOOLS = new Set([
   'show_cursor'
 ])
 
-let cachedBrowserPerms = null
-async function getBrowserPerms() {
-  if (cachedBrowserPerms) return cachedBrowserPerms
+// One /scope fetch backs every capability gate below. Defaults on failure are
+// permissive for browser tools (pre-existing behaviour) but the fork gate
+// defaults on too — a server too old to report the field is one that predates
+// the setting, so forking was unconditionally available there.
+let cachedScope = null
+async function getScopeInfo() {
+  if (cachedScope) return cachedScope
   try {
-    const r = await callControl('GET', '/scope')
-    cachedBrowserPerms = (r && r.browser) || { enabled: true, mode: 'full' }
+    cachedScope = (await callControl('GET', '/scope')) || {}
   } catch {
-    cachedBrowserPerms = { enabled: true, mode: 'full' }
+    cachedScope = {}
   }
-  return cachedBrowserPerms
+  return cachedScope
+}
+
+async function getBrowserPerms() {
+  const s = await getScopeInfo()
+  return s.browser || { enabled: true, mode: 'full' }
+}
+
+async function getConversationForkEnabled() {
+  const s = await getScopeInfo()
+  return !(s.conversationFork && s.conversationFork.enabled === false)
 }
 
 function filterToolsByPerms(tools, perms) {
@@ -548,6 +568,20 @@ function filterToolsByPerms(tools, perms) {
     if (!perms.enabled) return false
     if (isFull && perms.mode !== 'full') return false
     return true
+  })
+}
+
+// Strip every trace of forking from create_worktree when it's disabled, rather
+// than advertising a parameter whose only outcome is a rejection.
+function stripForkAffordance(tools) {
+  return tools.map((t) => {
+    if (t.name !== 'create_worktree') return t
+    const { forkConversation, ...rest } = t.inputSchema.properties
+    return {
+      ...t,
+      description: t.description.replace(FORK_DESCRIPTION_SENTENCE, ''),
+      inputSchema: { ...t.inputSchema, properties: rest }
+    }
   })
 }
 
@@ -813,7 +847,9 @@ async function handle(msg) {
     if (method === 'tools/list') {
       logErr('tools/list received')
       const perms = await getBrowserPerms()
-      return { jsonrpc: '2.0', id, result: { tools: filterToolsByPerms(TOOLS, perms) } }
+      let tools = filterToolsByPerms(TOOLS, perms)
+      if (!(await getConversationForkEnabled())) tools = stripForkAffordance(tools)
+      return { jsonrpc: '2.0', id, result: { tools } }
     }
     if (method === 'tools/call') {
       logErr('tools/call received name=' + (params && params.name))

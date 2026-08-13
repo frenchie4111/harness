@@ -375,9 +375,9 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
     setError(null)
     try {
       // Teleport mode always Claude — codex has no resume-by-session-id
-      // analog today.
+      // analog today. Same for a forked transcript: only Claude can resume one.
       const effectiveAgent: AgentKind =
-        mode === 'teleport' ? 'claude' : agentKindOverride
+        mode === 'teleport' || forkSource ? 'claude' : agentKindOverride
       // Existing tab: `git worktree add <dir> <branch>` (no `-b`) so git
       // checks out the already-existing local branch as-is. Ref tab: create
       // a new branch named `effectiveBranch` forked from `baseRef`.
@@ -863,6 +863,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                 defaultCodexModel={settings.codexModel}
                 defaultCursorModel={settings.cursorModel}
                 disabled={submitting}
+                forkLocked={forkSource !== undefined}
               />
             )}
 
@@ -1220,6 +1221,9 @@ interface AgentModelRowProps {
   defaultCodexModel: string | null
   defaultCursorModel: string | null
   disabled: boolean
+  /** Pins the agent to Claude because the new worktree resumes a forked
+   *  transcript, which no other agent can pick up. */
+  forkLocked?: boolean
 }
 
 function AgentModelRow({
@@ -1231,9 +1235,10 @@ function AgentModelRow({
   defaultClaudeModel,
   defaultCodexModel,
   defaultCursorModel,
-  disabled
+  disabled,
+  forkLocked
 }: AgentModelRowProps): JSX.Element {
-  const locked = mode === 'teleport'
+  const locked = mode === 'teleport' || forkLocked === true
   const effectiveAgent = locked ? 'claude' : agentKind
   const modelOptions =
     effectiveAgent === 'codex'
@@ -1301,7 +1306,13 @@ function AgentModelRow({
               value={effectiveAgent}
               onChange={(e) => handleAgentChange(e.target.value as AgentKind)}
               disabled={disabled || locked}
-              title={locked ? 'Teleport sessions require Claude' : undefined}
+              title={
+                forkLocked
+                  ? 'Forked conversations can only be resumed by Claude'
+                  : locked
+                    ? 'Teleport sessions require Claude'
+                    : undefined
+              }
               className="bg-app border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-accent disabled:opacity-50 cursor-pointer"
             >
               {AGENT_REGISTRY.map((agent) => (

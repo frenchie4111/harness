@@ -33,6 +33,10 @@ const scope: CallerScope = {
   isMain: false
 }
 
+/** Mutable so a test can flip the setting off without restarting the server —
+ * mirrors how the real dep re-reads config per request. */
+let conversationForkEnabled = true
+
 const deps: ControlServerDeps = {
   getRepoRoots: () => ['/repo'],
   getWorktreeBase: () => 'remote',
@@ -43,6 +47,7 @@ const deps: ControlServerDeps = {
   resolveCallerScope: (terminalId) =>
     terminalId === CALLER_TERMINAL || terminalId === NO_TRANSCRIPT_TERMINAL ? scope : null,
   hasForkableTranscript: (sessionId) => sessionId === CALLER_TERMINAL,
+  getConversationForkEnabled: () => conversationForkEnabled,
   getBrowserPerms: () => ({ enabled: false, mode: 'full' }),
   browser: {
     listTabsForWorktree: () => [],
@@ -219,5 +224,28 @@ describe('control-server POST /worktrees forkConversation', () => {
     const r = await call('POST', '/worktrees', { prNumber: 7, forkConversation: true })
     expect(r.status).toBe(400)
     expect(r.json.error).toMatch(/cannot be combined with prNumber/)
+  })
+
+  it('rejects forkConversation into an agent that cannot resume a transcript', async () => {
+    for (const agentKind of ['codex', 'cursor']) {
+      const r = await call('POST', '/worktrees', {
+        branchName: 'spinoff',
+        agentKind,
+        forkConversation: true
+      })
+      expect(r.status).toBe(400)
+      expect(r.json.error).toMatch(/only Claude Code can resume a forked transcript/)
+    }
+  })
+
+  it('rejects forkConversation when the setting is disabled', async () => {
+    conversationForkEnabled = false
+    try {
+      const r = await call('POST', '/worktrees', { branchName: 'spinoff', forkConversation: true })
+      expect(r.status).toBe(400)
+      expect(r.json.error).toMatch(/disabled in Harness settings/)
+    } finally {
+      conversationForkEnabled = true
+    }
   })
 })

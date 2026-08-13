@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from 'crypto'
 import type { AgentKind } from '../shared/state/terminals'
 import { addWorktree, listWorktrees, defaultWorktreeDir, WorktreeInfo } from './worktree'
 import { normalizeAlias } from '../shared/state/aliases'
+import { agentDisplayName, supportsConversationFork } from '../shared/agent-registry'
 import { log } from './debug'
 
 export interface BrowserTabSummary {
@@ -116,6 +117,9 @@ export interface ControlServerDeps {
    * for terminal tabs it isn't, so this is how `forkConversation` gets
    * rejected before the worktree is created. */
   hasForkableTranscript: (sessionId: string, worktreePath: string) => boolean
+  /** Whether conversation forking is enabled in settings. Re-read per request
+   * so a toggle takes effect without restarting the bridge. */
+  getConversationForkEnabled: () => boolean
   /** Current browser-tool permissions. Re-read on every request so user
    * toggles take effect mid-session without restarting the bridge. */
   getBrowserPerms: () => BrowserPerms
@@ -280,6 +284,17 @@ async function handleRequest(
     // need a session→worktree index for a use case nobody has asked for.
     let forkSource: { sessionId: string; worktreePath: string } | undefined
     if (body.forkConversation === true) {
+      if (!deps.getConversationForkEnabled()) {
+        return sendJson(res, 400, {
+          error:
+            'conversation forking is disabled in Harness settings. Retry without forkConversation and describe the task in initialPrompt instead.'
+        })
+      }
+      if (agentKind !== undefined && !supportsConversationFork(agentKind)) {
+        return sendJson(res, 400, {
+          error: `forkConversation is not supported for ${agentDisplayName(agentKind)} worktrees — only Claude Code can resume a forked transcript. Retry without forkConversation and describe the task in initialPrompt instead.`
+        })
+      }
       if (prNumber !== undefined) {
         return sendJson(res, 400, {
           error:
@@ -294,6 +309,10 @@ async function handleRequest(
         })
       }
       forkSource = { sessionId: terminalId, worktreePath: scope.worktreePath }
+      // Pin rather than leave undefined: an omitted agentKind falls back to
+      // the user's default agent, and a non-Claude default would drop the
+      // forked session id on the floor at spawn time.
+      agentKind = 'claude'
     }
 
     if (prNumber !== undefined) {
@@ -637,7 +656,11 @@ async function handleRequest(
     if (!terminalId) {
       return sendJson(res, 400, { error: 'X-Harness-Terminal-Id header required' })
     }
-    return sendJson(res, 200, { scope, browser: deps.getBrowserPerms() })
+    return sendJson(res, 200, {
+      scope,
+      browser: deps.getBrowserPerms(),
+      conversationFork: { enabled: deps.getConversationForkEnabled() }
+    })
   }
 
   res.writeHead(404)

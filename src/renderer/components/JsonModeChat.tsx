@@ -1037,7 +1037,8 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     jsonModeChatDensity: density,
     jsonModeSendOnEnter: sendOnEnter,
     autoScrollToBottom,
-    defaultClaudeTabType
+    defaultClaudeTabType,
+    conversationForkEnabled
   } = useSettings()
   const cameFromTerminalDefault = defaultClaudeTabType === 'xterm'
   const isMac =
@@ -2216,22 +2217,24 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
               </span>
             </div>
           </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              performForkIntoWorktree()
-            }}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-fg-bright hover:bg-panel cursor-pointer"
-          >
-            <GitBranchPlus className="icon-xs shrink-0" />
-            <div className="flex flex-col">
-              <span>Fork into new worktree…</span>
-              <span className="text-xs text-muted">
-                carries this whole conversation to a new branch
-              </span>
-            </div>
-          </button>
+          {conversationForkEnabled && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                performForkIntoWorktree()
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-fg-bright hover:bg-panel cursor-pointer"
+            >
+              <GitBranchPlus className="icon-xs shrink-0" />
+              <div className="flex flex-col">
+                <span>Fork into new worktree…</span>
+                <span className="text-xs text-muted">
+                  carries this whole conversation to a new branch
+                </span>
+              </div>
+            </button>
+          )}
         </div>
       )}
       {isDragOver && (
