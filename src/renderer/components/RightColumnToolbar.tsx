@@ -1,9 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { PanelRightClose, SlidersHorizontal, Check, ChevronUp, ChevronDown } from 'lucide-react'
 import { Tooltip } from './Tooltip'
-import type { HiddenRightPanels, RightPanelKey } from '../../shared/state/repo-configs'
+import type {
+  BuiltinRightPanelKey,
+  HiddenRightPanels,
+  RightPanelKey
+} from '../../shared/state/repo-configs'
 
-const LABELS: Record<RightPanelKey, string> = {
+const LABELS: Record<BuiltinRightPanelKey, string> = {
   merge: 'Merge Locally',
   pr: 'PR Status',
   todos: 'Todos',
@@ -18,6 +22,8 @@ const LABELS: Record<RightPanelKey, string> = {
 interface RightColumnToolbarProps {
   hidden: HiddenRightPanels
   order: RightPanelKey[]
+  /** Titles for discovered custom tools, keyed by their `tool:<id>` key. */
+  customLabels: Record<string, string>
   /** Called when the user toggles a panel. Receives the full next map. */
   onChangeHidden: (next: HiddenRightPanels) => void
   /** Called when the user reorders panels. Receives the full next order. */
@@ -31,11 +37,14 @@ interface RightColumnToolbarProps {
 export function RightColumnToolbar({
   hidden,
   order,
+  customLabels,
   onChangeHidden,
   onChangeOrder,
   onCollapse,
   canConfigure
 }: RightColumnToolbarProps): JSX.Element {
+  const labelFor = (key: RightPanelKey): string =>
+    LABELS[key as BuiltinRightPanelKey] ?? customLabels[key] ?? key
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
@@ -114,13 +123,13 @@ export function RightColumnToolbar({
                     <span className="w-3 h-3 flex items-center justify-center shrink-0">
                       {visible && <Check className="icon-xs text-accent" />}
                     </span>
-                    <span className="flex-1">{LABELS[key]}</span>
+                    <span className="flex-1">{labelFor(key)}</span>
                   </button>
                   <button
                     onClick={() => movePanel(index, -1)}
                     disabled={isFirst}
                     className="flex items-center justify-center w-5 h-5 rounded text-muted hover:bg-panel/80 hover:text-fg-bright disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                    aria-label={`Move ${LABELS[key]} up`}
+                    aria-label={`Move ${labelFor(key)} up`}
                   >
                     <ChevronUp className="icon-xs" />
                   </button>
@@ -128,7 +137,7 @@ export function RightColumnToolbar({
                     onClick={() => movePanel(index, 1)}
                     disabled={isLast}
                     className="flex items-center justify-center w-5 h-5 rounded text-muted hover:bg-panel/80 hover:text-fg-bright disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                    aria-label={`Move ${LABELS[key]} down`}
+                    aria-label={`Move ${labelFor(key)} down`}
                   >
                     <ChevronDown className="icon-xs" />
                   </button>

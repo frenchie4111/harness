@@ -1,10 +1,15 @@
-import type { PRStatus, Worktree, RepoConfig } from '../types'
+import { useCallback, useMemo } from 'react'
+import type { PRStatus, Worktree, RepoConfig, ToolSpec } from '../types'
 import {
   effectiveHiddenRightPanels,
   effectiveRightPanelOrder,
+  isCustomToolPanelKey,
+  toolPanelKey,
   type HiddenRightPanels,
   type RightPanelKey
 } from '../../shared/state/repo-configs'
+import { useWatchedQuery } from '../hooks/useWatchedQuery'
+import { CustomToolPanel } from './CustomToolPanel'
 import { PRStatusPanel, MergeLocallyPanel } from './PRStatusPanel'
 import { BranchCommitsPanel } from './BranchCommitsPanel'
 import { ChangedFilesPanel } from './ChangedFilesPanel'
@@ -66,8 +71,25 @@ export function RightColumn({
   onCollapse
 }: RightColumnProps): JSX.Element {
   const backend = useBackend()
+
+  const toolsFetcher = useCallback(
+    (path: string) => backend.listTools(path),
+    [backend]
+  )
+  const { data: toolsData } = useWatchedQuery<ToolSpec[]>({
+    worktreePath: activeWorktreeId,
+    cacheKey: 'tools',
+    fetcher: toolsFetcher
+  })
+  const tools = useMemo(() => toolsData ?? [], [toolsData])
+  const toolKeys = useMemo(() => tools.map((t) => toolPanelKey(t.id)), [tools])
+  const toolLabels = useMemo(
+    () => Object.fromEntries(tools.map((t) => [toolPanelKey(t.id), t.title])),
+    [tools]
+  )
+
   const hidden = effectiveHiddenRightPanels(activeRepoConfig)
-  const order = effectiveRightPanelOrder(activeRepoConfig)
+  const order = effectiveRightPanelOrder(activeRepoConfig, toolKeys)
 
   const handleChangeHidden = (next: HiddenRightPanels): void => {
     if (!activeRepoRoot) return
@@ -89,6 +111,21 @@ export function RightColumn({
 
   const renderPanel = (key: RightPanelKey): JSX.Element | null => {
     if (hidden[key]) return null
+    if (isCustomToolPanelKey(key)) {
+      const spec = tools.find((t) => toolPanelKey(t.id) === key)
+      if (!spec) return null
+      return (
+        <CustomToolPanel
+          key={key}
+          spec={spec}
+          worktreePath={activeWorktreeId}
+          onSendToAgent={
+            activeWorktreeId ? (text) => onSendToAgent(activeWorktreeId, text) : undefined
+          }
+          onOpenFile={onOpenFile}
+        />
+      )
+    }
     switch (key) {
       case 'merge':
         return (
@@ -159,6 +196,7 @@ export function RightColumn({
       <RightColumnToolbar
         hidden={hidden}
         order={order}
+        customLabels={toolLabels}
         onChangeHidden={handleChangeHidden}
         onChangeOrder={handleChangeOrder}
         onCollapse={onCollapse}
