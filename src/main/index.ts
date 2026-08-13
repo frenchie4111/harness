@@ -1078,9 +1078,20 @@ async function drainBootInit(force: boolean): Promise<void> {
 
 store.subscribe((event) => {
   if (event.type === 'worktrees/listChanged') {
-    const list = store.getSnapshot().state.worktrees.list
+    const worktrees = store.getSnapshot().state.worktrees
+    const list = worktrees.list
     if (bootDrained) {
-      for (const wt of list) panesFSM.ensureInitialized(wt.path)
+      // Paths whose creation FSM hasn't reached onWorktreeCreated yet own
+      // their own init — it carries the kickoff prompt, agent kind and
+      // model that this sweep doesn't have.
+      const claimed = new Set(
+        worktrees.pending
+          .filter((p) => p.status === 'creating' || p.status === 'setup')
+          .map((p) => p.createdPath)
+      )
+      for (const wt of list) {
+        if (!claimed.has(wt.path)) panesFSM.ensureInitialized(wt.path)
+      }
       return
     }
     for (const wt of list) pendingBootInit.add(wt.path)

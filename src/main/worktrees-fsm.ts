@@ -283,6 +283,16 @@ export class WorktreesFSM {
   }): Promise<PendingOutcome> {
     const { id, repoRoot, created, initialPrompt, teleportSessionId, agentKind, model } = args
 
+    // Claim the path before the setup script runs. `git worktree list`
+    // already reports it, so any refreshList in the meantime would let
+    // main's listChanged sweep init panes for it — without the prompt,
+    // agent kind or model, and the ensureInitialized below would then
+    // find a tree and bail. The sweep skips claimed paths.
+    this.store.dispatch({
+      type: 'worktrees/pendingUpdated',
+      payload: { id, patch: { createdPath: created.path } }
+    })
+
     const setupCmd = this.resolveSetupCmd(repoRoot)
     let setupFailed = false
     if (setupCmd) {
