@@ -107,6 +107,32 @@ describe('WorktreesFSM.refreshList', () => {
     expect(livePaths.size).toBe(1)
   })
 
+  it('reports a listedAt that predates the listing so new links survive the sweep', async () => {
+    // A link written while the listing is in flight must not be judged by
+    // that stale snapshot — the host compares its write time against
+    // listedAt, so listedAt has to be captured before listWorktrees runs.
+    let wroteLinkAt = 0
+    vi.mocked(listWorktreesMock).mockImplementation(async () => {
+      wroteLinkAt = Date.now()
+      await new Promise((r) => setTimeout(r, 5))
+      return [fakeWt('/repo/alive', 'a', '/repo')]
+    })
+
+    const pruneSpy = vi.fn()
+    const fsm = new WorktreesFSM(new Store(), {
+      getRepoRoots: () => ['/repo'],
+      getWorktreeSetupCmd: () => '',
+      getWorktreeBaseMode: () => 'local',
+      pruneWorktreeTicketLinks: pruneSpy,
+      onWorktreeCreated: () => {}
+    })
+
+    await fsm.refreshList()
+    const listedAt = pruneSpy.mock.calls[0][1] as number
+    expect(typeof listedAt).toBe('number')
+    expect(listedAt).toBeLessThanOrEqual(wroteLinkAt)
+  })
+
   it('returns the git-derived list unchanged when no side-table getter is wired', async () => {
     const wt = fakeWt('/repo/x', 'x', '/repo')
     vi.mocked(listWorktreesMock).mockResolvedValue([wt])

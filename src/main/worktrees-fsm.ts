@@ -66,8 +66,15 @@ interface WorktreesFSMOptions {
   /** Drop side-table entries for any worktree path NOT in `livePaths`.
    *  Called from refreshList so orphaned links — left behind by a
    *  setup-failure cleanup, a manual `git worktree remove`, or an older
-   *  Harness version's deletion path — get garbage-collected. */
-  pruneWorktreeTicketLinks?: (livePaths: Set<string>) => void
+   *  Harness version's deletion path — get garbage-collected.
+   *
+   *  `listedAt` is the time the underlying `git worktree list` snapshot
+   *  was taken. A link written AFTER that instant can't be judged by this
+   *  snapshot — the worktree may well exist on disk but postdate the read
+   *  — so the implementation must keep it. Without this guard a refresh
+   *  that happens to be in flight while a from-ticket worktree is being
+   *  created will evict the brand-new link. */
+  pruneWorktreeTicketLinks?: (livePaths: Set<string>, listedAt: number) => void
   /** Called after a worktree has been created on disk (and its setup
    * script has run, regardless of script outcome). The host wires this
    * to (a) PR poller refresh and (b) PanesFSM.ensureInitialized so the
@@ -105,6 +112,9 @@ export class WorktreesFSM {
    * worktrees/listChanged. Safe to call repeatedly. */
   async refreshList(): Promise<Worktree[]> {
     const roots = this.opts.getRepoRoots()
+    // Captured BEFORE the listing so the prune below can tell which links
+    // this snapshot is actually entitled to judge.
+    const listedAt = Date.now()
     const results = await Promise.all(
       roots.map((r) =>
         listWorktrees(r).catch((err) => {
@@ -116,7 +126,7 @@ export class WorktreesFSM {
     const flat = results.flat()
     // Sweep orphaned side-table entries before decorating, so the next
     // boot doesn't keep dragging them around.
-    this.opts.pruneWorktreeTicketLinks?.(new Set(flat.map((wt) => wt.path)))
+    this.opts.pruneWorktreeTicketLinks?.(new Set(flat.map((wt) => wt.path)), listedAt)
     const links = this.opts.getWorktreeTicketLinks?.() ?? null
     const decorated = links
       ? flat.map((wt) => {

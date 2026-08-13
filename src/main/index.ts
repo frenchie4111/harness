@@ -938,6 +938,12 @@ function startJsonClaudeSession(sessionId: string, worktreePath: string): void {
   jsonClaudeManager.create(sessionId, worktreePath, permMode, findJsonClaudeTabModel(sessionId))
 }
 
+/** When each link was written, in this process. Read by the prune sweep to
+ *  protect links newer than an in-flight `git worktree list` snapshot.
+ *  Links restored from config.json have no entry (treated as time 0), which
+ *  is correct — they predate every snapshot taken this session. */
+const ticketLinkWrittenAt = new Map<string, number>()
+
 function setWorktreeTicketLink(
   worktreePath: string,
   link: import('../shared/tickets').WorktreeTicketLink | undefined
@@ -945,8 +951,13 @@ function setWorktreeTicketLink(
   const existing = config.worktreeTicketLinks || {}
   if (!link && !(worktreePath in existing)) return
   const links = { ...existing }
-  if (link) links[worktreePath] = link
-  else delete links[worktreePath]
+  if (link) {
+    links[worktreePath] = link
+    ticketLinkWrittenAt.set(worktreePath, Date.now())
+  } else {
+    delete links[worktreePath]
+    ticketLinkWrittenAt.delete(worktreePath)
+  }
   if (Object.keys(links).length === 0) {
     delete config.worktreeTicketLinks
   } else {
@@ -988,14 +999,19 @@ const worktreesFSM = new WorktreesFSM(store, {
   getWorktreeBaseMode: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
   getWorktreeTicketLinks: () => config.worktreeTicketLinks || {},
   setWorktreeTicketLink,
-  pruneWorktreeTicketLinks: (livePaths) => {
+  pruneWorktreeTicketLinks: (livePaths, listedAt) => {
     const existing = config.worktreeTicketLinks
     if (!existing) return
     let dirty = false
     const next: Record<string, import('../shared/tickets').WorktreeTicketLink> = {}
     for (const [path, link] of Object.entries(existing)) {
-      if (livePaths.has(path)) next[path] = link
-      else dirty = true
+      // Keep links written after this snapshot was taken — the worktree
+      // exists but postdates the read, so absence here proves nothing.
+      if (livePaths.has(path) || (ticketLinkWrittenAt.get(path) ?? 0) > listedAt) {
+        next[path] = link
+      } else {
+        dirty = true
+      }
     }
     if (!dirty) return
     if (Object.keys(next).length === 0) delete config.worktreeTicketLinks
