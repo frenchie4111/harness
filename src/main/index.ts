@@ -91,6 +91,7 @@ import { isWorktreeMerged } from '../shared/state/prs'
 import { MAX_WAKE } from '../shared/state/snooze'
 import { hasScratchpadNote } from '../shared/state/scratchpad'
 import { normalizeAlias } from '../shared/state/aliases'
+import { deriveWorktreeStatus } from './worktree-status'
 import {
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
@@ -4323,6 +4324,7 @@ async function runBoot(): Promise<void> {
       enabled: config.browserToolsEnabled !== false,
       mode: config.browserToolsMode === 'view' ? 'view' : 'full'
     }),
+    getWorktreeStatus: (wt) => deriveWorktreeStatus(store.getSnapshot().state, wt),
     setAlias: (worktreePath, alias) => {
       const normalized = normalizeAlias(alias)
       if (!normalized) {

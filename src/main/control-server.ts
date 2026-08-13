@@ -3,6 +3,8 @@ import { randomBytes, randomUUID } from 'crypto'
 import type { AgentKind } from '../shared/state/terminals'
 import { addWorktree, listWorktrees, defaultWorktreeDir, WorktreeInfo } from './worktree'
 import { normalizeAlias } from '../shared/state/aliases'
+import type { GroupKey } from '../shared/worktree-sort'
+import type { PRStatus } from '../shared/state/prs'
 import type { ChatDeliveryResult } from './chat-delivery'
 import { wrapAutomatedMessage } from '../shared/state/json-claude'
 import { log } from './debug'
@@ -74,6 +76,23 @@ export interface ShellQueries {
   killShell: (shellId: string) => void
 }
 
+/** The sidebar's own grouping, exposed to agents. `list_worktrees`
+ * otherwise returns raw git facts, which read as "every worktree is equally
+ * live" — a merged branch and one whose PR is failing CI look identical. */
+export interface WorktreeStatusInfo {
+  alias?: string
+  status: GroupKey
+  statusLabel: string
+  pr?: {
+    number: number
+    state: PRStatus['state']
+    title: string
+    checks: PRStatus['checksOverall']
+    reviewDecision: PRStatus['reviewDecision']
+    hasConflict: boolean | null
+  }
+}
+
 export interface MessagingQueries {
   /** Whether the experimental worktree-messaging setting is on. Re-read per
    * request so a toggle takes effect without restarting the bridge. */
@@ -131,6 +150,8 @@ export interface ControlServerDeps {
   /** Current browser-tool permissions. Re-read on every request so user
    * toggles take effect mid-session without restarting the bridge. */
   getBrowserPerms: () => BrowserPerms
+  /** Alias + PR-derived sidebar grouping for one worktree. */
+  getWorktreeStatus: (worktree: WorktreeInfo) => WorktreeStatusInfo
   browser: BrowserQueries
   shell: ShellQueries
   messaging: MessagingQueries
@@ -226,10 +247,12 @@ async function handleRequest(
   if (req.method === 'GET' && path === '/worktrees') {
     const repoRoot = url.searchParams.get('repoRoot')
     const roots = repoRoot ? [repoRoot] : deps.getRepoRoots()
-    const all: WorktreeInfo[] = []
+    const all: Array<WorktreeInfo & WorktreeStatusInfo> = []
     for (const r of roots) {
       try {
-        all.push(...(await listWorktrees(r)))
+        for (const wt of await listWorktrees(r)) {
+          all.push({ ...wt, ...deps.getWorktreeStatus(wt) })
+        }
       } catch (e) {
         log('control', `list worktrees failed for ${r}`, e instanceof Error ? e.message : e)
       }

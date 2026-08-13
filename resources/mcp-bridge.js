@@ -178,7 +178,8 @@ const TOOLS = [
   },
   {
     name: 'list_worktrees',
-    description: 'List git worktrees currently managed by Harness.',
+    description:
+      "List git worktrees currently managed by Harness, with the same status Harness groups the sidebar by. Each entry carries `status` + `statusLabel`: 'merged' (Merged / Closed — the work landed, treat it as finished), 'needs-attention' (open PR of yours with failing checks, conflicts, or changes requested), 'active' (Open PRs — yours, healthy, awaiting review), 'reviewing' (someone else's PR you're reviewing), 'no-pr' (labelled Active — a branch with no PR yet, i.e. work still in progress), 'snoozed' (deliberately parked). Note 'active' means \"has an open PR\" and 'no-pr' is the one labelled Active — read statusLabel, not the key. `prunable: true` means the directory was deleted and only a stale git ref remains. Entries also carry `alias` when the user has named the worktree — that's the name to pass to send_message, and the name a message from it will show. This describes PR/review state, NOT whether an agent is currently running there; Harness does not report agent liveness.",
     inputSchema: {
       type: 'object',
       properties: {

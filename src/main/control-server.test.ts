@@ -45,6 +45,7 @@ const deps: ControlServerDeps = {
   runPendingPRWorktree: async () => ({ ok: false, error: 'not used in these tests' }),
   resolveCallerScope: (terminalId) => (terminalId === CALLER_TERMINAL ? scope : null),
   getBrowserPerms: () => ({ enabled: false, mode: 'full' }),
+  getWorktreeStatus: () => ({ status: 'no-pr', statusLabel: 'Active' }),
   browser: {
     listTabsForWorktree: () => [],
     getTabWorktree: () => null,
