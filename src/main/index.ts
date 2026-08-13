@@ -2337,6 +2337,20 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setWorktreeMessagingEnabled', (_ctx, enabled: boolean) => {
+    if (enabled) {
+      config.worktreeMessagingEnabled = true
+    } else {
+      delete config.worktreeMessagingEnabled
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/worktreeMessagingEnabledChanged',
+      payload: config.worktreeMessagingEnabled === true
+    })
+    return true
+  })
+
   transport.onRequest('config:setNameClaudeSessions', (_ctx, enabled: boolean) => {
     if (enabled) {
       config.nameClaudeSessions = true
@@ -4324,6 +4338,7 @@ async function runBoot(): Promise<void> {
       store.dispatch({ type: 'aliases/cleared', payload: { path: worktreePath } })
     },
     messaging: {
+      isEnabled: () => config.worktreeMessagingEnabled === true,
       resolveTarget: (query) =>
         resolveWorktreeQuery(store.getSnapshot().state, query),
       describe: (worktreePath) =>

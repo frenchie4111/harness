@@ -544,25 +544,35 @@ const FULL_CONTROL_BROWSER_TOOLS = new Set([
   'show_cursor'
 ])
 
-let cachedBrowserPerms = null
-async function getBrowserPerms() {
-  if (cachedBrowserPerms) return cachedBrowserPerms
+// Messaging is experimental and off by default, so an unreachable or older
+// control server means "not available" — advertising a tool that then 403s
+// is worse than not advertising it. Browser keeps its permissive fallback.
+let cachedPerms = null
+async function getToolPerms() {
+  if (cachedPerms) return cachedPerms
   try {
     const r = await callControl('GET', '/scope')
-    cachedBrowserPerms = (r && r.browser) || { enabled: true, mode: 'full' }
+    cachedPerms = {
+      browser: (r && r.browser) || { enabled: true, mode: 'full' },
+      messaging: (r && r.messaging) || { enabled: false }
+    }
   } catch {
-    cachedBrowserPerms = { enabled: true, mode: 'full' }
+    cachedPerms = {
+      browser: { enabled: true, mode: 'full' },
+      messaging: { enabled: false }
+    }
   }
-  return cachedBrowserPerms
+  return cachedPerms
 }
 
 function filterToolsByPerms(tools, perms) {
   return tools.filter((t) => {
+    if (t.name === 'send_message') return perms.messaging.enabled
     const isView = VIEW_BROWSER_TOOLS.has(t.name)
     const isFull = FULL_CONTROL_BROWSER_TOOLS.has(t.name)
     if (!isView && !isFull) return true
-    if (!perms.enabled) return false
-    if (isFull && perms.mode !== 'full') return false
+    if (!perms.browser.enabled) return false
+    if (isFull && perms.browser.mode !== 'full') return false
     return true
   })
 }
@@ -843,7 +853,7 @@ async function handle(msg) {
     }
     if (method === 'tools/list') {
       logErr('tools/list received')
-      const perms = await getBrowserPerms()
+      const perms = await getToolPerms()
       return { jsonrpc: '2.0', id, result: { tools: filterToolsByPerms(TOOLS, perms) } }
     }
     if (method === 'tools/call') {

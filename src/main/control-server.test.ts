@@ -23,6 +23,7 @@ const clearAlias = vi.fn<(worktreePath: string) => void>()
 const sendMessage = vi.fn<(worktreePath: string, message: string) => ChatDeliveryResult>(
   () => ({ ok: true, sessionId: 'tab-1', woke: false })
 )
+let messagingEnabled = true
 
 const CALLER_TERMINAL = 'terminal-abc'
 const CALLER_WORKTREE = '/repo/wt/callers-tree'
@@ -72,6 +73,7 @@ const deps: ControlServerDeps = {
   setAlias: (path, alias) => setAlias(path, alias),
   clearAlias: (path) => clearAlias(path),
   messaging: {
+    isEnabled: () => messagingEnabled,
     resolveTarget: (query) => {
       if (query === EXPLICIT_WORKTREE || query === 'Other Tree') {
         return { path: EXPLICIT_WORKTREE }
@@ -289,6 +291,22 @@ describe('control-server /messages endpoint', () => {
     expect(r.status).toBe(409)
     expect(r.json.error).toMatch(/no agent chat tab/)
     expect(r.json.error).toMatch(/was not sent/)
+  })
+
+  it('refuses delivery when the experimental setting is off', async () => {
+    sendMessage.mockClear()
+    messagingEnabled = false
+    try {
+      const r = await call('POST', '/messages', {
+        worktree: EXPLICIT_WORKTREE,
+        message: 'hi'
+      })
+      expect(r.status).toBe(403)
+      expect(r.json.error).toMatch(/disabled in Harness settings/)
+      expect(sendMessage).not.toHaveBeenCalled()
+    } finally {
+      messagingEnabled = true
+    }
   })
 
   it('rejects a caller with no worktree scope', async () => {

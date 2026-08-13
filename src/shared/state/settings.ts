@@ -246,6 +246,10 @@ export interface SettingsState {
   wsTransportHost: string
   browserToolsEnabled: boolean
   browserToolsMode: BrowserToolsMode
+  /** When true, agents get the `send_message` MCP tool and can deliver a
+   *  message into another worktree's chat — the one capability that
+   *  deliberately crosses the worktree boundary. Default off. */
+  worktreeMessagingEnabled: boolean
   /** Controls whether new Claude tabs spawn as the terminal-hosted TUI
    *  ('xterm') or the React chat interface ('json'). Internal values are
    *  unchanged; the user-facing label is "Terminal" / "Chat". */
@@ -395,6 +399,7 @@ export type SettingsEvent =
   | { type: 'settings/wsTransportHostChanged'; payload: string }
   | { type: 'settings/browserToolsEnabledChanged'; payload: boolean }
   | { type: 'settings/browserToolsModeChanged'; payload: BrowserToolsMode }
+  | { type: 'settings/worktreeMessagingEnabledChanged'; payload: boolean }
   | { type: 'settings/defaultClaudeTabTypeChanged'; payload: 'xterm' | 'json' }
   | { type: 'settings/chatPromotionDismissedChanged'; payload: boolean }
   | { type: 'settings/autoApprovePermissionsChanged'; payload: boolean }
@@ -465,6 +470,7 @@ export const initialSettings: SettingsState = {
   wsTransportHost: '127.0.0.1',
   browserToolsEnabled: true,
   browserToolsMode: 'full',
+  worktreeMessagingEnabled: false,
   defaultClaudeTabType: 'xterm',
   chatPromotionDismissed: false,
   autoApprovePermissions: false,
@@ -593,6 +599,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, browserToolsEnabled: event.payload }
     case 'settings/browserToolsModeChanged':
       return { ...state, browserToolsMode: event.payload }
+    case 'settings/worktreeMessagingEnabledChanged':
+      return { ...state, worktreeMessagingEnabled: event.payload }
     case 'settings/defaultClaudeTabTypeChanged':
       return { ...state, defaultClaudeTabType: event.payload }
     case 'settings/chatPromotionDismissedChanged':

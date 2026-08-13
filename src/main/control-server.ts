@@ -75,6 +75,9 @@ export interface ShellQueries {
 }
 
 export interface MessagingQueries {
+  /** Whether the experimental worktree-messaging setting is on. Re-read per
+   * request so a toggle takes effect without restarting the bridge. */
+  isEnabled: () => boolean
   /** Resolve a caller-supplied handle — absolute path, branch name, or
    * alias — to a known worktree path. */
   resolveTarget: (query: string) => { path: string } | { error: string }
@@ -619,6 +622,12 @@ async function handleRequest(
   // identity: `from` comes from the caller's resolved scope, never from the
   // body, so an agent can't claim to be someone else.
   if (req.method === 'POST' && path === '/messages') {
+    if (!deps.messaging.isEnabled()) {
+      return sendJson(res, 403, {
+        error:
+          'worktree messaging is disabled in Harness settings (Settings → Experimental → Worktree messaging)'
+      })
+    }
     const { scope, terminalId } = resolveScope(req, deps)
     if (!terminalId) {
       return sendJson(res, 400, { error: 'X-Harness-Terminal-Id header required' })
@@ -674,7 +683,11 @@ async function handleRequest(
     if (!terminalId) {
       return sendJson(res, 400, { error: 'X-Harness-Terminal-Id header required' })
     }
-    return sendJson(res, 200, { scope, browser: deps.getBrowserPerms() })
+    return sendJson(res, 200, {
+      scope,
+      browser: deps.getBrowserPerms(),
+      messaging: { enabled: deps.messaging.isEnabled() }
+    })
   }
 
   res.writeHead(404)
