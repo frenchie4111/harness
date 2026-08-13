@@ -29,7 +29,14 @@ vi.mock('../hooks', () => ({
 
 import { homedir } from 'os'
 import { join } from 'path'
-import { buildSpawnArgs, hooksInstalled, installHooks, hookEvents, uninstallHooks } from './claude'
+import {
+  buildSpawnArgs,
+  extractSessionId,
+  hooksInstalled,
+  installHooks,
+  hookEvents,
+  uninstallHooks
+} from './claude'
 
 const SETTINGS_PATH = join(homedir(), '.claude', 'settings.json')
 
@@ -61,6 +68,22 @@ describe('buildSpawnArgs', () => {
     const result = buildSpawnArgs({ ...base, systemPrompt: prompt })
     expect(result).toContain('--append-system-prompt')
     expect(result).toContain("'\\''")
+  })
+})
+
+describe('claude extractSessionId', () => {
+  it('reads session_id', () => {
+    expect(extractSessionId({ session_id: 'sess-abc' })).toBe('sess-abc')
+  })
+
+  it("ignores another agent's field name", () => {
+    expect(extractSessionId({ conversation_id: 'cursor-only' })).toBeNull()
+  })
+
+  it('returns null for missing, empty, or non-string values', () => {
+    expect(extractSessionId({})).toBeNull()
+    expect(extractSessionId({ session_id: '' })).toBeNull()
+    expect(extractSessionId({ session_id: 42 })).toBeNull()
   })
 })
 
