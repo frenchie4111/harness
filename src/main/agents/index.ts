@@ -41,9 +41,11 @@ export interface AgentModule {
   latestSessionId(cwd: string): string | null
   buildSpawnArgs(opts: AgentSpawnOpts): string
   /** Pull the agent-assigned session ID out of a hook event payload,
-   *  or return null if this payload doesn't carry one. Only implemented
-   *  by agents with `assignsSessionId: false`; keeps agent-specific
-   *  field names (session_id vs conversation_id) out of shared code. */
+   *  or return null if this payload doesn't carry one. Keeps agent-specific
+   *  field names (session_id vs conversation_id) out of shared code.
+   *  Agents with `assignsSessionId: true` implement this too — an in-session
+   *  reset (Claude's `/clear`) hands the conversation a new ID that Harness
+   *  would otherwise never see. */
   extractSessionId?(payload: Record<string, unknown>): string | null
 }
 
