@@ -30,9 +30,9 @@ interface RightColumnToolbarProps {
   onChangeOrder: (next: RightPanelKey[]) => void
   /** Called when the user clicks the collapse button. */
   onCollapse: () => void
-  /** Seeds the agent with the custom-tool authoring contract. Undefined
-   * when there's no worktree to send to. */
-  onBuildCustomTool?: () => void
+  /** Opens the new-worktree screen pre-filled with the custom-tool
+   * authoring contract. */
+  onBuildCustomTool: () => void
   /** Whether per-repo dropdown is actionable (needs an active repo). */
   canConfigure: boolean
 }
@@ -148,22 +148,21 @@ export function RightColumnToolbar({
                 </div>
               )
             })}
-            {onBuildCustomTool && (
-              <>
-                <div className="border-t border-border my-1" />
-                <button
-                  onClick={() => {
-                    setMenuOpen(false)
-                    onBuildCustomTool()
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-fg-bright hover:bg-panel/60 cursor-pointer text-left"
-                  role="menuitem"
-                >
-                  <Wrench className="icon-xs text-dim shrink-0" />
-                  <span>Build a custom tool…</span>
-                </button>
-              </>
-            )}
+            <div className="border-t border-border my-1" />
+            <button
+              onClick={() => {
+                setMenuOpen(false)
+                onBuildCustomTool()
+              }}
+              className="w-full flex items-start gap-2 px-3 py-1.5 hover:bg-panel/60 cursor-pointer text-left"
+              role="menuitem"
+            >
+              <Wrench className="icon-xs text-dim shrink-0 mt-0.5" />
+              <span className="min-w-0">
+                <span className="block text-xs text-fg-bright">Build a custom tool…</span>
+                <span className="block text-xs text-faint">Opens a new worktree</span>
+              </span>
+            </button>
           </div>
         )}
         </div>

@@ -33,6 +33,9 @@ export const TOOLS_DIRNAME = '.harness/tools'
 export const TOOL_MANIFEST_FILENAME = 'tool.json'
 export const DEFAULT_TOOL_SCRIPT = 'run.sh'
 
+/** Branch pre-filled alongside BUILD_CUSTOM_TOOL_PROMPT. */
+export const BUILD_CUSTOM_TOOL_BRANCH = 'custom-tool'
+
 /** Sent to the agent when the user clicks "Build a custom tool" in the
  * right column's panel menu. It lives next to the types it describes so
  * the contract has one source of truth — if the manifest fields, the env
@@ -91,4 +94,6 @@ Query values must be URL-encoded. Any other link renders as inert text.
 
 ## Finishing
 
-\`chmod +x\` the script, run it once yourself, and check the output reads as a tight list of rows rather than a wall of text. Then tell me to refresh — the panel appears in the right column with the other tools, and can be reordered or hidden from the sliders menu at the top of that column. If it doesn't show up, the manifest failed to parse or the script isn't executable.`
+\`chmod +x\` the script, run it once yourself, and check the output reads as a tight list of rows rather than a wall of text. Then tell me to look — the panel shows up in this worktree's right column alongside the built-in ones, and can be reordered or hidden from the sliders menu at the top of that column. If it doesn't appear, the manifest failed to parse or the script isn't executable.
+
+Tools are discovered per worktree, so the panel is live here on this branch while we iterate. Commit it when it's right, and it reaches everyone else on merge.`

@@ -8,7 +8,7 @@ import {
   type HiddenRightPanels,
   type RightPanelKey
 } from '../../shared/state/repo-configs'
-import { BUILD_CUSTOM_TOOL_PROMPT } from '../../shared/tools'
+import { BUILD_CUSTOM_TOOL_BRANCH, BUILD_CUSTOM_TOOL_PROMPT } from '../../shared/tools'
 import { useWatchedQuery } from '../hooks/useWatchedQuery'
 import { CustomToolPanel } from './CustomToolPanel'
 import { PRStatusPanel, MergeLocallyPanel } from './PRStatusPanel'
@@ -48,6 +48,9 @@ interface RightColumnProps {
   onOpenPR: (url: string) => void
   onOpenReview: () => void
   onCollapse: () => void
+  /** Opens the new-worktree screen pre-filled with a branch name and the
+   * custom-tool authoring contract as the kickoff prompt. */
+  onBuildCustomTool: (branch: string, prompt: string) => void
 }
 
 export function RightColumn({
@@ -69,7 +72,8 @@ export function RightColumn({
   onSendToAgent,
   onOpenPR,
   onOpenReview,
-  onCollapse
+  onCollapse,
+  onBuildCustomTool
 }: RightColumnProps): JSX.Element {
   const backend = useBackend()
 
@@ -201,10 +205,8 @@ export function RightColumn({
         onChangeHidden={handleChangeHidden}
         onChangeOrder={handleChangeOrder}
         onCollapse={onCollapse}
-        onBuildCustomTool={
-          activeWorktreeId
-            ? () => onSendToAgent(activeWorktreeId, BUILD_CUSTOM_TOOL_PROMPT)
-            : undefined
+        onBuildCustomTool={() =>
+          onBuildCustomTool(BUILD_CUSTOM_TOOL_BRANCH, BUILD_CUSTOM_TOOL_PROMPT)
         }
         canConfigure={!!activeRepoRoot}
       />
