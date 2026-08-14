@@ -67,8 +67,10 @@ export function SidebarMarkdown({ markdown, onAction }: SidebarMarkdownProps): J
         <div className="px-3 py-1 text-xs font-medium text-muted">{children}</div>
       ),
       p: Paragraph,
-      ul: ({ children }) => <div className="py-0.5">{children}</div>,
-      ol: ({ children }) => <div className="py-0.5">{children}</div>,
+      // No wrapper padding: rows sit flush under their section header,
+      // the way ChangedFilesPanel's do.
+      ul: ({ children }) => <>{children}</>,
+      ol: ({ children }) => <>{children}</>,
       li: ({ children }) => (
         <InRowContext.Provider value={true}>
           <div className={ROW_CLASS}>

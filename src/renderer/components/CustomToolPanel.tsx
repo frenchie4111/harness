@@ -82,7 +82,7 @@ export function CustomToolPanel({
 
   return (
     <RightPanel id={toolPanelKey(spec.id)} title={spec.title} actions={actions} maxHeight="max-h-56">
-      <div className="flex-1 overflow-y-auto min-h-0 py-1">
+      <div className="flex-1 overflow-y-auto min-h-0 text-xs">
         {!data && loading && <div className="px-3 py-2 text-xs text-faint">Running…</div>}
         {body ? (
           <SidebarMarkdown markdown={body} onAction={handleAction} />
