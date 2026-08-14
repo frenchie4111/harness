@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
-import ReactMarkdown, { type Components } from 'react-markdown'
+import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useBackend } from '../backend'
 
@@ -19,6 +19,14 @@ export interface HarnessLinkAction {
 }
 
 const REMARK_PLUGINS = [remarkGfm]
+
+/** react-markdown blanks any href whose protocol isn't http/https/mailto/
+ * etc., so `harness:` action links arrive as `href=""` and fall through to
+ * the inert-text branch below. Let ours through and keep the default
+ * sanitizer for everything else — it's what stops `javascript:`. */
+function urlTransform(url: string): string {
+  return url.startsWith('harness:') ? url : defaultUrlTransform(url)
+}
 
 /** Set inside <li> so paragraphs don't add a second layer of row padding
  * when the markdown uses a loose list. */
@@ -124,7 +132,11 @@ export function SidebarMarkdown({ markdown, onAction }: SidebarMarkdownProps): J
   }, [backend, onAction])
 
   return (
-    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={components}>
+    <ReactMarkdown
+      remarkPlugins={REMARK_PLUGINS}
+      urlTransform={urlTransform}
+      components={components}
+    >
       {markdown}
     </ReactMarkdown>
   )
