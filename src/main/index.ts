@@ -1173,6 +1173,26 @@ function setWarnBeforeQuitting(enabled: boolean): void {
   })
 }
 
+/** Publish what version of `harness-server` a remote is running, and
+ *  whether it matches us. Headless tarballs ship on the same tag as the
+ *  desktop build, so anything other than exact equality means the two
+ *  halves can disagree about the wire protocol — we flag it and let the
+ *  user decide (upgrading restarts the remote, killing its sessions). */
+function recordRemoteServerVersion(connectionId: string, installed: string | null): void {
+  if (!installed) return
+  const expected = getHarnessVersion()
+  store.dispatch({
+    type: 'sshBootstrap/serverVersionProbed',
+    payload: {
+      connectionId,
+      installed,
+      expected,
+      upgradeAvailable: expected !== 'unknown' && installed !== expected,
+      checkedAt: Date.now()
+    }
+  })
+}
+
 /** Re-establish (or reuse) the SSH tunnel for an existing SSH backend.
  *  Shared between the `ssh:reconnect` IPC handler and the boot-time
  *  pre-warm loop in runBoot(). Idempotent: if a tunnel for this
@@ -1233,9 +1253,11 @@ async function runSshReconnect(input: {
       },
       {
         preferredLocalPort: conn.ssh.tunnelLocalPort,
-        skipInstallIfRunning: true
+        skipInstallIfRunning: true,
+        expectedVersion: getHarnessVersion()
       }
     )
+    recordRemoteServerVersion(conn.id, result.serverVersion)
     sshTunnelManager.register({
       backendId: conn.id,
       localPort: result.localPort,
@@ -3731,6 +3753,10 @@ function registerIpcHandlers(): void {
     // harness-server is intentionally left running — see
     // plans/remote-main.md §4 "Things to NOT do".
     sshTunnelManager.unregister(id)
+    store.dispatch({
+      type: 'sshBootstrap/serverVersionForgotten',
+      payload: { connectionId: id }
+    })
     saveConfig(config)
     return true
   })
@@ -3834,7 +3860,7 @@ function registerIpcHandlers(): void {
               payload: { bootstrapId: input.bootstrapId, line, now: Date.now() }
             })
           }
-        })
+        }, { expectedVersion: getHarnessVersion() })
 
         // Mint the BackendConnection + persist + register tunnel. The
         // URL is the ephemeral loopback we just opened; on next launch
@@ -3869,6 +3895,7 @@ function registerIpcHandlers(): void {
           type: 'sshBootstrap/connectionLinked',
           payload: { bootstrapId: input.bootstrapId, connectionId: id }
         })
+        recordRemoteServerVersion(id, result.serverVersion)
         store.dispatch({
           type: 'sshBootstrap/phaseChanged',
           payload: { bootstrapId: input.bootstrapId, phase: 'connected', now: Date.now() }
@@ -3900,6 +3927,104 @@ function registerIpcHandlers(): void {
     'ssh:reconnect',
     (_ctx, input: { bootstrapId: string; connectionId: string }) =>
       runSshReconnect(input)
+  )
+
+  // Re-install harness-server on an SSH backend and restart it. Only
+  // reachable from an explicit user action — it kills the running
+  // server, so every session on that remote dies. Returns the new
+  // loopback URL + token; the renderer drops its WS transport and
+  // re-hydrates against the fresh tunnel.
+  transport.onRequest(
+    'ssh:upgradeServer',
+    async (
+      _ctx,
+      input: { bootstrapId: string; connectionId: string }
+    ): Promise<{ url: string; token: string; localPort: number; serverVersion: string | null }> => {
+      if (!input || typeof input.connectionId !== 'string') {
+        throw new Error('connectionId is required')
+      }
+      if (typeof input.bootstrapId !== 'string' || !input.bootstrapId) {
+        throw new Error('bootstrapId is required')
+      }
+      const conn = (config.connections ?? []).find((c) => c.id === input.connectionId)
+      if (!conn) throw new Error(`unknown backend ${input.connectionId}`)
+      if (!conn.ssh) throw new Error(`backend ${input.connectionId} is not an SSH backend`)
+
+      const { parseSshTarget, upgradeRemoteServer } = await import('./ssh-bootstrap')
+      const target = parseSshTarget(conn.ssh.target)
+      store.dispatch({
+        type: 'sshBootstrap/started',
+        payload: {
+          bootstrapId: input.bootstrapId,
+          label: conn.label,
+          target: target.raw,
+          now: Date.now()
+        }
+      })
+      store.dispatch({
+        type: 'sshBootstrap/connectionLinked',
+        payload: { bootstrapId: input.bootstrapId, connectionId: conn.id }
+      })
+
+      try {
+        const result = await upgradeRemoteServer(target, {
+          onPhase: (phase) => {
+            store.dispatch({
+              type: 'sshBootstrap/phaseChanged',
+              payload: { bootstrapId: input.bootstrapId, phase, now: Date.now() }
+            })
+          },
+          onLine: (line) => {
+            store.dispatch({
+              type: 'sshBootstrap/lineLogged',
+              payload: { bootstrapId: input.bootstrapId, line, now: Date.now() }
+            })
+          }
+        })
+        // register() disposes the previous entry's SSH connection +
+        // tunnel server, so the old loopback port stops accepting.
+        sshTunnelManager.register({
+          backendId: conn.id,
+          localPort: result.localPort,
+          remotePort: result.remotePort,
+          token: result.token,
+          ssh: result.ssh,
+          tunnelServer: result.tunnelServer
+        })
+        const url = `ws://127.0.0.1:${result.localPort}/?token=${result.token}`
+        const idx = (config.connections ?? []).findIndex((c) => c.id === conn.id)
+        if (idx >= 0) {
+          const next = config.connections!.slice()
+          next[idx] = {
+            ...next[idx],
+            url,
+            ssh: { target: target.raw, tunnelLocalPort: result.localPort }
+          }
+          config.connections = next
+          setSecret(`backend-token:${conn.id}`, result.token)
+          saveConfig(config)
+        }
+        recordRemoteServerVersion(conn.id, result.serverVersion)
+        return {
+          url,
+          token: result.token,
+          localPort: result.localPort,
+          serverVersion: result.serverVersion
+        }
+      } catch (err) {
+        const bootstrapErr =
+          (err as { bootstrapError?: import('../shared/state/ssh-bootstrap').BootstrapError })
+            .bootstrapError ?? {
+            code: 'unknown' as const,
+            message: err instanceof Error ? err.message : String(err)
+          }
+        store.dispatch({
+          type: 'sshBootstrap/errored',
+          payload: { bootstrapId: input.bootstrapId, error: bootstrapErr, now: Date.now() }
+        })
+        throw err
+      }
+    }
   )
 
   transport.onSignal('terminal:join', (ctx, id: string) => {

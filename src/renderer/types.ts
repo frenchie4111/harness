@@ -692,6 +692,19 @@ export interface ElectronAPI {
     bootstrapId: string
     connectionId: string
   }): Promise<{ url: string; token: string; localPort: number }>
+  /** Re-install harness-server on an SSH backend and restart it.
+   *  Destructive — every session on that remote dies. Confirm with the
+   *  user first. Resolves with the new loopback URL/token; the caller
+   *  must drop and re-hydrate the backend's WS transport. */
+  sshUpgradeServer(input: {
+    bootstrapId: string
+    connectionId: string
+  }): Promise<{
+    url: string
+    token: string
+    localPort: number
+    serverVersion: string | null
+  }>
 }
 
 /** An SSH host parsed out of `~/.ssh/config`. Mirrors the main-process
