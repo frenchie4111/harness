@@ -664,7 +664,9 @@ export function buildBackend(
     sshBootstrap: (input: { bootstrapId: string; target: string; label: string }) =>
       reqLocal('ssh:bootstrap', input),
     sshReconnect: (input: { bootstrapId: string; connectionId: string }) =>
-      reqLocal('ssh:reconnect', input)
+      reqLocal('ssh:reconnect', input),
+    sshUpgradeServer: (input: { bootstrapId: string; connectionId: string }) =>
+      reqLocal('ssh:upgradeServer', input)
   }
 
   return api as ElectronAPI
