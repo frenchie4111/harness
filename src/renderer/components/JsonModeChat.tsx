@@ -44,7 +44,10 @@ import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
 import { CLAUDE_MODELS } from '../../shared/agent-registry'
 import 'highlight.js/styles/github-dark.css'
-import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
+import type {
+  JsonClaudeBackgroundAgent,
+  JsonClaudeChatEntry
+} from '../../shared/state/json-claude'
 import {
   COMPACT_BODY_TEXT,
   FindContext,
@@ -679,6 +682,8 @@ interface RenderContext {
     string,
     { toolName: string; timestamp: number }
   >
+  /** Background sub-agents keyed by their launching Task tool_use id. */
+  backgroundAgents: Record<string, JsonClaudeBackgroundAgent>
   onCancelQueued: (entryId: string) => void
   sessionId: string
   worktreePath: string
@@ -951,7 +956,10 @@ function renderEntries(
                       : undefined,
                     subAgentBody,
                     subAgentChildCount,
-                    subAgentDescendantHasPendingApproval
+                    subAgentDescendantHasPendingApproval,
+                    backgroundAgent: block.id
+                      ? ctx.backgroundAgents[block.id]
+                      : undefined
                   })
                 )}
                 {ctx.approvalCard(block.id)}
@@ -1389,6 +1397,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
 
   const autoApprovedDecisions = session?.autoApprovedDecisions ?? {}
   const sessionAllowedDecisions = session?.sessionAllowedDecisions ?? {}
+  const backgroundAgents = session?.backgroundAgents ?? {}
   // Defer the entries used for heavy row rendering. React keeps input +
   // sidebar interactions responsive even while the chat re-renders mid-
   // delta — the visible cost is that streaming text lags the actual data
@@ -1470,6 +1479,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     return renderEntries(topLevelEntries, {
       resultsByToolUseId,
       childrenByParentToolUseId,
+      backgroundAgents,
       approvalCard: renderApprovalForToolUseId,
       pendingToolUseIds,
       autoApprovedDecisions,
@@ -1507,6 +1517,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     pendingToolUseIds,
     autoApprovedDecisions,
     sessionAllowedDecisions,
+    backgroundAgents,
     sessionId,
     worktreePath,
     session?.state

@@ -8,7 +8,10 @@
 // stays focused on layout + scroll + input + statusbar.
 
 import { useState, type ReactNode } from 'react'
-import type { JsonClaudeMessageBlock } from '../../../shared/state/json-claude'
+import type {
+  JsonClaudeBackgroundAgent,
+  JsonClaudeMessageBlock
+} from '../../../shared/state/json-claude'
 import {
   extractArgs,
   getToolDisplay,
@@ -33,6 +36,10 @@ export interface ToolCardProps {
   subAgentBody?: ReactNode
   subAgentChildCount?: number
   subAgentDescendantHasPendingApproval?: boolean
+  /** Set when this Task launched a detached (run_in_background) agent.
+   *  Such a call resolves its tool_result immediately, so the card needs
+   *  this to know it's still working rather than instantly finished. */
+  backgroundAgent?: JsonClaudeBackgroundAgent
 }
 
 export function basename(p: string): string {
@@ -200,6 +207,7 @@ export function dispatchToolCard(props: ToolCardProps): JSX.Element {
           subAgentDescendantHasPendingApproval={
             props.subAgentDescendantHasPendingApproval ?? false
           }
+          backgroundAgent={props.backgroundAgent}
         />
       )
     default:

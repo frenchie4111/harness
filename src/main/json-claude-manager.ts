@@ -31,6 +31,16 @@ import type {
   JsonClaudeSessionState
 } from '../shared/state/json-claude'
 import type { ClaudeLaunchSettings } from './claude-launch'
+import {
+  extractAssistantBlocks,
+  extractToolResults,
+  parseTranscriptEntries
+} from './transcript-entries'
+import {
+  SubagentTailer,
+  parseAsyncLaunch,
+  parseTaskNotification
+} from './subagent-tailer'
 import { log } from './debug'
 import { shellQuote } from './shell-quote'
 import { resolveUserShell, loginShellCommandArgs } from './user-shell'
@@ -214,10 +224,16 @@ export class JsonClaudeManager {
   private slashCommandsByCwd = new Map<string, string[]>()
   /** Inflight probes per cwd so concurrent create() calls share one. */
   private probeInflightByCwd = new Map<string, Promise<string[]>>()
+  /** Follows the side transcripts of background (run_in_background)
+   *  sub-agents and republishes their activity onto the parent session. */
+  private subagentTailer: SubagentTailer
 
   constructor(store: Store, opts: JsonClaudeManagerOptions) {
     this.store = store
     this.opts = opts
+    this.subagentTailer = new SubagentTailer((sessionId, entries) => {
+      for (const entry of entries) this.appendStoreEntry(sessionId, entry)
+    })
   }
 
   hasSession(sessionId: string): boolean {
@@ -261,7 +277,6 @@ export class JsonClaudeManager {
     const transcriptPath = transcriptPathFor(sessionId, worktreePath)
     if (!existsSync(transcriptPath)) return []
 
-    let counter = 0
     let raw: string
     try {
       raw = readFileSync(transcriptPath, 'utf8')
@@ -273,120 +288,7 @@ export class JsonClaudeManager {
       )
       return []
     }
-    const seededEntries: JsonClaudeChatEntry[] = []
-    for (const line of raw.split('\n')) {
-      const trimmed = line.trim()
-      if (!trimmed) continue
-      let parsed: Record<string, unknown>
-      try {
-        parsed = JSON.parse(trimmed)
-      } catch {
-        continue
-      }
-      const type = parsed['type']
-      // The session jsonl contains the same user/assistant message
-      // shapes the live stream emits, plus internal bookkeeping types
-      // (queue-operation, attachment, ai-title, last-prompt) we ignore.
-      const transcriptUuid =
-        typeof parsed['uuid'] === 'string' ? (parsed['uuid'] as string) : undefined
-      if (type === 'user') {
-        // Skip SDK-synthetic user records that surround compactions and
-        // slash-command invocations. Without this filter the seeded
-        // scrollback shows the entire continuation summary as a giant
-        // user bubble plus stray '<local-command-stdout>Compacted'
-        // and '<command-name>/compact' echo lines.
-        //   isCompactSummary  — the post-compaction continuation summary
-        //   isMeta            — the '<local-command-caveat>' wrapper
-        // Plus content-prefix matches for the local-command echo pair
-        // ('<command-name>' / '<local-command-stdout>') which arrive
-        // without isMeta but are equally not user-typed input.
-        if (parsed['isCompactSummary'] === true) continue
-        if (parsed['isMeta'] === true) continue
-        const message = parsed['message'] as { content?: unknown } | undefined
-        const content = message?.content
-        if (typeof content === 'string') {
-          if (
-            content.startsWith('<command-name>') ||
-            content.startsWith('<local-command-stdout>')
-          ) {
-            continue
-          }
-          seededEntries.push({
-            kind: 'user',
-            text: content,
-            timestamp: Date.now(),
-            entryId: `${sessionId}-seed-u-${counter++}`,
-            ...(transcriptUuid ? { transcriptUuid } : {})
-          })
-        } else if (Array.isArray(content)) {
-          for (const r of extractToolResultsFromArray(content)) {
-            seededEntries.push({
-              entryId: `${sessionId}-tr-${r.toolUseId}-${seededEntries.length}`,
-              kind: 'tool_result',
-              timestamp: Date.now(),
-              ...(transcriptUuid ? { transcriptUuid } : {}),
-              blocks: [
-                {
-                  type: 'tool_result',
-                  toolUseId: r.toolUseId,
-                  content: r.content,
-                  isError: r.isError
-                }
-              ]
-            })
-          }
-        }
-      } else if (type === 'assistant') {
-        const blocks = extractAssistantBlocks(parsed)
-        if (blocks.length === 0) continue
-        // Same envelope shape as the live stream — parent_tool_use_id
-        // is at the top level of the record, not on the inner message.
-        const parentToolUseId =
-          typeof parsed['parent_tool_use_id'] === 'string'
-            ? (parsed['parent_tool_use_id'] as string)
-            : undefined
-        const innerMessage = parsed['message'] as { id?: unknown } | undefined
-        const apiMessageId =
-          typeof innerMessage?.id === 'string'
-            ? (innerMessage.id as string)
-            : undefined
-        seededEntries.push({
-          kind: 'assistant',
-          blocks,
-          timestamp: Date.now(),
-          entryId: `${sessionId}-seed-a-${counter++}`,
-          ...(transcriptUuid ? { transcriptUuid } : {}),
-          ...(apiMessageId ? { apiMessageId } : {}),
-          ...(parentToolUseId ? { parentToolUseId } : {})
-        })
-      } else if (type === 'system' && parsed['subtype'] === 'compact_boundary') {
-        const meta = parsed['compactMetadata'] as
-          | { trigger?: unknown; preTokens?: unknown; postTokens?: unknown }
-          | undefined
-        const trigger =
-          meta?.trigger === 'auto' || meta?.trigger === 'manual'
-            ? meta.trigger
-            : undefined
-        const preTokens =
-          typeof meta?.preTokens === 'number' ? meta.preTokens : undefined
-        const postTokens =
-          typeof meta?.postTokens === 'number' ? meta.postTokens : undefined
-        seededEntries.push({
-          kind: 'compact',
-          timestamp: Date.now(),
-          entryId: `${sessionId}-seed-c-${counter++}`,
-          ...(transcriptUuid ? { transcriptUuid } : {}),
-          ...(trigger ? { compactTrigger: trigger } : {}),
-          ...(typeof preTokens === 'number'
-            ? { compactPreTokens: preTokens }
-            : {}),
-          ...(typeof postTokens === 'number'
-            ? { compactPostTokens: postTokens }
-            : {})
-        })
-      }
-    }
-    return seededEntries
+    return parseTranscriptEntries(raw, { idPrefix: sessionId }).entries
   }
 
   create(
@@ -871,6 +773,9 @@ export class JsonClaudeManager {
     if (!inst) return
     log('json-claude', `kill sessionId=${sessionId}`)
     this.clearPartial(inst)
+    // Background agents are children of the subprocess we're killing, so
+    // their transcripts stop growing — drop the watchers with it.
+    this.subagentTailer.stopSession(sessionId)
     this.instances.delete(sessionId)
     try {
       inst.proc.stdin.end()
@@ -1516,8 +1421,13 @@ export class JsonClaudeManager {
       return
     }
     if (type === 'user') {
+      // A finished background agent is announced as a synthetic user turn
+      // carrying a <task-notification> blob rather than a tool_result, so
+      // it has to be sniffed before the normal tool-result path.
+      if (this.handleTaskNotification(instance, parsed)) return
       const results = extractToolResults(parsed)
       for (const r of results) {
+        this.maybeStartBackgroundAgent(instance, r.toolUseId, r.content)
         this.store.dispatch({
           type: 'jsonClaude/toolResultAttached',
           payload: {
@@ -1894,6 +1804,124 @@ export class JsonClaudeManager {
     this.appendStoreEntry(instance.sessionId, entry)
   }
 
+  /** Recognize a Task tool_result that launched a detached agent and begin
+   *  following its transcript. The result content is the launch stub, not
+   *  the agent's answer — the real result arrives later via
+   *  handleTaskNotification. */
+  private maybeStartBackgroundAgent(
+    instance: JsonClaudeInstance,
+    toolUseId: string,
+    content: string
+  ): void {
+    const launch = parseAsyncLaunch(content)
+    if (!launch) return
+    const description = this.findToolUseDescription(instance.sessionId, toolUseId)
+    this.store.dispatch({
+      type: 'jsonClaude/backgroundAgentLaunched',
+      payload: {
+        sessionId: instance.sessionId,
+        toolUseId,
+        agentId: launch.agentId,
+        description,
+        timestamp: Date.now()
+      }
+    })
+    this.subagentTailer.start({
+      sessionId: instance.sessionId,
+      worktreePath: instance.worktreePath,
+      toolUseId,
+      agentId: launch.agentId,
+      ...(launch.outputFile ? { fallbackPath: launch.outputFile } : {})
+    })
+  }
+
+  /** The Task card labels itself from the tool_use input, which is already
+   *  in the slice by the time the result lands. */
+  private findToolUseDescription(sessionId: string, toolUseId: string): string {
+    const session = this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
+    if (!session) return ''
+    for (let i = session.entries.length - 1; i >= 0; i--) {
+      for (const block of session.entries[i].blocks ?? []) {
+        if (block.type !== 'tool_use' || block.id !== toolUseId) continue
+        const input = (block.input ?? {}) as Record<string, unknown>
+        const description = input['description']
+        return typeof description === 'string' ? description : ''
+      }
+    }
+    return ''
+  }
+
+  /** Handle the completion notification for a background agent. Returns
+   *  true when the event was a notification and should not fall through to
+   *  the tool-result path.
+   *
+   *  Beyond settling slice state, this replaces the Task card's launch-stub
+   *  result with the agent's actual answer: the renderer keys results by
+   *  tool_use id and takes the last one, so dispatching a second
+   *  toolResultAttached supersedes the stub. */
+  private handleTaskNotification(
+    instance: JsonClaudeInstance,
+    parsed: Record<string, unknown>
+  ): boolean {
+    const message = parsed['message'] as { content?: unknown } | undefined
+    const content = message?.content
+    const text =
+      typeof content === 'string'
+        ? content
+        : Array.isArray(content)
+          ? content
+              .map((p) =>
+                p && typeof p === 'object' && 'text' in (p as Record<string, unknown>)
+                  ? String((p as Record<string, unknown>)['text'])
+                  : ''
+              )
+              .join('\n')
+          : ''
+    if (!text.includes('<task-notification>')) return false
+    const notification = parseTaskNotification(text)
+    if (!notification) return false
+
+    const session =
+      this.store.getSnapshot().state.jsonClaude.sessions[instance.sessionId]
+    // The notification carries the launching tool_use id, but fall back to
+    // a reverse lookup by agentId in case a future runtime version drops it.
+    const toolUseId =
+      notification.toolUseId ??
+      Object.values(session?.backgroundAgents ?? {}).find(
+        (a) => a.agentId === notification.taskId
+      )?.toolUseId
+    if (!toolUseId) return true
+
+    const failed = notification.status !== 'completed'
+    this.store.dispatch({
+      type: 'jsonClaude/backgroundAgentSettled',
+      payload: {
+        sessionId: instance.sessionId,
+        toolUseId,
+        status: failed ? 'failed' : 'completed',
+        timestamp: Date.now(),
+        ...(notification.usage ? { usage: notification.usage } : {})
+      }
+    })
+    if (notification.result) {
+      this.store.dispatch({
+        type: 'jsonClaude/toolResultAttached',
+        payload: {
+          sessionId: instance.sessionId,
+          toolUseId,
+          content: notification.result,
+          isError: failed
+        }
+      })
+    }
+    this.subagentTailer.finish(instance.sessionId, toolUseId)
+    log(
+      'json-claude',
+      `background agent settled session=${instance.sessionId} agent=${notification.taskId} status=${notification.status}`
+    )
+    return true
+  }
+
   private appendStoreEntry(sessionId: string, entry: JsonClaudeChatEntry): void {
     this.store.dispatch({
       type: 'jsonClaude/entryAppended',
@@ -2054,82 +2082,6 @@ function streamEventBlockToMessageBlock(
     }
   }
   return null
-}
-
-function extractAssistantBlocks(ev: Record<string, unknown>): JsonClaudeMessageBlock[] {
-  const message = ev['message'] as { content?: unknown } | undefined
-  const content = message?.content
-  if (!Array.isArray(content)) return []
-  const out: JsonClaudeMessageBlock[] = []
-  for (const raw of content) {
-    if (!raw || typeof raw !== 'object') continue
-    const block = raw as Record<string, unknown>
-    const t = block['type']
-    if (t === 'text' && typeof block['text'] === 'string') {
-      out.push({ type: 'text', text: block['text'] as string })
-    } else if (t === 'thinking') {
-      out.push({
-        type: 'thinking',
-        text:
-          typeof block['thinking'] === 'string'
-            ? (block['thinking'] as string)
-            : ''
-      })
-    } else if (t === 'tool_use') {
-      out.push({
-        type: 'tool_use',
-        id: typeof block['id'] === 'string' ? (block['id'] as string) : undefined,
-        name: typeof block['name'] === 'string' ? (block['name'] as string) : undefined,
-        input:
-          block['input'] && typeof block['input'] === 'object' && !Array.isArray(block['input'])
-            ? (block['input'] as Record<string, unknown>)
-            : undefined
-      })
-    }
-  }
-  return out
-}
-
-function extractToolResults(
-  ev: Record<string, unknown>
-): Array<{ toolUseId: string; content: string; isError: boolean }> {
-  const message = ev['message'] as { content?: unknown } | undefined
-  const content = message?.content
-  if (!Array.isArray(content)) return []
-  return extractToolResultsFromArray(content)
-}
-
-function extractToolResultsFromArray(
-  content: unknown[]
-): Array<{ toolUseId: string; content: string; isError: boolean }> {
-  const out: Array<{ toolUseId: string; content: string; isError: boolean }> = []
-  for (const raw of content) {
-    if (!raw || typeof raw !== 'object') continue
-    const b = raw as Record<string, unknown>
-    if (b['type'] !== 'tool_result') continue
-    const id = typeof b['tool_use_id'] === 'string' ? (b['tool_use_id'] as string) : ''
-    if (!id) continue
-    const rawContent = b['content']
-    const text =
-      typeof rawContent === 'string'
-        ? rawContent
-        : Array.isArray(rawContent)
-          ? rawContent
-              .map((p) => {
-                if (typeof p === 'object' && p && 'text' in (p as Record<string, unknown>)) {
-                  return String((p as Record<string, unknown>)['text'])
-                }
-                return ''
-              })
-              .join('\n')
-          : JSON.stringify(rawContent)
-    out.push({
-      toolUseId: id,
-      content: text,
-      isError: Boolean(b['is_error'])
-    })
-  }
-  return out
 }
 
 /** Heuristic detector for auth failures surfaced via stream-json `result`
