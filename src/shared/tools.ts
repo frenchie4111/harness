@@ -32,3 +32,63 @@ export interface ToolRunResult {
 export const TOOLS_DIRNAME = '.harness/tools'
 export const TOOL_MANIFEST_FILENAME = 'tool.json'
 export const DEFAULT_TOOL_SCRIPT = 'run.sh'
+
+/** Sent to the agent when the user clicks "Build a custom tool" in the
+ * right column's panel menu. It lives next to the types it describes so
+ * the contract has one source of truth — if the manifest fields, the env
+ * vars, or the markdown mapping change, this changes with them. */
+export const BUILD_CUSTOM_TOOL_PROMPT = `I want to add a custom Harness tool: a panel in this worktree's right column, backed by a script you write. Ask me what it should show if that isn't already clear from our conversation, then build it.
+
+## Layout
+
+Everything lives in this worktree:
+
+    .harness/tools/<id>/
+      tool.json
+      run.sh          # must be executable
+
+The directory name is the tool id. \`tool.json\`:
+
+    { "title": "PR Comments", "script": "run.sh", "refresh": "manual" }
+
+- **title** — the panel header. Static; it is never read from the script's output, so the panel has a title even while the script is failing.
+- **script** — path relative to the tool directory, defaults to \`run.sh\`. It must stay inside the tool directory.
+- **refresh** — \`"auto"\` re-runs on every git change in the worktree plus a 30s poll. \`"manual"\` (the default) runs only on mount and when the user clicks the panel's refresh button. Use \`manual\` for anything that hits the network or costs money.
+
+## The script
+
+- Spawned directly, so it needs a shebang — \`#!/usr/bin/env bash\`, python, node, whatever is executable.
+- cwd is the worktree root.
+- Env available: \`HARNESS_WORKTREE_PATH\`, \`HARNESS_BRANCH\`, \`HARNESS_REPO_ROOT\`, \`HARNESS_TOOL_DIR\`, \`HARNESS_TOOL_ID\`.
+- **stdout is markdown and becomes the entire panel body.** Don't print anything you don't want rendered.
+- stderr surfaces as an error tooltip on a non-zero exit. A script that fails but still wrote to stdout gets that output rendered anyway, so you can format your own error rows.
+- Killed after 20s. Output capped at 256KB.
+
+## Markdown vocabulary
+
+The panel is a ~280px column, not a document. Markdown is mapped onto the same vocabulary the built-in panels use, so only these carry meaning:
+
+- \`#\` / \`##\` → a section header bar (like "Changed Files")
+- \`###\` / \`####\` → a lighter subheading
+- \`- item\` → one panel row. Rows truncate, so keep them short.
+- backtick code → a monospace chip; good for counts, sizes, shas
+- \`**bold**\` → brightened, \`*italic*\` → dimmed
+- \`>\` → an indented note, \`---\` → a divider
+- tables render but are cramped; prefer rows
+
+Images and raw HTML are dropped. Prose paragraphs look wrong here — think rows, not documents.
+
+## Actions
+
+Links are how a row does something:
+
+- \`[Fix these](harness:send?text=Fix+the+failing+tests)\` — sends that text to the agent in this worktree
+- \`[src/app.ts](harness:file?path=src/app.ts)\` — opens the file
+- \`[Reload](harness:refresh)\` — re-runs the tool
+- \`[View PR](https://github.com/owner/repo/pull/1)\` — opens in the browser
+
+Query values must be URL-encoded. Any other link renders as inert text.
+
+## Finishing
+
+\`chmod +x\` the script, run it once yourself, and check the output reads as a tight list of rows rather than a wall of text. Then tell me to refresh — the panel appears in the right column with the other tools, and can be reordered or hidden from the sliders menu at the top of that column. If it doesn't show up, the manifest failed to parse or the script isn't executable.`

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { PanelRightClose, SlidersHorizontal, Check, ChevronUp, ChevronDown } from 'lucide-react'
+import { PanelRightClose, SlidersHorizontal, Check, ChevronUp, ChevronDown, Wrench } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import type {
   BuiltinRightPanelKey,
@@ -30,6 +30,9 @@ interface RightColumnToolbarProps {
   onChangeOrder: (next: RightPanelKey[]) => void
   /** Called when the user clicks the collapse button. */
   onCollapse: () => void
+  /** Seeds the agent with the custom-tool authoring contract. Undefined
+   * when there's no worktree to send to. */
+  onBuildCustomTool?: () => void
   /** Whether per-repo dropdown is actionable (needs an active repo). */
   canConfigure: boolean
 }
@@ -41,6 +44,7 @@ export function RightColumnToolbar({
   onChangeHidden,
   onChangeOrder,
   onCollapse,
+  onBuildCustomTool,
   canConfigure
 }: RightColumnToolbarProps): JSX.Element {
   const labelFor = (key: RightPanelKey): string =>
@@ -144,6 +148,22 @@ export function RightColumnToolbar({
                 </div>
               )
             })}
+            {onBuildCustomTool && (
+              <>
+                <div className="border-t border-border my-1" />
+                <button
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onBuildCustomTool()
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-fg-bright hover:bg-panel/60 cursor-pointer text-left"
+                  role="menuitem"
+                >
+                  <Wrench className="icon-xs text-dim shrink-0" />
+                  <span>Build a custom tool…</span>
+                </button>
+              </>
+            )}
           </div>
         )}
         </div>

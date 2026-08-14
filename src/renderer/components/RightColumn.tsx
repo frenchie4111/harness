@@ -8,6 +8,7 @@ import {
   type HiddenRightPanels,
   type RightPanelKey
 } from '../../shared/state/repo-configs'
+import { BUILD_CUSTOM_TOOL_PROMPT } from '../../shared/tools'
 import { useWatchedQuery } from '../hooks/useWatchedQuery'
 import { CustomToolPanel } from './CustomToolPanel'
 import { PRStatusPanel, MergeLocallyPanel } from './PRStatusPanel'
@@ -200,6 +201,11 @@ export function RightColumn({
         onChangeHidden={handleChangeHidden}
         onChangeOrder={handleChangeOrder}
         onCollapse={onCollapse}
+        onBuildCustomTool={
+          activeWorktreeId
+            ? () => onSendToAgent(activeWorktreeId, BUILD_CUSTOM_TOOL_PROMPT)
+            : undefined
+        }
         canConfigure={!!activeRepoRoot}
       />
       {order.map((key) => renderPanel(key))}
