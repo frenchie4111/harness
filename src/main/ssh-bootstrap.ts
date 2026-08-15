@@ -135,6 +135,16 @@ async function resolveSshConnectConfig(
     cfg.agent = process.env.SSH_AUTH_SOCK
   }
 
+  // Keepalives serve double duty: they stop NAT / sshd idle timeouts
+  // from reaping a tunnel that's simply quiet, and when the link really
+  // does die they surface it as a `close` event within
+  // interval × countMax (~45s) instead of leaving a half-open socket
+  // that only fails on the next forward attempt. The reconnect
+  // supervisor keys off that event, so without these a drop can go
+  // undetected indefinitely.
+  cfg.keepaliveInterval = 15_000
+  cfg.keepaliveCountMax = 3
+
   // Keyboard-interactive fallback — some configs require it for
   // 2FA-style prompts. node-ssh's tryKeyboard flag enables it; we
   // don't currently surface a prompt UI, so this only helps when the
@@ -400,6 +410,48 @@ async function startServerDetached(
   return state
 }
 
+/** Build the `net.Server` connection listener that proxies an accepted
+ *  loopback socket through the SSH link.
+ *
+ *  The try/catch is load-bearing, not defensive padding. node-ssh's
+ *  `forwardOut` is NOT an async function: it calls `getConnection()`
+ *  synchronously *before* constructing its Promise, and that throws
+ *  `Error('Not connected to server')` once the link has dropped. So on a
+ *  dead tunnel no promise is ever created, `.catch()` never runs, and
+ *  the throw escapes the connection listener as an `uncaughtException`
+ *  that takes the whole main process down. Every accepted socket on a
+ *  dead tunnel was one crash.
+ *
+ *  Exported so the regression test can drive it with a fake ssh whose
+ *  `forwardOut` throws synchronously. */
+export function createForwardHandler(
+  ssh: Pick<NodeSSH, 'forwardOut'>,
+  remotePort: number,
+  onForwardError?: (err: unknown) => void
+): (local: Socket) => void {
+  return (local: Socket) => {
+    // A local socket that errors before we've wired the pipe would
+    // otherwise be an unhandled 'error' event on an EventEmitter.
+    local.on('error', () => local.destroy())
+    try {
+      ssh
+        .forwardOut('127.0.0.1', 0, '127.0.0.1', remotePort)
+        .then((stream) => {
+          local.pipe(stream).pipe(local)
+          stream.on('error', () => local.destroy())
+          local.on('error', () => stream.destroy())
+        })
+        .catch((err) => {
+          onForwardError?.(err)
+          local.destroy()
+        })
+    } catch (err) {
+      onForwardError?.(err)
+      local.destroy()
+    }
+  }
+}
+
 /** Set up SSH local port forwarding: connections to `localhost:<localPort>`
  *  on the user's machine are tunneled through SSH to `127.0.0.1:<remotePort>`
  *  on the remote. The returned NetServer owns the local listening socket;
@@ -414,16 +466,7 @@ async function openTunnel(
   // `ssh -L localPort:127.0.0.1:remotePort` exactly.
   const tryListen = (port: number): Promise<{ server: NetServer; localPort: number }> =>
     new Promise((resolve, reject) => {
-      const server = createServer((local: Socket) => {
-        ssh
-          .forwardOut('127.0.0.1', 0, '127.0.0.1', remotePort)
-          .then((stream) => {
-            local.pipe(stream).pipe(local)
-            stream.on('error', () => local.destroy())
-            local.on('error', () => stream.destroy())
-          })
-          .catch(() => local.destroy())
-      })
+      const server = createServer(createForwardHandler(ssh, remotePort))
       server.on('error', (err: NodeJS.ErrnoException) => {
         reject(err)
       })
@@ -438,9 +481,20 @@ async function openTunnel(
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code
     if (code === 'EADDRINUSE' && preferredLocalPort) {
-      // Brief upstream said: pick a different random port and retry once.
-      // `0` lets the OS pick, which is what we'd do for first-time
-      // bootstrap anyway.
+      // Reconnects reuse the previous port so the persisted ws:// URL
+      // stays valid. The old listener is closed just before we get here,
+      // but the kernel can still be holding it for a beat — retry the
+      // same port a few times before giving up and letting the OS pick,
+      // otherwise every reconnect silently migrates to a new port and
+      // the renderer's live transport is left pointing at nothing.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await new Promise((r) => setTimeout(r, 150))
+        try {
+          return await tryListen(preferredLocalPort)
+        } catch (retryErr) {
+          if ((retryErr as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw retryErr
+        }
+      }
       return await tryListen(0)
     }
     throw Object.assign(new Error('failed to open local tunnel port'), {
