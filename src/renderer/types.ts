@@ -363,6 +363,7 @@ export interface ElectronAPI {
   setBrowserToolsEnabled(enabled: boolean): Promise<boolean>
   setBrowserToolsMode(mode: 'view' | 'full'): Promise<boolean>
   setConversationForkEnabled(enabled: boolean): Promise<boolean>
+  setWorktreeMessagingEnabled(enabled: boolean): Promise<boolean>
   setDefaultClaudeTabType(value: 'xterm' | 'json'): Promise<boolean>
   setChatPromotionDismissed(value: boolean): Promise<boolean>
   setJsonModeChatDensity(value: 'compact' | 'comfy'): Promise<boolean>
@@ -431,6 +432,10 @@ export interface ElectronAPI {
   snooze(path: string, wakeAt: number): Promise<boolean>
   unsnooze(path: string): Promise<boolean>
   setSnoozeDefaultDays(days: number): Promise<boolean>
+  /** `enabled: null` clears the override so the worktree inherits the
+   *  global `notifyChatOnCiFailure` setting again. */
+  setCiNotifyOverride(path: string, enabled: boolean | null): Promise<boolean>
+  setNotifyChatOnCiFailure(enabled: boolean): Promise<boolean>
   setScratchpadText(worktreePath: string, text: string): Promise<boolean>
   setAlias(path: string, alias: string): Promise<boolean>
   clearAlias(path: string): Promise<boolean>

@@ -17,6 +17,7 @@ import { InsightCard } from './InsightCard'
 import {
   AlertOctagon,
   AlertTriangle,
+  Bot,
   Brain,
   ChevronDown,
   ChevronUp,
@@ -39,6 +40,7 @@ import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
 import { JsonClaudeQuestionCard } from './JsonClaudeQuestionCard'
 import { Tooltip } from './Tooltip'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
+import { HarnessIcon } from './json-mode-cards/tool-icons'
 import { ToolGroup } from './json-mode-cards/ToolGroup'
 import { TaskCard } from './json-mode-cards/TaskCard'
 import { buildChildrenMap, isSubAgentToolName } from './json-mode-cards/grouping'
@@ -48,6 +50,7 @@ import { fuzzyMatch } from '../fuzzy'
 import { CLAUDE_MODELS } from '../../shared/agent-registry'
 import {
   QUESTION_TOOL_NAME,
+  type JsonClaudeAutomationSource,
   type JsonClaudeChatEntry
 } from '../../shared/state/json-claude'
 import {
@@ -671,6 +674,105 @@ function RateLimitErrorCard({
   )
 }
 
+/** `brand` picks the gradient chrome the harness-control tool cards use.
+ *  A CI failure keeps the warning tone — it's a problem report, not a
+ *  Harness feature showing off. */
+function automationLabel(
+  source: JsonClaudeAutomationSource,
+  from?: string
+): { label: string; note: string; brand: boolean } {
+  if (source === 'worktree-message') {
+    return {
+      label: from ? `Agent Message · from ${from}` : 'Agent Message',
+      note: 'sent by another worktree',
+      brand: true
+    }
+  }
+  return { label: 'Harness · CI failure', note: 'sent automatically', brand: false }
+}
+
+/** A user turn Harness injected on the human's behalf. Sits on the user
+ *  side of the transcript because that's what it is on the wire, but is
+ *  toned and labelled so nobody mistakes it for something they typed. */
+function AutomatedTurnCard({
+  source,
+  from,
+  text,
+  isQueued,
+  onCancelQueued
+}: {
+  source: JsonClaudeAutomationSource
+  from?: string
+  text: string
+  isQueued: boolean
+  onCancelQueued: () => void
+}): JSX.Element {
+  const { label, note, brand } = automationLabel(source, from)
+  const Icon = brand ? HarnessIcon : Bot
+  return (
+    <div className="flex justify-end">
+      <div
+        className={`group border overflow-hidden ${
+          brand ? 'border-warning/40 bg-panel' : 'border-warning/40 bg-warning/5'
+        } ${isQueued ? 'opacity-70' : ''}`}
+        style={{
+          maxWidth: 'var(--chat-bubble-max)',
+          borderRadius: 'var(--chat-bubble-radius)'
+        }}
+      >
+        {brand && <div className="brand-gradient-bg h-0.5" />}
+        <div
+          className={`flex items-center gap-2 border-b ${
+            brand ? 'bg-app/40 border-border' : 'bg-warning/10 border-warning/30'
+          }`}
+          style={{
+            paddingInline: 'var(--chat-chrome-px)',
+            paddingBlock: 'var(--chat-chrome-py)',
+            fontSize: 'var(--chat-chrome-text)'
+          }}
+        >
+          <Icon className={brand ? 'icon-sm shrink-0' : 'icon-xs shrink-0 text-warning'} />
+          <span
+            className={`font-semibold shrink-0 ${
+              brand
+                ? 'brand-gradient-text brand-gradient-flow-text-hover'
+                : 'text-warning'
+            }`}
+            style={{ fontFamily: 'var(--chat-tool-name-family)' }}
+          >
+            {label}
+          </span>
+          <span className="text-muted truncate">{note}</span>
+          {isQueued && (
+            <div className="flex items-center gap-1 shrink-0 ml-auto">
+              <span
+                className="uppercase tracking-wide text-muted bg-panel/60 border border-border px-1.5 py-0.5 rounded"
+                style={{ fontSize: 'var(--chat-meta-text)' }}
+              >
+                queued
+              </span>
+              <button
+                onClick={onCancelQueued}
+                className="p-1 rounded hover:bg-panel text-muted hover:text-fg cursor-pointer"
+                title="Cancel queued message"
+                aria-label="Cancel queued message"
+              >
+                <X className="icon-xs" />
+              </button>
+            </div>
+          )}
+        </div>
+        <div
+          className="px-3 py-2 whitespace-pre-wrap break-words"
+          style={{ fontSize: 'var(--chat-body-text)' }}
+        >
+          <HighlightedText text={text} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface RenderContext {
   resultsByToolUseId: Map<string, { content: string; isError: boolean }>
   childrenByParentToolUseId: Map<string, JsonClaudeChatEntry[]>
@@ -698,6 +800,23 @@ function renderEntries(
 ): RenderedRow[] {
   const rows: RenderedRow[] = []
   for (const entry of entries) {
+    if (entry.kind === 'user' && entry.automation) {
+      rows.push({
+        key: entry.entryId,
+        entryId: entry.entryId,
+        type: 'text',
+        node: (
+          <AutomatedTurnCard
+            source={entry.automation}
+            from={entry.automationFrom}
+            text={entry.text ?? ''}
+            isQueued={!!entry.isQueued}
+            onCancelQueued={() => ctx.onCancelQueued(entry.entryId)}
+          />
+        )
+      })
+      continue
+    }
     if (entry.kind === 'user') {
       const queued = !!entry.isQueued
       rows.push({

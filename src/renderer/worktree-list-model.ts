@@ -9,7 +9,7 @@ import type {
 } from './types'
 import type { SnoozeEntry } from '../shared/state'
 import type { AssignedPR } from '../shared/state/assigned-prs'
-import { groupWorktrees, type GroupKey } from './worktree-sort'
+import { groupWorktrees, type GroupKey } from '../shared/worktree-sort'
 import type { DisplayStatus } from './worktree-row-style'
 
 /** THE single derivation of "what does the worktree list look like right now".

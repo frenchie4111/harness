@@ -30,6 +30,7 @@ import type {
   JsonClaudePermissionMode,
   JsonClaudeSessionState
 } from '../shared/state/json-claude'
+import { parseAutomatedMessage } from '../shared/state/json-claude'
 import type { ClaudeLaunchSettings } from './claude-launch'
 import { log } from './debug'
 import { shellQuote } from './shell-quote'
@@ -40,8 +41,6 @@ interface JsonClaudeInstance {
   sessionId: string
   worktreePath: string
   buf: string
-  /** Monotonically increasing counter used to build stable chat entry ids. */
-  entryCounter: number
   /** In-flight assistant message tracked for --include-partial-messages.
    *  Cleared when the consolidated `assistant` event arrives (or the
    *  proc exits). One assistant turn at a time — claude doesn't
@@ -341,6 +340,12 @@ export class JsonClaudeManager {
   private slashCommandsByCwd = new Map<string, string[]>()
   /** Inflight probes per cwd so concurrent create() calls share one. */
   private probeInflightByCwd = new Map<string, Promise<string[]>>()
+  /** Per-session chat-entry sequence. Keyed by sessionId rather than held
+   *  on the instance because a sleep/wake kills the instance while the
+   *  slice keeps its entries — restarting at 0 would mint an entryId that
+   *  already exists, and React drops the duplicate-keyed row, so the first
+   *  message after a wake would silently never render. */
+  private entrySeqBySession = new Map<string, number>()
 
   constructor(store: Store, opts: JsonClaudeManagerOptions) {
     this.store = store
@@ -349,6 +354,16 @@ export class JsonClaudeManager {
 
   hasSession(sessionId: string): boolean {
     return this.instances.has(sessionId)
+  }
+
+  /** Mint the next chat entry id for a session. `kind` distinguishes the
+   *  producers (user / queued user / assistant / control) but the sequence
+   *  is shared, so ids are unique across an entire session lifetime
+   *  including respawns. */
+  private nextEntryId(sessionId: string, kind: 'u' | 'uq' | 'a' | 'c'): string {
+    const n = (this.entrySeqBySession.get(sessionId) ?? 0) + 1
+    this.entrySeqBySession.set(sessionId, n)
+    return `${sessionId}-${kind}-${n}`
   }
 
   /** Replay the on-disk session jsonl into the slice as chat entries.
@@ -438,11 +453,14 @@ export class JsonClaudeManager {
           ) {
             continue
           }
+          const automated = parseAutomatedMessage(content)
           seededEntries.push({
             kind: 'user',
-            text: content,
+            text: automated ? automated.body : content,
             timestamp: Date.now(),
             entryId: `${sessionId}-seed-u-${counter++}`,
+            ...(automated ? { automation: automated.source } : {}),
+            ...(automated?.from ? { automationFrom: automated.from } : {}),
             ...(transcriptUuid ? { transcriptUuid } : {})
           })
         } else if (Array.isArray(content)) {
@@ -700,7 +718,6 @@ export class JsonClaudeManager {
       sessionId,
       worktreePath,
       buf: '',
-      entryCounter: 0,
       partial: null,
       lastRateLimitWarning: { overThreshold: false }
     }
@@ -828,7 +845,7 @@ export class JsonClaudeManager {
       this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
     if (session?.busy) {
       this.appendUserEntry(inst, text, images, {
-        entryId: `${sessionId}-uq-${inst.entryCounter++}`,
+        entryId: this.nextEntryId(sessionId, 'uq'),
         isQueued: true
       })
       this.writeUserStdin(inst, text, images)
@@ -847,7 +864,7 @@ export class JsonClaudeManager {
     images?: Array<{ mediaType: string; data: string; path: string }>
   ): void {
     this.appendUserEntry(inst, text, images, {
-      entryId: `${inst.sessionId}-u-${inst.entryCounter++}`
+      entryId: this.nextEntryId(inst.sessionId, 'u')
     })
     this.dispatchBusy(inst.sessionId, true)
     this.writeUserStdin(inst, text, images)
@@ -865,11 +882,16 @@ export class JsonClaudeManager {
     extra: { entryId: string; isQueued?: boolean }
   ): void {
     const hasImages = !!images && images.length > 0
+    // The sentinel is for claude's benefit on the wire; the slice keeps the
+    // stripped body plus a flag so the renderer can style the bubble.
+    const automated = parseAutomatedMessage(text)
     this.appendEntry(inst, {
       kind: 'user',
-      text,
+      text: automated ? automated.body : text,
       timestamp: Date.now(),
       entryId: extra.entryId,
+      ...(automated ? { automation: automated.source } : {}),
+      ...(automated?.from ? { automationFrom: automated.from } : {}),
       ...(extra.isQueued ? { isQueued: true } : {}),
       ...(hasImages
         ? {
@@ -1458,7 +1480,7 @@ export class JsonClaudeManager {
           sessionId: instance.sessionId,
           entryId: uuid
             ? `${instance.sessionId}-c-${uuid}`
-            : `${instance.sessionId}-c-${instance.entryCounter++}`,
+            : this.nextEntryId(instance.sessionId, 'c'),
           trigger,
           preTokens,
           postTokens,
@@ -1554,7 +1576,7 @@ export class JsonClaudeManager {
         kind: 'assistant',
         blocks,
         timestamp: Date.now(),
-        entryId: `${instance.sessionId}-a-${instance.entryCounter++}`,
+        entryId: this.nextEntryId(instance.sessionId, 'a'),
         ...(messageId ? { apiMessageId: messageId } : {}),
         ...(parentToolUseId ? { parentToolUseId } : {})
       })

@@ -10,7 +10,7 @@ import {
 import { useMemo } from 'react'
 import { Tooltip } from './Tooltip'
 import { usePrs, useSettings, useSnooze, useWorktrees } from '../store'
-import { groupWorktrees, type GroupKey } from '../worktree-sort'
+import { groupWorktrees, type GroupKey } from '../../shared/worktree-sort'
 import { BottomIconStrip } from './BottomIconStrip'
 
 interface CollapsedSidebarProps {

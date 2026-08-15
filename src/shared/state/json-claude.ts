@@ -55,6 +55,86 @@ export interface JsonClaudeMessageBlock {
   isError?: boolean
 }
 
+/** Sources of a user turn that Harness injected on the human's behalf.
+ *  Extend the union when a new automation learns to talk to the chat. */
+export type JsonClaudeAutomationSource = 'ci-failure' | 'worktree-message'
+
+const AUTOMATION_SOURCES: readonly string[] = ['ci-failure', 'worktree-message']
+
+const AUTOMATION_TAG = 'harness-automated-message'
+// `from` is optional so sentinels written before it existed — which are
+// already sitting in users' on-disk transcripts — keep parsing.
+const AUTOMATION_OPEN =
+  /^<harness-automated-message source="([a-z-]+)"(?: from="([^"]*)")?>\n/
+const AUTOMATION_CLOSE = `\n</${AUTOMATION_TAG}>`
+
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+/** `&amp;` unescapes last so an alias containing the literal text `&quot;`
+ *  survives the round trip instead of decoding into a bare quote. */
+function unescapeAttr(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+}
+
+/** Defang a sentinel the body happens to contain, so one sender can't forge
+ *  a nested boundary that reads to the model as a second automated message.
+ *  Deliberately NOT reversed on parse — the escape staying visible is the
+ *  whole point. */
+function neutralizeNestedTags(body: string): string {
+  return body.replace(
+    /<(\/?)harness-automated-message/g,
+    '&lt;$1harness-automated-message'
+  )
+}
+
+/** Wrap an injected turn in a sentinel so the model can see it wasn't typed
+ *  by the human, and so `parseAutomatedMessage` can recover that fact later.
+ *  `from` names the sender for sources where that varies (one worktree
+ *  messaging another); omit it for a singleton automation like CI.
+ *
+ *  The marker has to live in the message TEXT rather than alongside it: the
+ *  only thing that survives a tab going to sleep is claude's own .jsonl
+ *  transcript, which stores the raw string we wrote to stdin and knows
+ *  nothing about our slice fields. */
+export function wrapAutomatedMessage(
+  source: JsonClaudeAutomationSource,
+  body: string,
+  opts?: { from?: string }
+): string {
+  const from = opts?.from?.trim()
+  const attr = from ? ` from="${escapeAttr(from)}"` : ''
+  return `<${AUTOMATION_TAG} source="${source}"${attr}>\n${neutralizeNestedTags(body)}${AUTOMATION_CLOSE}`
+}
+
+/** Inverse of `wrapAutomatedMessage`. Returns null for ordinary turns, which
+ *  is every turn a human typed. */
+export function parseAutomatedMessage(
+  text: string | undefined
+): { source: JsonClaudeAutomationSource; body: string; from?: string } | null {
+  if (!text) return null
+  const open = AUTOMATION_OPEN.exec(text)
+  if (!open || !text.endsWith(AUTOMATION_CLOSE)) return null
+  // A source this build doesn't know about would render an empty label, so
+  // treat the turn as ordinary rather than half-decorating it.
+  if (!AUTOMATION_SOURCES.includes(open[1])) return null
+  const from = open[2] === undefined ? undefined : unescapeAttr(open[2])
+  return {
+    source: open[1] as JsonClaudeAutomationSource,
+    body: text.slice(open[0].length, text.length - AUTOMATION_CLOSE.length),
+    ...(from ? { from } : {})
+  }
+}
+
 export interface JsonClaudeChatEntry {
   /** Monotonic per-session id so React can key rows stably. */
   entryId: string
@@ -86,6 +166,15 @@ export interface JsonClaudeChatEntry {
    *  renderer styles these as dashed/muted "queued" bubbles with
    *  a cancel affordance. Cleared on the next `result`. */
   isQueued?: boolean
+  /** For kind === 'user'. Set when Harness injected the turn itself rather
+   *  than the human typing it, so the renderer can style the bubble as an
+   *  automated notification. Derived from the sentinel in the wire text by
+   *  `parseAutomatedMessage`, on both the live and the transcript-hydration
+   *  path — `text` here is the sentinel-stripped body. */
+  automation?: JsonClaudeAutomationSource
+  /** For an `automation` whose sender varies — the alias of the worktree
+   *  that sent it. Absent for singleton automations like CI. */
+  automationFrom?: string
   /** Image attachments sent with this user message. Only the on-disk
    *  path + media type live in the slice — bytes would balloon the
    *  state event payload. The renderer lazy-fetches each path via the

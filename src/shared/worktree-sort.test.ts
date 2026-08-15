@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { groupWorktrees, getGroupKey, GROUP_ORDER } from './worktree-sort'
-import type { Worktree, PRStatus } from './types'
+import type { Worktree } from './state/worktrees'
+import type { PRStatus } from './state/prs'
 
 function stubWorktree(overrides: Partial<Worktree> = {}): Worktree {
   return {

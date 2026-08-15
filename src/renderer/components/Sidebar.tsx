@@ -1,6 +1,6 @@
 import { Trash2, Layers, Rows3, PanelLeftClose, RefreshCw } from 'lucide-react'
 import { Tooltip } from './Tooltip'
-import type { GroupKey } from '../worktree-sort'
+import type { GroupKey } from '../../shared/worktree-sort'
 import type { WorktreeListModel } from '../worktree-list-model'
 import { WorktreeList } from './WorktreeList'
 import { BackendChipStrip } from './BackendChipStrip'

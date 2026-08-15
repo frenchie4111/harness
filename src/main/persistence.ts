@@ -253,6 +253,10 @@ export interface Config {
   // 'view' = inspect tabs + spawn/navigate, but no clicking, typing, or
   // scrolling. 'full' = everything. Default 'full' (undefined treated as 'full').
   browserToolsMode?: 'view' | 'full'
+  // When true, the send_message MCP tool is advertised and the /messages
+  // endpoint accepts calls, letting an agent write into another worktree's
+  // chat. Default off (undefined treated as false).
+  worktreeMessagingEnabled?: boolean
   // Controls whether new Claude tabs spawn as the terminal-hosted TUI
   // ('xterm') or the React chat interface ('json'). Default 'xterm'.
   defaultClaudeTabType?: 'xterm' | 'json'
@@ -307,6 +311,13 @@ export interface Config {
   snooze?: Record<string, SnoozeEntry>
   // Default duration (days) for plain-click snooze. Min 1, default 7.
   snoozeDefaultDays?: number
+  // Per-worktree overrides for the "notify agent chat on CI failure"
+  // behaviour, keyed by absolute path. Absent path = inherit
+  // notifyChatOnCiFailure.
+  ciNotify?: Record<string, boolean>
+  // Global default for injecting a "CI failed" message into a worktree's
+  // agent chat when its PR checks start failing. Default off.
+  notifyChatOnCiFailure?: boolean
   // When true, high-volume diagnostic log categories (currently
   // [github-api] per-call lines) are written to debug.log. Default off.
   expandedDiagnosticLoggingEnabled?: boolean

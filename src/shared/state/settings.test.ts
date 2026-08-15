@@ -458,6 +458,20 @@ describe('settingsReducer', () => {
     expect(off.conversationForkEnabled).toBe(false)
   })
 
+  it('worktreeMessagingEnabledChanged toggles flag, defaulting off', () => {
+    expect(initialSettings.worktreeMessagingEnabled).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/worktreeMessagingEnabledChanged',
+      payload: true
+    })
+    expect(on.worktreeMessagingEnabled).toBe(true)
+    const off = apply(on, {
+      type: 'settings/worktreeMessagingEnabledChanged',
+      payload: false
+    })
+    expect(off.worktreeMessagingEnabled).toBe(false)
+  })
+
   it('browserToolsModeChanged switches between view and full', () => {
     expect(initialSettings.browserToolsMode).toBe('full')
     const view = apply(initialSettings, {
@@ -643,6 +657,20 @@ describe('settingsReducer', () => {
       payload: 3
     })
     expect(next.snoozeDefaultDays).toBe(3)
+  })
+
+  it('notifyChatOnCiFailureChanged toggles the global default', () => {
+    expect(initialSettings.notifyChatOnCiFailure).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/notifyChatOnCiFailureChanged',
+      payload: true
+    })
+    expect(on.notifyChatOnCiFailure).toBe(true)
+    const off = apply(on, {
+      type: 'settings/notifyChatOnCiFailureChanged',
+      payload: false
+    })
+    expect(off.notifyChatOnCiFailure).toBe(false)
   })
 
   it('announcementDismissed appends the id and dedups', () => {

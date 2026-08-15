@@ -251,6 +251,10 @@ export interface SettingsState {
    *  off hides the feature rather than merely rejecting it, so agents aren't
    *  told about an option that will fail. */
   conversationForkEnabled: boolean
+  /** When true, agents get the `send_message` MCP tool and can deliver a
+   *  message into another worktree's chat — the one capability that
+   *  deliberately crosses the worktree boundary. Default off. */
+  worktreeMessagingEnabled: boolean
   /** Controls whether new Claude tabs spawn as the terminal-hosted TUI
    *  ('xterm') or the React chat interface ('json'). Internal values are
    *  unchanged; the user-facing label is "Terminal" / "Chat". */
@@ -305,6 +309,10 @@ export interface SettingsState {
    *  disables auto-sleep entirely. */
   autoSleepMinutes: number
   snoozeDefaultDays: number
+  /** Global default for "when a worktree's PR checks transition into
+   *  failure, inject a message into its agent chat". Per-worktree
+   *  overrides live in the `ciNotify` slice and win over this. */
+  notifyChatOnCiFailure: boolean
   /** When true, high-volume diagnostic categories are written to
    *  debug.log — currently per-GitHub-API-call `[github-api]` lines (URL,
    *  method, status, duration). Off by default because the per-call
@@ -397,6 +405,7 @@ export type SettingsEvent =
   | { type: 'settings/browserToolsEnabledChanged'; payload: boolean }
   | { type: 'settings/conversationForkEnabledChanged'; payload: boolean }
   | { type: 'settings/browserToolsModeChanged'; payload: BrowserToolsMode }
+  | { type: 'settings/worktreeMessagingEnabledChanged'; payload: boolean }
   | { type: 'settings/defaultClaudeTabTypeChanged'; payload: 'xterm' | 'json' }
   | { type: 'settings/chatPromotionDismissedChanged'; payload: boolean }
   | { type: 'settings/autoApprovePermissionsChanged'; payload: boolean }
@@ -412,6 +421,7 @@ export type SettingsEvent =
     }
   | { type: 'settings/autoSleepMinutesChanged'; payload: number }
   | { type: 'settings/snoozeDefaultDaysChanged'; payload: number }
+  | { type: 'settings/notifyChatOnCiFailureChanged'; payload: boolean }
   | { type: 'settings/expandedDiagnosticLoggingEnabledChanged'; payload: boolean }
   | { type: 'settings/prReviewPromptChanged'; payload: string }
   | { type: 'settings/announcementDismissed'; payload: string }
@@ -467,6 +477,7 @@ export const initialSettings: SettingsState = {
   browserToolsEnabled: true,
   conversationForkEnabled: false,
   browserToolsMode: 'full',
+  worktreeMessagingEnabled: false,
   defaultClaudeTabType: 'xterm',
   chatPromotionDismissed: false,
   autoApprovePermissions: false,
@@ -479,6 +490,7 @@ export const initialSettings: SettingsState = {
   jsonModeDefaultPermissionMode: 'acceptEdits',
   autoSleepMinutes: 30,
   snoozeDefaultDays: 7,
+  notifyChatOnCiFailure: false,
   expandedDiagnosticLoggingEnabled: false,
   prReviewPrompt: DEFAULT_PR_REVIEW_PROMPT,
   dismissedAnnouncementIds: [],
@@ -596,6 +608,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, conversationForkEnabled: event.payload }
     case 'settings/browserToolsModeChanged':
       return { ...state, browserToolsMode: event.payload }
+    case 'settings/worktreeMessagingEnabledChanged':
+      return { ...state, worktreeMessagingEnabled: event.payload }
     case 'settings/defaultClaudeTabTypeChanged':
       return { ...state, defaultClaudeTabType: event.payload }
     case 'settings/chatPromotionDismissedChanged':
@@ -620,6 +634,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, autoSleepMinutes: event.payload }
     case 'settings/snoozeDefaultDaysChanged':
       return { ...state, snoozeDefaultDays: event.payload }
+    case 'settings/notifyChatOnCiFailureChanged':
+      return { ...state, notifyChatOnCiFailure: event.payload }
     case 'settings/expandedDiagnosticLoggingEnabledChanged':
       return { ...state, expandedDiagnosticLoggingEnabled: event.payload }
     case 'settings/prReviewPromptChanged':

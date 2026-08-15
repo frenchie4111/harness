@@ -65,6 +65,7 @@ vi.mock('fs', async () => {
 
 import { Store } from './store'
 import { JsonClaudeManager } from './json-claude-manager'
+import { wrapAutomatedMessage } from '../shared/state/json-claude'
 import type { ClaudeLaunchSettings } from './claude-launch'
 
 describe('JsonClaudeManager', () => {
@@ -501,5 +502,77 @@ describe('JsonClaudeManager', () => {
     // the currently-registered instance's own exit.
     proc.emit('exit', 1, null)
     expect(store.getSnapshot().state.jsonClaude.sessions[sessionId]?.state).toBe('exited')
+  })
+
+  describe('automated turns', () => {
+    function sendAndRead(text: string) {
+      const store = new Store()
+      const mgr = makeManager(store)
+      const sessionId = 'sess-auto'
+      const cwd = '/tmp/wt'
+      store.dispatch({
+        type: 'jsonClaude/sessionStarted',
+        payload: { sessionId, worktreePath: cwd }
+      })
+      mgr.create(sessionId, cwd)
+      const proc = sessionProcs()[0]
+      mgr.send(sessionId, text)
+      const entries =
+        store.getSnapshot().state.jsonClaude.sessions[sessionId]?.entries ?? []
+      const stdin = proc.stdin.write.mock.calls.map((c) => String(c[0])).join('')
+      return { entry: entries[entries.length - 1], stdin }
+    }
+
+    it('flags an injected turn and strips the sentinel from the slice text', () => {
+      const { entry } = sendAndRead(
+        wrapAutomatedMessage('ci-failure', 'CI is failing on PR #7')
+      )
+      expect(entry.kind).toBe('user')
+      expect(entry.automation).toBe('ci-failure')
+      expect(entry.text).toBe('CI is failing on PR #7')
+    })
+
+    it('still sends the sentinel to claude so the model sees it is automated', () => {
+      const { stdin } = sendAndRead(wrapAutomatedMessage('ci-failure', 'body'))
+      expect(stdin).toContain('harness-automated-message')
+    })
+
+    it('leaves a human-typed turn untouched', () => {
+      const { entry } = sendAndRead('fix the build')
+      expect(entry.automation).toBeUndefined()
+      expect(entry.text).toBe('fix the build')
+    })
+  })
+
+  describe('entry ids across a sleep/wake', () => {
+    it('does not reuse an entryId after the subprocess is respawned', () => {
+      const store = new Store()
+      const mgr = makeManager(store)
+      const sessionId = 'sess-wake'
+      const cwd = '/tmp/wt'
+      // Mirrors startJsonClaudeSession: dispatch then spawn, on both the
+      // initial start and the wake.
+      const start = (): void => {
+        store.dispatch({
+          type: 'jsonClaude/sessionStarted',
+          payload: { sessionId, worktreePath: cwd }
+        })
+        mgr.create(sessionId, cwd)
+      }
+      start()
+      mgr.send(sessionId, 'first')
+      // Sleep tears the subprocess down but deliberately leaves the
+      // entries in the slice so the transcript is still readable.
+      mgr.kill(sessionId)
+      start()
+      mgr.send(sessionId, 'after wake')
+
+      const entries =
+        store.getSnapshot().state.jsonClaude.sessions[sessionId]?.entries ?? []
+      const userEntries = entries.filter((e) => e.kind === 'user')
+      expect(userEntries.map((e) => e.text)).toEqual(['first', 'after wake'])
+      const ids = entries.map((e) => e.entryId)
+      expect(new Set(ids).size).toBe(ids.length)
+    })
   })
 })

@@ -704,6 +704,7 @@ function buildPRStatus(
     state,
     url: pr.url,
     branch: branchName,
+    headSha: pr.headRefOid,
     author: pr.author?.login ? { login: pr.author.login, avatarUrl: pr.author.avatarUrl ?? '' } : null,
     checks,
     checksOverall: computeOverall(checks),

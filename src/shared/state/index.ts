@@ -85,6 +85,12 @@ import {
   type SnoozeState
 } from './snooze'
 import {
+  initialCiNotify,
+  ciNotifyReducer,
+  type CiNotifyEvent,
+  type CiNotifyState
+} from './ci-notify'
+import {
   initialAnnouncements,
   announcementsReducer,
   type AnnouncementsEvent,
@@ -183,6 +189,8 @@ export type {
 } from './json-claude'
 export type { SnoozeState, SnoozeEvent, SnoozeEntry } from './snooze'
 export { MAX_WAKE } from './snooze'
+export type { CiNotifyState, CiNotifyEvent } from './ci-notify'
+export { isCiNotifyEnabled } from './ci-notify'
 export type {
   AnnouncementsState,
   AnnouncementsEvent,
@@ -213,6 +221,7 @@ export interface AppState {
   browser: BrowserState
   jsonClaude: JsonClaudeState
   snooze: SnoozeState
+  ciNotify: CiNotifyState
   announcements: AnnouncementsState
   scratchpad: ScratchpadState
   sshBootstrap: SshBootstrapState
@@ -234,6 +243,7 @@ export type StateEvent =
   | BrowserEvent
   | JsonClaudeEvent
   | SnoozeEvent
+  | CiNotifyEvent
   | AnnouncementsEvent
   | ScratchpadEvent
   | SshBootstrapEvent
@@ -253,6 +263,7 @@ export const initialState: AppState = {
   browser: initialBrowser,
   jsonClaude: initialJsonClaude,
   snooze: initialSnooze,
+  ciNotify: initialCiNotify,
   announcements: initialAnnouncements,
   scratchpad: initialScratchpad,
   sshBootstrap: initialSshBootstrap,
@@ -317,6 +328,12 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
     return {
       ...state,
       snooze: snoozeReducer(state.snooze, event as SnoozeEvent)
+    }
+  }
+  if (event.type.startsWith('ciNotify/')) {
+    return {
+      ...state,
+      ciNotify: ciNotifyReducer(state.ciNotify, event as CiNotifyEvent)
     }
   }
   if (event.type.startsWith('announcements/')) {
@@ -395,6 +412,7 @@ export function mergeWireSnapshot(state: WireSnapshotState): AppState {
     browser: { ...initialState.browser, ...state.browser },
     jsonClaude: { ...initialState.jsonClaude, ...state.jsonClaude },
     snooze: { ...initialState.snooze, ...state.snooze },
+    ciNotify: { ...initialState.ciNotify, ...state.ciNotify },
     announcements: { ...initialState.announcements, ...state.announcements },
     scratchpad: { ...initialState.scratchpad, ...state.scratchpad },
     sshBootstrap: { ...initialState.sshBootstrap, ...state.sshBootstrap },
