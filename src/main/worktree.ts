@@ -563,6 +563,13 @@ async function numstatExec(
   }
 }
 
+// These fire on every panel refresh for every worktree — thousands per minute
+// in a busy session. Tracing all of them made the log (and its writes) a
+// bigger cost than the thing being traced, so both are gated the same way
+// every other perf category is: only the slow ones are worth a line.
+const SLOW_GIT_OP_MS = 50
+const SLOW_CHANGED_FILES_MS = 50
+
 function logGitOp(
   name: string,
   ctx: Record<string, unknown>,
@@ -574,6 +581,7 @@ function logGitOp(
 ): void {
   const total = performance.now() - t0
   const postMs = Math.max(0, total - walledExec)
+  if (cumExec < SLOW_GIT_OP_MS && total < SLOW_GIT_OP_MS) return
   perfLog(
     'git-op',
     `${name} exec=${cumExec.toFixed(0)}ms post=${postMs.toFixed(0)}ms bytes=${outputBytes}`,
@@ -609,11 +617,13 @@ export async function getChangedFiles(
   const t0 = performance.now()
   const result = await getChangedFilesImpl(worktreePath, mode)
   const ms = performance.now() - t0
-  perfLog(
-    'changed-files',
-    `mode=${mode} path=${basename(worktreePath)} took=${ms.toFixed(0)}ms files=${result.length}`,
-    { worktreePath, mode, ms: +ms.toFixed(1), fileCount: result.length }
-  )
+  if (ms >= SLOW_CHANGED_FILES_MS) {
+    perfLog(
+      'changed-files',
+      `mode=${mode} path=${basename(worktreePath)} took=${ms.toFixed(0)}ms files=${result.length}`,
+      { worktreePath, mode, ms: +ms.toFixed(1), fileCount: result.length }
+    )
+  }
   return result
 }
 
@@ -795,11 +805,13 @@ export async function getCommitChangedFiles(
   const t0 = performance.now()
   const result = await getCommitChangedFilesImpl(worktreePath, hash)
   const ms = performance.now() - t0
-  perfLog(
-    'changed-files',
-    `mode=commit path=${basename(worktreePath)} took=${ms.toFixed(0)}ms files=${result.length}`,
-    { worktreePath, mode: 'commit', hash, ms: +ms.toFixed(1), fileCount: result.length }
-  )
+  if (ms >= SLOW_CHANGED_FILES_MS) {
+    perfLog(
+      'changed-files',
+      `mode=commit path=${basename(worktreePath)} took=${ms.toFixed(0)}ms files=${result.length}`,
+      { worktreePath, mode: 'commit', hash, ms: +ms.toFixed(1), fileCount: result.length }
+    )
+  }
   return result
 }
 
@@ -893,11 +905,14 @@ export async function getCommitRangeChangedFiles(
   }
 
   logGitOp('getCommitRangeChangedFiles', { fromHash, toHash }, t0, walledExec, cumExec, outputBytes, execParts)
-  perfLog(
-    'changed-files',
-    `mode=range path=${basename(worktreePath)} took=${(performance.now() - t0).toFixed(0)}ms files=${result.length}`,
-    { worktreePath, mode: 'range', fromHash, toHash, ms: +(performance.now() - t0).toFixed(1), fileCount: result.length }
-  )
+  const rangeMs = performance.now() - t0
+  if (rangeMs >= SLOW_CHANGED_FILES_MS) {
+    perfLog(
+      'changed-files',
+      `mode=range path=${basename(worktreePath)} took=${rangeMs.toFixed(0)}ms files=${result.length}`,
+      { worktreePath, mode: 'range', fromHash, toHash, ms: +rangeMs.toFixed(1), fileCount: result.length }
+    )
+  }
   return result
 }
 

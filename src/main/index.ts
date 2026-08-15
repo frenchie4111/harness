@@ -119,7 +119,7 @@ import { getControlServerInfo } from './control-server'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
 import { log, getLogFilePath } from './debug'
 import { loadCustomThemes } from './themes-loader'
-import { perfLog } from './perf-log'
+import { perfLog, flushPerfLogSync } from './perf-log'
 import { buildInitialAppState } from './build-initial-state'
 import { AnnouncementsPoller } from './announcements-poller'
 
@@ -4510,6 +4510,7 @@ if (desktopShellMod && desktopEarly) {
       // running (intentional; see plans/remote-main.md §4).
       sshTunnelManager.closeAll()
       worktreeWatcher.shutdown()
+      flushPerfLogSync()
     },
     setWarnBeforeQuitting
   })
@@ -4535,6 +4536,7 @@ if (desktopShellMod && desktopEarly) {
     sshTunnelManager.closeAll()
     sealAllActive()
     saveConfigSync(config)
+    flushPerfLogSync()
     process.exit(0)
   }
   process.on('SIGINT', shutdown)

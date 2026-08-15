@@ -306,8 +306,19 @@ Two log files in `userData`:
   (removes both `debug.log` and `debug.log.1`).
 - **`perf.log`** — perf trace. **Append-only across sessions** so lag
   that happened earlier (possibly before the most recent restart) is
-  still inspectable. Tail with `npm run log:perf`. Clear before a fresh
-  repro with `npm run log:perf:clear`.
+  still inspectable. Rotated at 10MB into `perf.log.1` (one archive
+  only). Tail with `npm run log:perf` (uses `tail -F` so it survives
+  rotation). Clear before a fresh repro with `npm run log:perf:clear`
+  (removes both `perf.log` and `perf.log.1`).
+
+  Writes are **buffered and async** — lines accumulate and flush on a
+  1 s timer or at 500 buffered lines, whichever comes first, via
+  `appendFile` rather than `appendFileSync`. This matters: the profiler
+  runs on the same main thread it's measuring, so a blocking write per
+  line makes it a source of the lag it reports. `flushPerfLogSync()`
+  drains the buffer on shutdown so the tail of a session isn't lost.
+  The corollary for anyone reading the log live: the last second or so
+  of events may not be on disk yet.
 
 What gets written to `perf.log` (and where the threshold lives):
 
@@ -327,10 +338,19 @@ What gets written to `perf.log` (and where the threshold lives):
   at 60 fps; `src/renderer/main.tsx`). Forwarded from the renderer over
   the `perf:logSlowRender` fire-and-forget signal — telemetry must not
   block the render.
-- `[changed-files]` — every `getChangedFiles` / `getCommitChangedFiles`
-  call (these are infrequent and a complete trace is invaluable).
-- `[git-op]` — per-call timing breakdown for slow git functions, capturing exec/post/bytes split.
+- `[changed-files]` — `getChangedFiles` / `getCommitChangedFiles` /
+  `getCommitRangeChangedFiles` calls taking ≥ `SLOW_CHANGED_FILES_MS`
+  (50 ms; `src/main/worktree.ts`).
+- `[git-op]` — per-call timing breakdown (exec/post/bytes split) for git
+  functions taking ≥ `SLOW_GIT_OP_MS` (50 ms; `src/main/worktree.ts`).
 - `[microtask-drift]` — main-thread blocks ≥50ms (higher resolution than the 500ms event-loop sampler).
+
+`[changed-files]` and `[git-op]` were originally logged unconditionally,
+on the theory that they were infrequent enough for a complete trace to
+be worth it. They aren't — they fire on every panel refresh for every
+worktree, and a single session produced 77k and 115k lines respectively.
+Don't un-gate them for a "complete" trace; if you need one for a
+specific repro, lower the constant temporarily instead.
 
 The HUD at **Cmd+Opt+P** shows live aggregates (rates, history sparkline,
 React commits per second, top event types). `perf.log` captures the
