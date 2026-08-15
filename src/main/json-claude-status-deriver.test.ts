@@ -187,6 +187,70 @@ describe('JsonClaudeStatusDeriver', () => {
     expect(events.statusChanged.filter((e) => e.id === 'B')).toHaveLength(1)
   })
 
+  it('holds the pre-approval status while the auto-reviewer is deciding', () => {
+    const jc: JsonClaudeState = {
+      sessions: { A: makeSession('A', { busy: true }) },
+      pendingApprovals: {}
+    }
+    const store = makeStore(jc)
+    const { events } = startDeriverWithCapture(store)
+
+    store.dispatch({
+      type: 'jsonClaude/approvalRequested',
+      payload: {
+        requestId: 'r1',
+        sessionId: 'A',
+        toolName: 'Bash',
+        input: { command: 'ls' },
+        timestamp: 1,
+        autoReview: { state: 'pending' }
+      }
+    })
+
+    expect(events.statusChanged).toHaveLength(1)
+    expect(events.statusChanged[0]).toEqual({
+      id: 'A',
+      status: 'processing',
+      pendingTool: null
+    })
+
+    store.dispatch({
+      type: 'jsonClaude/approvalAutoReviewFinished',
+      payload: { requestId: 'r1', decision: 'ask', reason: 'needs a human' }
+    })
+
+    expect(events.statusChanged).toHaveLength(2)
+    expect(events.statusChanged[1]).toEqual({
+      id: 'A',
+      status: 'needs-approval',
+      pendingTool: { name: 'Bash', input: { command: 'ls' } }
+    })
+  })
+
+  it('goes straight to needs-approval when the auto-reviewer already asked', () => {
+    const jc: JsonClaudeState = {
+      sessions: { A: makeSession('A', { busy: true }) },
+      pendingApprovals: {}
+    }
+    const store = makeStore(jc)
+    const { events } = startDeriverWithCapture(store)
+
+    store.dispatch({
+      type: 'jsonClaude/approvalRequested',
+      payload: {
+        requestId: 'r1',
+        sessionId: 'A',
+        toolName: 'Bash',
+        input: { command: 'rm -rf /' },
+        timestamp: 1,
+        autoReview: { state: 'finished', decision: 'ask', reason: 'deny list' }
+      }
+    })
+
+    expect(events.statusChanged).toHaveLength(1)
+    expect(events.statusChanged[0].status).toBe('needs-approval')
+  })
+
   it('emits terminals/removed exactly once when a session goes exited', () => {
     const jc: JsonClaudeState = {
       sessions: { A: makeSession('A') },
