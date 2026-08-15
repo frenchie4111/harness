@@ -4,6 +4,7 @@ import type { ChangedFile } from '../types'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
 import { useWatchedQuery } from '../hooks/useWatchedQuery'
+import { requestChangedFiles } from '../hooks/changed-files-request'
 import { useBackend } from '../backend'
 
 type Mode = 'working' | 'branch'
@@ -38,10 +39,10 @@ interface ChangedFilesData {
 
 export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onOpenReview }: ChangedFilesPanelProps): JSX.Element {
   const backend = useBackend()
-  const fetcher = useCallback(async (path: string): Promise<ChangedFilesData> => {
+  const fetcher = useCallback(async (path: string, opts: { force: boolean }): Promise<ChangedFilesData> => {
     const [working, branch] = await Promise.all([
-      backend.getChangedFiles(path, 'working'),
-      backend.getChangedFiles(path, 'branch'),
+      requestChangedFiles(backend, path, 'working', opts),
+      requestChangedFiles(backend, path, 'branch', opts),
     ])
     return { working, branch }
   }, [backend])
