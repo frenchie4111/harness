@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose, Layers, Rows3 } from 'lucide-react'
+import { ChevronDown, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose, Layers, Rows3, Sparkles } from 'lucide-react'
 import { useWorktrees, usePanes, useTerminals, usePrs, useSettings, useAliases } from '../store'
 import { useBackend } from '../backend'
 import { getLeaves } from '../../shared/state/terminals'
-import type { PtyStatus, TerminalTab, Worktree } from '../types'
+import type { AgentKind, PtyStatus, TerminalTab, Worktree } from '../types'
+import type { ForkSource } from '../../shared/state/worktrees'
 import { WorktreeList } from './WorktreeList'
+import { NewWorktreeScreen } from './NewWorktreeScreen'
 import { useWorktreeCollapse } from '../hooks/useWorktreeCollapse'
 import { useWorktreeListModel } from '../hooks/useWorktreeListModel'
 import { MobileTerminal } from './MobileTerminal'
@@ -42,6 +44,22 @@ function pickInitialTab(tabs: TerminalTab[]): string | null {
   )
 }
 
+/** Mobile has no CreatingWorktreeScreen to drop onto, so a failed creation is
+ *  surfaced as a thrown error that NewWorktreeScreen renders in its inline
+ *  error box. The picker can dismiss the leftover pending entry, but reading
+ *  the setup log or retrying still needs the desktop. */
+function describeCreateFailure(
+  result:
+    | { outcome: 'setup-failed'; createdPath: string }
+    | { outcome: 'error'; error: string }
+): string {
+  if (result.outcome === 'setup-failed') {
+    const name = result.createdPath.split('/').pop() || result.createdPath
+    return `Created ${name}, but its setup script failed. Open this repo in the desktop app to read the setup log and continue anyway.`
+  }
+  return `${result.error} — open the desktop app to retry or dismiss it.`
+}
+
 export function MobileApp(): JSX.Element {
   const backend = useBackend()
   const wtState = useWorktrees()
@@ -61,12 +79,27 @@ export function MobileApp(): JSX.Element {
   // branch commits, cost). Per-client UI focus → renderer-local state, not
   // a slice (see CLAUDE.md workflow #5).
   const [rightPanelOpen, setRightPanelOpen] = useState(false)
+  const [newWorktreeRepo, setNewWorktreeRepo] = useState<string | undefined>(undefined)
+  const [showNewWorktree, setShowNewWorktree] = useState(false)
+  const [newWorktreeFocusPath, setNewWorktreeFocusPath] = useState<string | null>(null)
 
   useEffect(() => {
     if (!activeWorktreeId) return
     if (worktrees.some((w) => w.path === activeWorktreeId)) return
     setActiveWorktreeId(worktrees[0]?.path ?? null)
   }, [activeWorktreeId, worktrees])
+
+  // Focus a freshly-created worktree only once it actually lands in the list.
+  // State events reach the renderer before the create IPC resolves, so
+  // switching straight off the await lets the reroute effect above bounce
+  // focus to worktrees[0] (issue #164). Same deal as useWorktreeHandlers.
+  useEffect(() => {
+    if (!newWorktreeFocusPath) return
+    if (!worktrees.some((w) => w.path === newWorktreeFocusPath)) return
+    setActiveWorktreeId(newWorktreeFocusPath)
+    setShowNewWorktree(false)
+    setNewWorktreeFocusPath(null)
+  }, [newWorktreeFocusPath, worktrees])
 
   useEffect(() => {
     if (!activeWorktreeId) return
@@ -123,6 +156,69 @@ export function MobileApp(): JSX.Element {
     [activeWorktree]
   )
 
+  const handleOpenNewWorktree = useCallback((repoRoot?: string) => {
+    setNewWorktreeRepo(repoRoot)
+    setShowNewWorktree(true)
+    setPickerOpen(false)
+  }, [])
+
+  const handleDismissPendingWorktree = useCallback((id: string) => {
+    void backend.dismissPendingWorktree(id)
+    setActiveWorktreeId((prev) => (prev === id ? null : prev))
+  }, [])
+
+  const handleSubmitNewWorktree = useCallback(
+    async (
+      repoRoot: string,
+      branchName: string,
+      initialPrompt: string,
+      teleportSessionId?: string,
+      agentKind?: AgentKind,
+      model?: string,
+      checkoutExisting?: boolean,
+      baseRef?: string,
+      forkSource?: ForkSource
+    ) => {
+      const result = await backend.runPendingWorktree({
+        id: `pending:${crypto.randomUUID()}`,
+        repoRoot,
+        branchName,
+        initialPrompt: initialPrompt || undefined,
+        teleportSessionId,
+        agentKind,
+        model,
+        forkSource,
+        checkoutExisting,
+        baseRef
+      })
+      if (result.outcome !== 'success') throw new Error(describeCreateFailure(result))
+      setNewWorktreeFocusPath(result.createdPath)
+    },
+    []
+  )
+
+  const handleSubmitNewPRWorktree = useCallback(
+    async (
+      repoRoot: string,
+      prNumber: number,
+      initialPrompt: string,
+      agentKind?: AgentKind,
+      model?: string
+    ) => {
+      const result = await backend.runPendingPRWorktree({
+        id: `pending:${crypto.randomUUID()}`,
+        repoRoot,
+        prNumber,
+        initialPrompt: initialPrompt || undefined,
+        agentKind,
+        model
+      })
+      if (result.outcome !== 'success') throw new Error(describeCreateFailure(result))
+      setNewWorktreeFocusPath(result.createdPath)
+    },
+    []
+  )
+
   // HotkeysProvider here is only for its embedded Radix TooltipProvider —
   // shared desktop panels we render on mobile (PR status, merge, etc.)
   // use <Tooltip> which throws without a provider in scope. Bindings
@@ -177,7 +273,10 @@ export function MobileApp(): JSX.Element {
           <EmptyScreen message="This worktree has no tabs yet. Open it on desktop to spawn one." />
         )}
         {!activeWorktree && worktrees.length === 0 && (
-          <EmptyScreen message="No worktrees yet. Create one from the desktop app to get started." />
+          <EmptyScreen
+            message="No worktrees yet."
+            action={{ label: 'New worktree', onClick: () => handleOpenNewWorktree() }}
+          />
         )}
         {!activeWorktree && worktrees.length > 0 && (
           <EmptyScreen message="Pick a worktree above to open it." />
@@ -190,7 +289,21 @@ export function MobileApp(): JSX.Element {
             onSelect={handleSelectWorktree}
             onClose={() => setPickerOpen(false)}
             onRefresh={() => void backend.refreshPRsAll()}
+            onNewWorktree={handleOpenNewWorktree}
+            onDismissPendingWorktree={handleDismissPendingWorktree}
           />
+        )}
+
+        {showNewWorktree && (
+          <div className="absolute inset-0 z-50 flex flex-col bg-app">
+            <NewWorktreeScreen
+              onSubmit={handleSubmitNewWorktree}
+              onPRSubmit={handleSubmitNewPRWorktree}
+              onCancel={() => setShowNewWorktree(false)}
+              repoRoots={wtState.repoRoots}
+              defaultRepoRoot={newWorktreeRepo ?? activeWorktree?.repoRoot}
+            />
+          </div>
         )}
 
         {rightPanelOpen && (
@@ -420,6 +533,8 @@ interface WorktreePickerSheetProps {
   onSelect: (path: string) => void
   onClose: () => void
   onRefresh: () => void
+  onNewWorktree: (repoRoot?: string) => void
+  onDismissPendingWorktree: (id: string) => void
 }
 
 function WorktreePickerSheet({
@@ -427,7 +542,9 @@ function WorktreePickerSheet({
   activeWorktreeId,
   onSelect,
   onClose,
-  onRefresh
+  onRefresh,
+  onNewWorktree,
+  onDismissPendingWorktree
 }: WorktreePickerSheetProps): JSX.Element {
   const collapse = useWorktreeCollapse()
   // Touch doesn't bind Cmd+N, so the model skips ordinal assignment and no
@@ -479,6 +596,8 @@ function WorktreePickerSheet({
           onSelectWorktree={onSelect}
           onToggleGroup={collapse.toggleGroup}
           onToggleRepo={collapse.toggleRepo}
+          onNewWorktree={onNewWorktree}
+          onDismissPendingWorktree={onDismissPendingWorktree}
         />
       </div>
     </div>
@@ -516,10 +635,25 @@ function NonRunnableTabPlaceholder({ tab }: { tab: TerminalTab }): JSX.Element {
   )
 }
 
-function EmptyScreen({ message }: { message: string }): JSX.Element {
+function EmptyScreen({
+  message,
+  action
+}: {
+  message: string
+  action?: { label: string; onClick: () => void }
+}): JSX.Element {
   return (
-    <div className="h-full flex items-center justify-center px-6 text-center text-dim text-sm">
+    <div className="h-full flex flex-col items-center justify-center gap-4 px-6 text-center text-dim text-sm">
       {message}
+      {action && (
+        <button
+          onClick={action.onClick}
+          className="brand-gradient-bg text-white font-semibold text-sm px-5 min-h-11 rounded-lg inline-flex items-center gap-2 shadow-lg"
+        >
+          <Sparkles className="icon-sm" />
+          {action.label}
+        </button>
+      )}
     </div>
   )
 }

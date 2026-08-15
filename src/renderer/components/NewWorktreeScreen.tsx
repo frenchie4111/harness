@@ -482,7 +482,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-8 py-8">
+        <div className="max-w-2xl mx-auto px-4 sm:px-8 py-8">
           <div className="text-center mb-8">
             <img
               src={iconUrl}
