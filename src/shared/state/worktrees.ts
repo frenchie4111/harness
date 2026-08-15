@@ -106,6 +106,16 @@ export interface PendingWorktree {
   initialPrompt?: string
   /** One-shot teleport session id for the new Claude tab. In-memory only. */
   teleportSessionId?: string
+  /** One-shot conversation fork source for the new Claude tab. In-memory only. */
+  forkSource?: ForkSource
+}
+
+/** An existing Claude conversation the new worktree's first agent tab
+ *  should resume, instead of starting empty. The transcript is copied
+ *  into the new worktree's project dir at creation time. */
+export interface ForkSource {
+  sessionId: string
+  worktreePath: string
 }
 
 export type PendingDeletionPhase =

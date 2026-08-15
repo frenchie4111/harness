@@ -246,6 +246,11 @@ export interface SettingsState {
   wsTransportHost: string
   browserToolsEnabled: boolean
   browserToolsMode: BrowserToolsMode
+  /** Whether a chat can be forked into a new worktree — both the Chat tab
+   *  menu action and the create_worktree MCP parameter. Off by default, and
+   *  off hides the feature rather than merely rejecting it, so agents aren't
+   *  told about an option that will fail. */
+  conversationForkEnabled: boolean
   /** Controls whether new Claude tabs spawn as the terminal-hosted TUI
    *  ('xterm') or the React chat interface ('json'). Internal values are
    *  unchanged; the user-facing label is "Terminal" / "Chat". */
@@ -394,6 +399,7 @@ export type SettingsEvent =
   | { type: 'settings/wsTransportPortChanged'; payload: number }
   | { type: 'settings/wsTransportHostChanged'; payload: string }
   | { type: 'settings/browserToolsEnabledChanged'; payload: boolean }
+  | { type: 'settings/conversationForkEnabledChanged'; payload: boolean }
   | { type: 'settings/browserToolsModeChanged'; payload: BrowserToolsMode }
   | { type: 'settings/defaultClaudeTabTypeChanged'; payload: 'xterm' | 'json' }
   | { type: 'settings/chatPromotionDismissedChanged'; payload: boolean }
@@ -464,6 +470,7 @@ export const initialSettings: SettingsState = {
   wsTransportPort: 37291,
   wsTransportHost: '127.0.0.1',
   browserToolsEnabled: true,
+  conversationForkEnabled: false,
   browserToolsMode: 'full',
   defaultClaudeTabType: 'xterm',
   chatPromotionDismissed: false,
@@ -591,6 +598,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, wsTransportHost: event.payload }
     case 'settings/browserToolsEnabledChanged':
       return { ...state, browserToolsEnabled: event.payload }
+    case 'settings/conversationForkEnabledChanged':
+      return { ...state, conversationForkEnabled: event.payload }
     case 'settings/browserToolsModeChanged':
       return { ...state, browserToolsMode: event.payload }
     case 'settings/defaultClaudeTabTypeChanged':

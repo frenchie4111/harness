@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, GitPullRequest, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose } from 'lucide-react'
-import { useWorktrees, usePanes, useTerminals, usePrs, useSettings, useSnooze, useAliases } from '../store'
+import { ChevronDown, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose, Layers, Rows3 } from 'lucide-react'
+import { useWorktrees, usePanes, useTerminals, usePrs, useSettings, useAliases } from '../store'
 import { useBackend } from '../backend'
-import { groupWorktrees, type WorktreeGroup } from '../worktree-sort'
 import { getLeaves } from '../../shared/state/terminals'
-import type { PtyStatus, TerminalTab, Worktree, PRStatus } from '../types'
+import type { PtyStatus, TerminalTab, Worktree } from '../types'
+import { WorktreeList } from './WorktreeList'
+import { useWorktreeCollapse } from '../hooks/useWorktreeCollapse'
+import { useWorktreeListModel } from '../hooks/useWorktreeListModel'
 import { MobileTerminal } from './MobileTerminal'
 import { MobileRightPanel } from './MobileRightPanel'
 import { JsonModeChat } from './JsonModeChat'
@@ -46,12 +48,6 @@ export function MobileApp(): JSX.Element {
   const panes = usePanes()
   const terminals = useTerminals()
   const prs = usePrs()
-  const snoozeState = useSnooze()
-  const snoozedPaths = useMemo(() => {
-    const m: Record<string, true> = {}
-    for (const p of Object.keys(snoozeState.byPath)) m[p] = true
-    return m
-  }, [snoozeState.byPath])
   const worktrees = wtState.list
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(
     () => worktrees[0]?.path ?? null
@@ -105,8 +101,6 @@ export function MobileApp(): JSX.Element {
     () => tabs.find((t) => t.id === selectedTabId) ?? null,
     [tabs, selectedTabId]
   )
-
-  const aggregateStatuses = useAggregateStatuses(worktrees, panes, terminals.statuses)
 
   const handleSelectWorktree = useCallback((wtPath: string) => {
     setActiveWorktreeId(wtPath)
@@ -191,13 +185,8 @@ export function MobileApp(): JSX.Element {
 
         {pickerOpen && (
           <WorktreePickerSheet
-            worktrees={worktrees}
-            prStatuses={prs.byPath}
-            mergedPaths={prs.mergedByPath}
-            snoozedPaths={snoozedPaths}
             loading={prs.loading}
             activeWorktreeId={activeWorktreeId}
-            aggregateStatuses={aggregateStatuses}
             onSelect={handleSelectWorktree}
             onClose={() => setPickerOpen(false)}
             onRefresh={() => void backend.refreshPRsAll()}
@@ -216,27 +205,6 @@ export function MobileApp(): JSX.Element {
     </div>
     </HotkeysProvider>
   )
-}
-
-function useAggregateStatuses(
-  worktrees: Worktree[],
-  panes: ReturnType<typeof usePanes>,
-  statuses: Record<string, PtyStatus>
-): Record<string, PtyStatus> {
-  return useMemo(() => {
-    const out: Record<string, PtyStatus> = {}
-    for (const wt of worktrees) {
-      let worst: PtyStatus = 'idle'
-      for (const tab of flatTabs(panes, wt.path)) {
-        const s = statuses[tab.id]
-        if (s === 'needs-approval') { worst = 'needs-approval'; break }
-        if (s === 'waiting') worst = 'waiting'
-        if (s === 'processing' && worst === 'idle') worst = 'processing'
-      }
-      out[wt.path] = worst
-    }
-    return out
-  }, [worktrees, panes, statuses])
 }
 
 // -----------------------------------------------------------------------------
@@ -441,44 +409,57 @@ function TabIcon({ tab, shellActivity, status }: { tab: TerminalTab; shellActivi
 }
 
 // -----------------------------------------------------------------------------
-// Worktree picker sheet — full-body overlay below the header. Groups by PR
-// status using the same groupWorktrees helper the desktop sidebar uses.
+// Worktree picker sheet — full-body overlay below the header. The body is the
+// shared WorktreeList in its touch variant, so it stays in lockstep with the
+// desktop sidebar.
 // -----------------------------------------------------------------------------
 
 interface WorktreePickerSheetProps {
-  worktrees: Worktree[]
-  prStatuses: Record<string, PRStatus | null>
-  mergedPaths: Record<string, boolean>
-  snoozedPaths: Record<string, true>
   loading: boolean
   activeWorktreeId: string | null
-  aggregateStatuses: Record<string, PtyStatus>
   onSelect: (path: string) => void
   onClose: () => void
   onRefresh: () => void
 }
 
-function WorktreePickerSheet({ worktrees, prStatuses, mergedPaths, snoozedPaths, loading, activeWorktreeId, aggregateStatuses, onSelect, onClose, onRefresh }: WorktreePickerSheetProps): JSX.Element {
-  const viewerLogin = useSettings().viewerLogin
-  const groups = useMemo<WorktreeGroup[]>(
-    () => groupWorktrees(worktrees, prStatuses, mergedPaths, snoozedPaths, viewerLogin),
-    [worktrees, prStatuses, mergedPaths, snoozedPaths, viewerLogin]
-  )
+function WorktreePickerSheet({
+  loading,
+  activeWorktreeId,
+  onSelect,
+  onClose,
+  onRefresh
+}: WorktreePickerSheetProps): JSX.Element {
+  const collapse = useWorktreeCollapse()
+  // Touch doesn't bind Cmd+N, so the model skips ordinal assignment and no
+  // hotkey badges render.
+  const model = useWorktreeListModel(collapse, { assignOrdinals: false })
+  const snoozeDefaultDays = useSettings().snoozeDefaultDays
+  const repoCount = useWorktrees().repoRoots.length
+  const [editingAliasPath, setEditingAliasPath] = useState<string | null>(null)
+
   return (
     <div className="absolute inset-0 z-30 flex flex-col bg-app">
       <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-border bg-panel">
         <span className="text-xs uppercase tracking-wider text-dim font-semibold">Worktrees</span>
         <div className="flex items-center gap-1">
           <button
+            onClick={() => collapse.setUnifiedRepos((v) => !v)}
+            disabled={repoCount <= 1}
+            className="inline-flex items-center justify-center w-11 h-11 rounded text-dim active:bg-surface disabled:opacity-40 disabled:active:bg-transparent"
+            aria-label={collapse.unifiedRepos ? 'Split by repo' : 'Merge repos into one list'}
+          >
+            {collapse.unifiedRepos ? <Rows3 className="icon-base" /> : <Layers className="icon-base" />}
+          </button>
+          <button
             onClick={onRefresh}
-            className="inline-flex items-center justify-center w-8 h-8 rounded text-dim hover:text-fg hover:bg-surface"
+            className="inline-flex items-center justify-center w-11 h-11 rounded text-dim active:bg-surface"
             aria-label="Refresh"
           >
             {loading ? <Loader2 className="icon-base animate-spin" /> : <RefreshCw className="icon-base" />}
           </button>
           <button
             onClick={onClose}
-            className="inline-flex items-center justify-center w-8 h-8 rounded text-dim hover:text-fg hover:bg-surface"
+            className="inline-flex items-center justify-center w-11 h-11 rounded text-dim active:bg-surface"
             aria-label="Close"
           >
             <X className="icon-base" />
@@ -486,57 +467,19 @@ function WorktreePickerSheet({ worktrees, prStatuses, mergedPaths, snoozedPaths,
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {groups.length === 0 && (
-          <div className="p-6 text-center text-dim text-sm">
-            No worktrees yet. Create one from the desktop app to get started.
-          </div>
-        )}
-        {groups.map((group) => (
-          <section key={group.key}>
-            <h2 className="sticky top-0 z-10 px-4 py-1.5 text-xs uppercase tracking-wider text-dim font-semibold bg-app/95 backdrop-blur border-b border-border">
-              {group.label}
-            </h2>
-            <ul className="divide-y divide-border">
-              {group.worktrees.map((wt) => {
-                const isActive = wt.path === activeWorktreeId
-                const status = aggregateStatuses[wt.path] ?? 'idle'
-                const pr = prStatuses[wt.path] ?? null
-                return (
-                  <li key={wt.path}>
-                    <button
-                      onClick={() => onSelect(wt.path)}
-                      className={
-                        'w-full flex items-start gap-3 px-4 py-3 text-left transition-colors ' +
-                        (isActive ? 'bg-surface' : 'hover:bg-panel')
-                      }
-                    >
-                      <span className={'shrink-0 mt-1.5 w-2 h-2 rounded-full ' + STATUS_DOT[status]} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-fg-bright truncate">
-                            {wt.branch || wt.path.split('/').pop()}
-                          </span>
-                          {wt.isMain && (
-                            <span className="text-xs uppercase tracking-wider text-dim">main</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5 text-xs text-dim">
-                          <span className="truncate">{wt.repoRoot.split('/').pop()}</span>
-                          {pr && (
-                            <span className="inline-flex items-center gap-1 shrink-0">
-                              <GitPullRequest className="icon-xs" />
-                              #{pr.number}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          </section>
-        ))}
+        <WorktreeList
+          model={model}
+          variant="touch"
+          activeWorktreeId={activeWorktreeId}
+          snoozeDefaultDays={snoozeDefaultDays}
+          agentCount={model.totalWorktrees}
+          editingAliasPath={editingAliasPath}
+          onStartAliasEdit={setEditingAliasPath}
+          onEndAliasEdit={() => setEditingAliasPath(null)}
+          onSelectWorktree={onSelect}
+          onToggleGroup={collapse.toggleGroup}
+          onToggleRepo={collapse.toggleRepo}
+        />
       </div>
     </div>
   )

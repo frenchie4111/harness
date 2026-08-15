@@ -39,6 +39,7 @@ import type {
   StateEventListener
 } from '../shared/transport/transport'
 import type { ElectronAPI, AgentKind } from './types'
+import type { ForkSource } from '../shared/state/worktrees'
 import type {
   SidebarDetailPrefsByMode,
   PreventSleepMode,
@@ -109,6 +110,7 @@ export function buildBackend(
       teleportSessionId?: string
       agentKind?: AgentKind
       model?: string
+      forkSource?: ForkSource
       checkoutExisting?: boolean
       baseRef?: string
     }) => req('worktrees:runPending', params),
@@ -276,6 +278,8 @@ export function buildBackend(
     getLanAddresses: () => req('net:getLanAddresses'),
     setBrowserToolsEnabled: (enabled: boolean) => req('config:setBrowserToolsEnabled', enabled),
     setBrowserToolsMode: (mode: 'view' | 'full') => req('config:setBrowserToolsMode', mode),
+    setConversationForkEnabled: (enabled: boolean) =>
+      req('config:setConversationForkEnabled', enabled),
     setDefaultClaudeTabType: (value: 'xterm' | 'json') =>
       req('config:setDefaultClaudeTabType', value),
     setChatPromotionDismissed: (value: boolean) =>
@@ -622,6 +626,11 @@ export function buildBackend(
       req('jsonClaude:getEntries', sessionId),
     killJsonClaude: (id: string) => req('jsonClaude:kill', id),
     interruptJsonClaude: (id: string) => req('jsonClaude:interrupt', id),
+    interruptAndSendJsonClaude: (
+      id: string,
+      text: string,
+      images?: Array<{ mediaType: string; data: string; path: string }>
+    ) => req('jsonClaude:interruptAndSend', id, text, images),
     rewindJsonClaudeTo: (id: string, entryId: string) =>
       req('jsonClaude:rewindTo', id, entryId),
     forkJsonClaudeAt: (id: string, entryId: string) =>
@@ -668,7 +677,9 @@ export function buildBackend(
     sshBootstrap: (input: { bootstrapId: string; target: string; label: string }) =>
       reqLocal('ssh:bootstrap', input),
     sshReconnect: (input: { bootstrapId: string; connectionId: string }) =>
-      reqLocal('ssh:reconnect', input)
+      reqLocal('ssh:reconnect', input),
+    sshUpgradeServer: (input: { bootstrapId: string; connectionId: string }) =>
+      reqLocal('ssh:upgradeServer', input)
   }
 
   return api as ElectronAPI

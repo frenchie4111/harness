@@ -28,6 +28,17 @@ export const EDIT_TOOL_NAMES = [
   'NotebookEdit'
 ] as const
 
+/** AskUserQuestion reaches us through the permission bridge like every
+ *  other tool, but approving it is not the point — the user's answers
+ *  ride back inside the PermissionResult's `updatedInput.answers`, which
+ *  the tool then reads as its own input. A plain allow (auto-approver,
+ *  session grant, approve hotkey) resolves the request with the input
+ *  echoed back unchanged, so the tool runs with `answers = {}` and the
+ *  model is told "the user did not answer the questions". Every code
+ *  path that would resolve an approval without collecting answers must
+ *  skip this tool and let the question card handle it. */
+export const QUESTION_TOOL_NAME = 'AskUserQuestion'
+
 export interface JsonClaudeMessageBlock {
   type: 'text' | 'thinking' | 'tool_use' | 'tool_result'
   // For 'text' and 'thinking': markdown content. The wire-format

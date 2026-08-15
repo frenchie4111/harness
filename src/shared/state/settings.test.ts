@@ -447,6 +447,17 @@ describe('settingsReducer', () => {
     expect(on.browserToolsEnabled).toBe(true)
   })
 
+  it('conversationForkEnabledChanged toggles flag', () => {
+    expect(initialSettings.conversationForkEnabled).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/conversationForkEnabledChanged',
+      payload: true
+    })
+    expect(on.conversationForkEnabled).toBe(true)
+    const off = apply(on, { type: 'settings/conversationForkEnabledChanged', payload: false })
+    expect(off.conversationForkEnabled).toBe(false)
+  })
+
   it('browserToolsModeChanged switches between view and full', () => {
     expect(initialSettings.browserToolsMode).toBe('full')
     const view = apply(initialSettings, {

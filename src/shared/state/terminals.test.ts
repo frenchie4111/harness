@@ -1024,4 +1024,49 @@ describe('terminalsReducer', () => {
     const agentTab = leaves[0].tabs[0]
     expect(agentTab.sessionId).toBe('sess-abc')
   })
+
+  it('sessionIdDiscovered replaces a stale session id', () => {
+    // Guards issue #233: `/clear` moves the tab onto a new session, so the
+    // persisted id has to follow or restart resumes the old conversation.
+    const start: TerminalsState = {
+      ...initialTerminals,
+      panes: {
+        '/wt/a': {
+          type: 'leaf',
+          id: 'p1',
+          tabs: [
+            { id: 'agent-1', type: 'agent', label: 'Claude', agentKind: 'claude', sessionId: 'before-clear' }
+          ],
+          activeTabId: 'agent-1'
+        }
+      }
+    }
+    const next = apply(start, {
+      type: 'terminals/sessionIdDiscovered',
+      payload: { terminalId: 'agent-1', sessionId: 'after-clear' }
+    })
+    expect(getLeaves(next.panes['/wt/a'])[0].tabs[0].sessionId).toBe('after-clear')
+  })
+
+  it('sessionIdDiscovered is a no-op when the id is unchanged (same reference)', () => {
+    const start: TerminalsState = {
+      ...initialTerminals,
+      panes: {
+        '/wt/a': {
+          type: 'leaf',
+          id: 'p1',
+          tabs: [
+            { id: 'agent-1', type: 'agent', label: 'Claude', agentKind: 'claude', sessionId: 'sess-abc' }
+          ],
+          activeTabId: 'agent-1'
+        }
+      }
+    }
+    expect(
+      apply(start, {
+        type: 'terminals/sessionIdDiscovered',
+        payload: { terminalId: 'agent-1', sessionId: 'sess-abc' }
+      })
+    ).toBe(start)
+  })
 })

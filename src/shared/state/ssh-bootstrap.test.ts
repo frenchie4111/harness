@@ -116,6 +116,69 @@ describe('sshBootstrapReducer', () => {
     expect(initialSshBootstrap.byId).toEqual({})
   })
 
+  it('sshBootstrap/serverVersionProbed records the version for a connection', () => {
+    const next = sshBootstrapReducer(initialSshBootstrap, {
+      type: 'sshBootstrap/serverVersionProbed',
+      payload: {
+        connectionId: 'c1',
+        installed: '2.13.0',
+        expected: '2.13.2',
+        upgradeAvailable: true,
+        checkedAt: 1000
+      }
+    })
+    expect(next.serverVersions['c1'].installed).toBe('2.13.0')
+    expect(next.serverVersions['c1'].upgradeAvailable).toBe(true)
+  })
+
+  it('sshBootstrap/serverVersionProbed is a no-op when nothing changed', () => {
+    const probed = sshBootstrapReducer(initialSshBootstrap, {
+      type: 'sshBootstrap/serverVersionProbed',
+      payload: {
+        connectionId: 'c1',
+        installed: '2.13.2',
+        expected: '2.13.2',
+        upgradeAvailable: false,
+        checkedAt: 1000
+      }
+    })
+    const again = sshBootstrapReducer(probed, {
+      type: 'sshBootstrap/serverVersionProbed',
+      payload: {
+        connectionId: 'c1',
+        installed: '2.13.2',
+        expected: '2.13.2',
+        upgradeAvailable: false,
+        checkedAt: 9999
+      }
+    })
+    expect(again).toBe(probed)
+  })
+
+  it('sshBootstrap/serverVersionForgotten drops the entry', () => {
+    const probed = sshBootstrapReducer(initialSshBootstrap, {
+      type: 'sshBootstrap/serverVersionProbed',
+      payload: {
+        connectionId: 'c1',
+        installed: '2.13.0',
+        expected: '2.13.2',
+        upgradeAvailable: true,
+        checkedAt: 1000
+      }
+    })
+    const next = sshBootstrapReducer(probed, {
+      type: 'sshBootstrap/serverVersionForgotten',
+      payload: { connectionId: 'c1' }
+    })
+    expect(next.serverVersions['c1']).toBeUndefined()
+    expect(
+      sshBootstrapReducer(next, {
+        type: 'sshBootstrap/serverVersionForgotten',
+        payload: { connectionId: 'c1' }
+      })
+    ).toBe(next)
+  })
+
   it('multiple bootstraps coexist independently', () => {
     let state = start('b1')
     state = sshBootstrapReducer(state, {

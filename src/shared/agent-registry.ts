@@ -8,12 +8,35 @@ export interface AgentInfo {
    * first spawn. If false, the agent assigns its own ID and Harness
    * discovers it from the first hook event. */
   assignsSessionId: boolean
+  /** Whether a conversation can be forked INTO a new worktree running this
+   * agent. Requires a transcript format Harness can rewrite and a CLI flag
+   * to resume it by id — only Claude Code qualifies today. Agents that
+   * assign their own session ids can't be handed a pre-seeded one at all. */
+  supportsConversationFork: boolean
 }
 
 export const AGENT_REGISTRY: AgentInfo[] = [
-  { kind: 'claude', displayName: 'Claude Code', vendor: 'Anthropic', assignsSessionId: true },
-  { kind: 'codex', displayName: 'Codex', vendor: 'OpenAI', assignsSessionId: false },
-  { kind: 'cursor', displayName: 'Cursor Agent', vendor: 'Cursor', assignsSessionId: false }
+  {
+    kind: 'claude',
+    displayName: 'Claude Code',
+    vendor: 'Anthropic',
+    assignsSessionId: true,
+    supportsConversationFork: true
+  },
+  {
+    kind: 'codex',
+    displayName: 'Codex',
+    vendor: 'OpenAI',
+    assignsSessionId: false,
+    supportsConversationFork: false
+  },
+  {
+    kind: 'cursor',
+    displayName: 'Cursor Agent',
+    vendor: 'Cursor',
+    assignsSessionId: false,
+    supportsConversationFork: false
+  }
 ]
 
 export interface ModelOption {
@@ -77,4 +100,8 @@ export function getAgentInfo(kind: AgentKind): AgentInfo {
 export function agentDisplayName(kind: AgentKind | undefined): string {
   if (!kind) return AGENT_REGISTRY[0].displayName
   return getAgentInfo(kind).displayName
+}
+
+export function supportsConversationFork(kind: AgentKind): boolean {
+  return getAgentInfo(kind).supportsConversationFork
 }

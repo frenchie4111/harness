@@ -148,9 +148,10 @@ const offsets = new Map<string, number>()
 // Left-over partial line from the last read (in case a write lands
 // between our read and the newline flush). Keyed by terminal id.
 const residual = new Map<string, string>()
-// Terminals whose session ID has already been discovered and dispatched.
-// Prevents repeated dispatches on every subsequent hook event.
-const sessionIdDiscovered = new Set<string>()
+// Last session ID dispatched per terminal. Every hook payload carries one, so
+// this dedups the steady-state case while still catching the ID actually
+// changing under a live terminal (Claude's `/clear` starts a new session).
+const lastSessionId = new Map<string, string>()
 
 export interface StopEvent {
   terminalId: string
@@ -242,17 +243,16 @@ export function tailLog(terminalId: string, store: Store): void {
         continue
       }
       log('hooks', `event terminal=${terminalId} event=${ev.event}`)
-      // Discover the agent-assigned session ID from the first hook event
-      // that carries one. Per-agent extractors keep field names
-      // (session_id vs conversation_id) out of shared code, so a
-      // coincidental collision in one agent's payload can't be misread as
-      // another agent's session ID.
-      if (!sessionIdDiscovered.has(terminalId) && ev.payload) {
+      // Track the agent-assigned session ID from every hook event that
+      // carries one. Per-agent extractors keep field names (session_id vs
+      // conversation_id) out of shared code, so a coincidental collision in
+      // one agent's payload can't be misread as another agent's session ID.
+      if (ev.payload) {
         const tab = findTabById(store.getSnapshot().state.terminals.panes, terminalId)
         const agent = tab?.agentKind ? getAgent(tab.agentKind) : null
         const sid = agent?.extractSessionId?.(ev.payload as Record<string, unknown>) ?? null
-        if (sid) {
-          sessionIdDiscovered.add(terminalId)
+        if (sid && lastSessionId.get(terminalId) !== sid) {
+          lastSessionId.set(terminalId, sid)
           store.dispatch({
             type: 'terminals/sessionIdDiscovered',
             payload: { terminalId, sessionId: sid }
@@ -304,7 +304,7 @@ export function cleanupTerminalLog(terminalId: string): void {
   offsets.delete(terminalId)
   residual.delete(terminalId)
   lastPreTool.delete(terminalId)
-  sessionIdDiscovered.delete(terminalId)
+  lastSessionId.delete(terminalId)
   try {
     unlinkSync(join(STATUS_DIR, `${terminalId}.ndjson`))
   } catch {
