@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
   initialSshBootstrap,
+  isInFlightPhase,
   sshBootstrapReducer,
-  type BootstrapError
+  type BootstrapError,
+  type BootstrapPhase
 } from './ssh-bootstrap'
 
 const err: BootstrapError = {
@@ -192,5 +194,81 @@ describe('sshBootstrapReducer', () => {
     expect(state.byId['b1'].phase).toBe('tunneling')
     expect(state.byId['b2'].phase).toBe('connecting')
     expect(state.byId['b2'].label).toBe('dev-box')
+  })
+
+  it('sshBootstrap/phaseChanged accepts the reconnect phases', () => {
+    let state = start()
+    for (const phase of ['disconnected', 'reconnecting'] as BootstrapPhase[]) {
+      state = sshBootstrapReducer(state, {
+        type: 'sshBootstrap/phaseChanged',
+        payload: { bootstrapId: 'b1', phase, now: 3000 }
+      })
+      expect(state.byId['b1'].phase).toBe(phase)
+    }
+  })
+
+  it('sshBootstrap/tunnelReady records the bound loopback port', () => {
+    const state = sshBootstrapReducer(start(), {
+      type: 'sshBootstrap/tunnelReady',
+      payload: { bootstrapId: 'b1', localPort: 51234, now: 4000 }
+    })
+    expect(state.byId['b1'].localPort).toBe(51234)
+    expect(state.byId['b1'].updatedAt).toBe(4000)
+  })
+
+  it('sshBootstrap/tunnelReady is a no-op for unknown id', () => {
+    const before = start()
+    const after = sshBootstrapReducer(before, {
+      type: 'sshBootstrap/tunnelReady',
+      payload: { bootstrapId: 'missing', localPort: 1, now: 4000 }
+    })
+    expect(after).toBe(before)
+  })
+
+  // Reconnect attempts reuse a single bootstrapId across retries. The
+  // restart must clear the transcript but keep the connection linkage,
+  // or the chip loses track of which backend is reconnecting.
+  it('sshBootstrap/started on an existing id keeps connectionId + localPort but resets lines', () => {
+    let state = start()
+    state = sshBootstrapReducer(state, {
+      type: 'sshBootstrap/connectionLinked',
+      payload: { bootstrapId: 'b1', connectionId: 'conn-1' }
+    })
+    state = sshBootstrapReducer(state, {
+      type: 'sshBootstrap/tunnelReady',
+      payload: { bootstrapId: 'b1', localPort: 51234, now: 4000 }
+    })
+    state = sshBootstrapReducer(state, {
+      type: 'sshBootstrap/lineLogged',
+      payload: { bootstrapId: 'b1', line: 'from the previous attempt', now: 4100 }
+    })
+    state = sshBootstrapReducer(state, {
+      type: 'sshBootstrap/started',
+      payload: { bootstrapId: 'b1', label: 'build-box', target: 'build-box', now: 5000 }
+    })
+    expect(state.byId['b1'].connectionId).toBe('conn-1')
+    expect(state.byId['b1'].localPort).toBe(51234)
+    expect(state.byId['b1'].lines).toEqual([])
+    expect(state.byId['b1'].phase).toBe('connecting')
+  })
+
+  it('sshBootstrap/started on a fresh id has no connectionId', () => {
+    expect(start().byId['b1'].connectionId).toBeUndefined()
+  })
+
+  it('isInFlightPhase separates rebuilding from up and dead', () => {
+    for (const phase of [
+      'connecting',
+      'probing',
+      'installing',
+      'starting',
+      'tunneling',
+      'reconnecting'
+    ] as BootstrapPhase[]) {
+      expect(isInFlightPhase(phase)).toBe(true)
+    }
+    for (const phase of ['connected', 'disconnected', 'error'] as BootstrapPhase[]) {
+      expect(isInFlightPhase(phase)).toBe(false)
+    }
   })
 })

@@ -19,15 +19,35 @@
 // to drop an entry (modal close / next bootstrap kick-off).
 
 export type BootstrapPhase =
-  | 'connecting'  // SSH handshake
-  | 'probing'     // checking if harness-server is installed on the remote
-  | 'installing'  // running install-headless.sh over SSH
-  | 'upgrading'   // re-running the installer over an existing install
-  | 'restarting'  // killing the old server process before relaunching
-  | 'starting'    // launching the server detached
-  | 'tunneling'   // setting up SSH local port forwarding
-  | 'connected'   // happy terminal state
-  | 'error'       // sad terminal state
+  | 'connecting'    // SSH handshake
+  | 'probing'       // checking if harness-server is installed on the remote
+  | 'installing'    // running install-headless.sh over SSH
+  | 'upgrading'     // re-running the installer over an existing install
+  | 'restarting'    // killing the old server process before relaunching
+  | 'starting'      // launching the server detached
+  | 'tunneling'     // setting up SSH local port forwarding
+  | 'connected'     // happy terminal state
+  | 'disconnected'  // link dropped; supervisor is waiting out its backoff
+  | 'reconnecting'  // supervisor is mid-attempt after a drop
+  | 'error'         // sad terminal state
+
+/** Phases where the tunnel is being (re)established rather than up or
+ *  dead. The chip strip renders these as "reconnecting…" rather than as
+ *  a hard disconnect. */
+const IN_FLIGHT_PHASES: ReadonlySet<BootstrapPhase> = new Set<BootstrapPhase>([
+  'connecting',
+  'probing',
+  'installing',
+  'upgrading',
+  'restarting',
+  'starting',
+  'tunneling',
+  'reconnecting'
+])
+
+export function isInFlightPhase(phase: BootstrapPhase): boolean {
+  return IN_FLIGHT_PHASES.has(phase)
+}
 
 export interface BootstrapError {
   code:
@@ -62,6 +82,11 @@ export interface BootstrapProgress {
   /** Populated once `connections:add` returns successfully. Lets the
    *  renderer correlate this progress entry back to a BackendConnection. */
   connectionId?: string
+  /** Loopback port the tunnel bound to, once it's up. Reconnects try to
+   *  reacquire the previous port, but can land on a new one if it's
+   *  taken — the renderer compares this against the port in its live WS
+   *  URL to decide whether it needs to rebuild the transport. */
+  localPort?: number
   /** Populated when `phase === 'error'`. */
   error?: BootstrapError
 }
@@ -112,6 +137,10 @@ export type SshBootstrapEvent =
       payload: { bootstrapId: string; connectionId: string }
     }
   | {
+      type: 'sshBootstrap/tunnelReady'
+      payload: { bootstrapId: string; localPort: number; now: number }
+    }
+  | {
       type: 'sshBootstrap/errored'
       payload: { bootstrapId: string; error: BootstrapError; now: number }
     }
@@ -141,6 +170,11 @@ export function sshBootstrapReducer(
   switch (event.type) {
     case 'sshBootstrap/started': {
       const { bootstrapId, label, target, now } = event.payload
+      // Reconnect attempts reuse one bootstrapId across retries, so a
+      // restart clears the transcript but keeps the connection linkage —
+      // otherwise the chip loses track of which backend is reconnecting
+      // between `started` and the `connectionLinked` that follows it.
+      const prior = state.byId[bootstrapId]
       return {
         ...state,
         byId: {
@@ -151,7 +185,9 @@ export function sshBootstrapReducer(
             target,
             phase: 'connecting',
             lines: [],
-            updatedAt: now
+            updatedAt: now,
+            ...(prior?.connectionId ? { connectionId: prior.connectionId } : {}),
+            ...(prior?.localPort ? { localPort: prior.localPort } : {})
           }
         }
       }
@@ -172,6 +208,12 @@ export function sshBootstrapReducer(
       return patch(state, event.payload.bootstrapId, (p) => ({
         ...p,
         connectionId: event.payload.connectionId
+      }))
+    case 'sshBootstrap/tunnelReady':
+      return patch(state, event.payload.bootstrapId, (p) => ({
+        ...p,
+        localPort: event.payload.localPort,
+        updatedAt: event.payload.now
       }))
     case 'sshBootstrap/errored':
       return patch(state, event.payload.bootstrapId, (p) => ({
