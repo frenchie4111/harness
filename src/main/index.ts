@@ -960,6 +960,54 @@ async function resolveForkedKickoff(args: {
   }
 }
 
+/** Interrupt an in-flight json-claude turn and wait for it to actually
+ *  reach a boundary. Callers that touch the session's stdin or jsonl
+ *  right after (interrupt-and-send, rewind, model swap) need the turn
+ *  stopped first, not merely asked to stop.
+ *
+ *  Two ordering traps, both load-bearing:
+ *  - Subscribe BEFORE writing the interrupt frame, or the dispatch we're
+ *    waiting for can land before the listener exists.
+ *  - Ignore anything dispatched DURING manager.interrupt(): it flips busy
+ *    off optimistically in its own synchronous dispatch, so an ungated
+ *    listener resolves on that instead of on the subprocess's `result`
+ *    frame and we're back to racing the dying turn.
+ *
+ *  An aborted turn doesn't always emit a result frame, hence the timeout
+ *  fallback. `via=` in the log line says which path a given call took. */
+const QUIESCE_TIMEOUT_MS = 1500
+async function interruptAndQuiesce(sessionId: string): Promise<void> {
+  await new Promise<void>((resolve) => {
+    let settled = false
+    let armed = false
+    const startedAt = Date.now()
+    const finish = (via: 'boundary' | 'timeout'): void => {
+      if (settled) return
+      settled = true
+      unsub()
+      clearTimeout(timer)
+      log(
+        'json-claude',
+        `quiesce sessionId=${sessionId} via=${via} ms=${Date.now() - startedAt}`
+      )
+      resolve()
+    }
+    const unsub = store.subscribe((event) => {
+      if (!armed) return
+      if (
+        event.type === 'jsonClaude/busyChanged' &&
+        event.payload.sessionId === sessionId &&
+        event.payload.busy === false
+      ) {
+        finish('boundary')
+      }
+    })
+    const timer = setTimeout(() => finish('timeout'), QUIESCE_TIMEOUT_MS)
+    jsonClaudeManager.interrupt(sessionId)
+    armed = true
+  })
+}
+
 const worktreesFSM = new WorktreesFSM(store, {
   getRepoRoots: () => config.repoRoots || [],
   getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
@@ -1144,8 +1192,12 @@ async function drainBootInit(force: boolean): Promise<void> {
 
 store.subscribe((event) => {
   if (event.type === 'worktrees/listChanged') {
-    const list = store.getSnapshot().state.worktrees.list
+    const worktrees = store.getSnapshot().state.worktrees
+    const list = worktrees.list
     if (bootDrained) {
+      // Paths whose creation FSM hasn't reached onWorktreeCreated yet own
+      // their own init — it carries the kickoff prompt, agent kind and
+      // model that this sweep doesn't have.
       for (const wt of list) {
         if (!isMidCreation(wt.path)) panesFSM.ensureInitialized(wt.path)
       }
@@ -1241,6 +1293,26 @@ function setWarnBeforeQuitting(enabled: boolean): void {
   })
 }
 
+/** Publish what version of `harness-server` a remote is running, and
+ *  whether it matches us. Headless tarballs ship on the same tag as the
+ *  desktop build, so anything other than exact equality means the two
+ *  halves can disagree about the wire protocol — we flag it and let the
+ *  user decide (upgrading restarts the remote, killing its sessions). */
+function recordRemoteServerVersion(connectionId: string, installed: string | null): void {
+  if (!installed) return
+  const expected = getHarnessVersion()
+  store.dispatch({
+    type: 'sshBootstrap/serverVersionProbed',
+    payload: {
+      connectionId,
+      installed,
+      expected,
+      upgradeAvailable: expected !== 'unknown' && installed !== expected,
+      checkedAt: Date.now()
+    }
+  })
+}
+
 /** Re-establish (or reuse) the SSH tunnel for an existing SSH backend.
  *  Shared between the `ssh:reconnect` IPC handler and the boot-time
  *  pre-warm loop in runBoot(). Idempotent: if a tunnel for this
@@ -1301,9 +1373,11 @@ async function runSshReconnect(input: {
       },
       {
         preferredLocalPort: conn.ssh.tunnelLocalPort,
-        skipInstallIfRunning: true
+        skipInstallIfRunning: true,
+        expectedVersion: getHarnessVersion()
       }
     )
+    recordRemoteServerVersion(conn.id, result.serverVersion)
     sshTunnelManager.register({
       backendId: conn.id,
       localPort: result.localPort,
@@ -3264,6 +3338,40 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  // "Stop what you're doing and do this instead." Abort the in-flight
+  // turn, then deliver the draft as a fresh one. Sequenced here rather
+  // than as interrupt()+send() from the renderer because both frames go
+  // to the same stdin with no flush between them — a user message
+  // written straight after the interrupt frame can be drained by the
+  // very turn we're killing. Lives in the handler, not the manager,
+  // because a turn parked on a tool approval won't reach a boundary
+  // until the approval is resolved, and only the handler layer reaches
+  // approvalBridge (same rationale as rewindTo).
+  transport.onRequest(
+    'jsonClaude:interruptAndSend',
+    async (
+      _ctx,
+      sessionId: string,
+      text: string,
+      images?: Array<{ mediaType: string; data: string; path: string }>
+    ): Promise<{ ok: boolean; reason?: string }> => {
+      if (!sessionId) return { ok: false, reason: 'missing args' }
+      if (!text && !(images && images.length > 0)) {
+        return { ok: false, reason: 'empty message' }
+      }
+      const session = store.getSnapshot().state.jsonClaude.sessions[sessionId]
+      if (!session) return { ok: false, reason: 'unknown session' }
+
+      if (session.busy) await interruptAndQuiesce(sessionId)
+      approvalBridge.cancelPendingForSession(sessionId, 'interrupted by user')
+
+      // busy is false by now (interrupt flips it, or it already was), so
+      // this takes the fresh-turn path rather than the queue path.
+      jsonClaudeManager.send(sessionId, text, images)
+      return { ok: true }
+    }
+  )
+
   // Rewind to a clicked assistant message. Orchestrates: interrupt
   // in-flight stream (if any) → await `result` boundary (≤1500ms) so
   // the jsonl is quiesced → deny pending approvals for the session →
@@ -3281,31 +3389,7 @@ function registerIpcHandlers(): void {
       const startSession = store.getSnapshot().state.jsonClaude.sessions[sessionId]
       if (!startSession) return { ok: false, reason: 'unknown session' }
 
-      // Quiesce in-flight stream. Subscribe first, then send the
-      // interrupt so we can't miss the resulting busy=false dispatch.
-      if (startSession.busy) {
-        await new Promise<void>((resolve) => {
-          let done = false
-          const finish = (): void => {
-            if (done) return
-            done = true
-            unsub()
-            clearTimeout(timer)
-            resolve()
-          }
-          const unsub = store.subscribe((event) => {
-            if (
-              event.type === 'jsonClaude/busyChanged' &&
-              event.payload.sessionId === sessionId &&
-              event.payload.busy === false
-            ) {
-              finish()
-            }
-          })
-          const timer = setTimeout(finish, 1500)
-          jsonClaudeManager.interrupt(sessionId)
-        })
-      }
+      if (startSession.busy) await interruptAndQuiesce(sessionId)
 
       approvalBridge.cancelPendingForSession(sessionId)
 
@@ -3484,33 +3568,10 @@ function registerIpcHandlers(): void {
         payload: { worktreePath, tabId: sessionId, model: trimmed }
       })
 
-      // Quiesce any in-flight turn cleanly — same interrupt-then-await
-      // pattern jsonClaude:rewindTo uses. Interrupt is a soft
+      // Quiesce any in-flight turn cleanly. Interrupt is a soft
       // control_request that keeps the subprocess alive and preserves
       // the partial turn in the jsonl, so --resume picks up cleanly.
-      if (session.busy) {
-        await new Promise<void>((resolve) => {
-          let done = false
-          const finish = (): void => {
-            if (done) return
-            done = true
-            unsub()
-            clearTimeout(timer)
-            resolve()
-          }
-          const unsub = store.subscribe((event) => {
-            if (
-              event.type === 'jsonClaude/busyChanged' &&
-              event.payload.sessionId === sessionId &&
-              event.payload.busy === false
-            ) {
-              finish()
-            }
-          })
-          const timer = setTimeout(finish, 1500)
-          jsonClaudeManager.interrupt(sessionId)
-        })
-      }
+      if (session.busy) await interruptAndQuiesce(sessionId)
 
       approvalBridge.cancelPendingForSession(sessionId)
 
@@ -3814,6 +3875,10 @@ function registerIpcHandlers(): void {
     // harness-server is intentionally left running — see
     // plans/remote-main.md §4 "Things to NOT do".
     sshTunnelManager.unregister(id)
+    store.dispatch({
+      type: 'sshBootstrap/serverVersionForgotten',
+      payload: { connectionId: id }
+    })
     saveConfig(config)
     return true
   })
@@ -3917,7 +3982,7 @@ function registerIpcHandlers(): void {
               payload: { bootstrapId: input.bootstrapId, line, now: Date.now() }
             })
           }
-        })
+        }, { expectedVersion: getHarnessVersion() })
 
         // Mint the BackendConnection + persist + register tunnel. The
         // URL is the ephemeral loopback we just opened; on next launch
@@ -3952,6 +4017,7 @@ function registerIpcHandlers(): void {
           type: 'sshBootstrap/connectionLinked',
           payload: { bootstrapId: input.bootstrapId, connectionId: id }
         })
+        recordRemoteServerVersion(id, result.serverVersion)
         store.dispatch({
           type: 'sshBootstrap/phaseChanged',
           payload: { bootstrapId: input.bootstrapId, phase: 'connected', now: Date.now() }
@@ -3983,6 +4049,104 @@ function registerIpcHandlers(): void {
     'ssh:reconnect',
     (_ctx, input: { bootstrapId: string; connectionId: string }) =>
       runSshReconnect(input)
+  )
+
+  // Re-install harness-server on an SSH backend and restart it. Only
+  // reachable from an explicit user action — it kills the running
+  // server, so every session on that remote dies. Returns the new
+  // loopback URL + token; the renderer drops its WS transport and
+  // re-hydrates against the fresh tunnel.
+  transport.onRequest(
+    'ssh:upgradeServer',
+    async (
+      _ctx,
+      input: { bootstrapId: string; connectionId: string }
+    ): Promise<{ url: string; token: string; localPort: number; serverVersion: string | null }> => {
+      if (!input || typeof input.connectionId !== 'string') {
+        throw new Error('connectionId is required')
+      }
+      if (typeof input.bootstrapId !== 'string' || !input.bootstrapId) {
+        throw new Error('bootstrapId is required')
+      }
+      const conn = (config.connections ?? []).find((c) => c.id === input.connectionId)
+      if (!conn) throw new Error(`unknown backend ${input.connectionId}`)
+      if (!conn.ssh) throw new Error(`backend ${input.connectionId} is not an SSH backend`)
+
+      const { parseSshTarget, upgradeRemoteServer } = await import('./ssh-bootstrap')
+      const target = parseSshTarget(conn.ssh.target)
+      store.dispatch({
+        type: 'sshBootstrap/started',
+        payload: {
+          bootstrapId: input.bootstrapId,
+          label: conn.label,
+          target: target.raw,
+          now: Date.now()
+        }
+      })
+      store.dispatch({
+        type: 'sshBootstrap/connectionLinked',
+        payload: { bootstrapId: input.bootstrapId, connectionId: conn.id }
+      })
+
+      try {
+        const result = await upgradeRemoteServer(target, {
+          onPhase: (phase) => {
+            store.dispatch({
+              type: 'sshBootstrap/phaseChanged',
+              payload: { bootstrapId: input.bootstrapId, phase, now: Date.now() }
+            })
+          },
+          onLine: (line) => {
+            store.dispatch({
+              type: 'sshBootstrap/lineLogged',
+              payload: { bootstrapId: input.bootstrapId, line, now: Date.now() }
+            })
+          }
+        })
+        // register() disposes the previous entry's SSH connection +
+        // tunnel server, so the old loopback port stops accepting.
+        sshTunnelManager.register({
+          backendId: conn.id,
+          localPort: result.localPort,
+          remotePort: result.remotePort,
+          token: result.token,
+          ssh: result.ssh,
+          tunnelServer: result.tunnelServer
+        })
+        const url = `ws://127.0.0.1:${result.localPort}/?token=${result.token}`
+        const idx = (config.connections ?? []).findIndex((c) => c.id === conn.id)
+        if (idx >= 0) {
+          const next = config.connections!.slice()
+          next[idx] = {
+            ...next[idx],
+            url,
+            ssh: { target: target.raw, tunnelLocalPort: result.localPort }
+          }
+          config.connections = next
+          setSecret(`backend-token:${conn.id}`, result.token)
+          saveConfig(config)
+        }
+        recordRemoteServerVersion(conn.id, result.serverVersion)
+        return {
+          url,
+          token: result.token,
+          localPort: result.localPort,
+          serverVersion: result.serverVersion
+        }
+      } catch (err) {
+        const bootstrapErr =
+          (err as { bootstrapError?: import('../shared/state/ssh-bootstrap').BootstrapError })
+            .bootstrapError ?? {
+            code: 'unknown' as const,
+            message: err instanceof Error ? err.message : String(err)
+          }
+        store.dispatch({
+          type: 'sshBootstrap/errored',
+          payload: { bootstrapId: input.bootstrapId, error: bootstrapErr, now: Date.now() }
+        })
+        throw err
+      }
+    }
   )
 
   transport.onSignal('terminal:join', (ctx, id: string) => {

@@ -10,7 +10,6 @@ import { useSettings } from '../store'
 import { useBackend } from '../backend'
 import { useFileContentChange } from '../hooks/useFileContentChange'
 import { scaledEditorFontSize } from '../../shared/state/settings'
-import 'highlight.js/styles/github-dark.css'
 
 interface FileViewProps {
   worktreePath: string

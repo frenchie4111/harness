@@ -172,6 +172,11 @@ export interface BootstrapResult {
   /** Remote port the server bound to (for diagnostics + future
    *  reconnect). */
   remotePort: number
+  /** What `harness-server --version` reported on the remote. Null only
+   *  if the probe failed after a successful install (shouldn't happen).
+   *  The caller compares this to the local Harness version to decide
+   *  whether to offer an upgrade. */
+  serverVersion: string | null
 }
 
 /** Where the installed harness-server's binary lives on the remote.
@@ -457,7 +462,15 @@ async function openTunnel(
 export async function bootstrapRemote(
   target: SshTarget,
   callbacks: BootstrapCallbacks,
-  opts: { preferredLocalPort?: number; skipInstallIfRunning?: boolean } = {}
+  opts: {
+    preferredLocalPort?: number
+    skipInstallIfRunning?: boolean
+    /** Local Harness version. When set, a mismatch against the remote's
+     *  installed version is logged and reported via
+     *  `BootstrapResult.serverVersion` so the caller can offer an
+     *  upgrade. Never triggers one on its own. */
+    expectedVersion?: string
+  } = {}
 ): Promise<BootstrapResult> {
   const { NodeSSH } = loadNodeSsh()
   const ssh = new NodeSSH()
@@ -486,10 +499,22 @@ export async function bootstrapRemote(
 
   // --- 2. Probe ----------------------------------------------------------
   phase('probing')
+  let serverVersion: string | null = null
   try {
     const version = await probeServer(ssh)
+    serverVersion = version
     if (version) {
-      log(`found existing harness-server ${version} on remote`)
+      // We never upgrade implicitly — a running server owns live PTYs,
+      // and blowing them away without asking is not a tradeoff we get
+      // to make on the user's behalf. Staleness is reported here and
+      // acted on only when the user picks "Upgrade" in the chip strip.
+      if (opts.expectedVersion && version !== opts.expectedVersion) {
+        log(
+          `found harness-server ${version} on remote (this Harness is ${opts.expectedVersion} — upgrade available)`
+        )
+      } else {
+        log(`found existing harness-server ${version} on remote`)
+      }
     } else {
       log('harness-server not installed on remote')
       phase('installing')
@@ -507,6 +532,7 @@ export async function bootstrapRemote(
         throw Object.assign(new Error(bootstrapErr.message), { bootstrapError: bootstrapErr })
       }
       log('install complete')
+      serverVersion = await probeServer(ssh)
     }
 
     // --- 3. Start (or reuse) ---------------------------------------------
@@ -555,7 +581,8 @@ export async function bootstrapRemote(
       token: state.token,
       ssh,
       tunnelServer: tunnel.server,
-      remotePort: state.port
+      remotePort: state.port,
+      serverVersion
     }
   } catch (err) {
     // Any failure not already typed gets a generic "unknown" wrapper so
@@ -567,6 +594,117 @@ export async function bootstrapRemote(
       message: err instanceof Error ? err.message : String(err)
     }
     try { ssh.dispose() } catch { /* ignore */ }
+    throw Object.assign(new Error(fallback.message), { bootstrapError: fallback })
+  }
+}
+
+/** Stop whatever `harness-server` the last bootstrap left running and
+ *  drop its state file, so the next start can't reuse the stale pid.
+ *  SIGTERM first, then SIGKILL if it's still alive after a grace
+ *  period — the server flushes its config on shutdown. */
+async function stopRemoteServer(
+  ssh: NodeSSH,
+  onLine: (line: string) => void
+): Promise<void> {
+  const state = await readRemoteState(ssh)
+  if (state && (await isPidAlive(ssh, state.pid))) {
+    onLine(`stopping harness-server (pid ${state.pid})…`)
+    await ssh.execCommand(`kill ${state.pid} 2>/dev/null || true`)
+    const deadline = Date.now() + 5_000
+    while (Date.now() < deadline) {
+      if (!(await isPidAlive(ssh, state.pid))) break
+      await new Promise((r) => setTimeout(r, 250))
+    }
+    if (await isPidAlive(ssh, state.pid)) {
+      onLine(`pid ${state.pid} ignored SIGTERM; sending SIGKILL`)
+      await ssh.execCommand(`kill -9 ${state.pid} 2>/dev/null || true`)
+    }
+  }
+  await ssh.execCommand(`rm -f ${REMOTE_STATE_FILE}`)
+}
+
+export interface UpgradeResult {
+  localPort: number
+  token: string
+  ssh: NodeSSH
+  tunnelServer: NetServer
+  remotePort: number
+  serverVersion: string | null
+}
+
+/** Re-run the installer on a remote that already has `harness-server`,
+ *  then restart it and reopen the tunnel. Destructive by nature — the
+ *  running server is killed, so every PTY and Claude session on that
+ *  box dies. Only ever called from an explicit user action.
+ *
+ *  Takes ownership of a fresh SSH connection; the caller replaces its
+ *  tunnel-manager entry with the returned handles (which disposes the
+ *  old SSH connection + tunnel server). */
+export async function upgradeRemoteServer(
+  target: SshTarget,
+  callbacks: BootstrapCallbacks
+): Promise<UpgradeResult> {
+  const { NodeSSH } = loadNodeSsh()
+  const ssh = new NodeSSH()
+  const phase = (p: BootstrapPhase): void => callbacks.onPhase(p)
+  const log = (line: string): void => callbacks.onLine(line)
+
+  phase('connecting')
+  log(`connecting to ${target.raw} via ssh…`)
+  try {
+    const connectCfg = await resolveSshConnectConfig(target, log)
+    await ssh.connect(connectCfg)
+  } catch (err) {
+    const bootstrapErr = asBootstrapError(err, {
+      code: 'host_unreachable',
+      message: `could not connect to ${target.host}`
+    })
+    try { ssh.dispose() } catch { /* ignore */ }
+    throw Object.assign(new Error(bootstrapErr.message), { bootstrapError: bootstrapErr })
+  }
+  log('ssh connection established')
+
+  try {
+    // Install BEFORE stopping the old server: a download failure or a
+    // checksum mismatch then leaves the remote exactly as it was,
+    // still serving the sessions the user has open.
+    phase('upgrading')
+    log('running install-headless.sh…')
+    await runInstall(ssh, log)
+    const serverVersion = await probeServer(ssh)
+    log(`installed harness-server ${serverVersion ?? 'unknown'}`)
+
+    phase('restarting')
+    await stopRemoteServer(ssh, log)
+
+    phase('starting')
+    const state = await startServerDetached(ssh, log)
+
+    phase('tunneling')
+    log(`opening local→remote tunnel to 127.0.0.1:${state.port}…`)
+    // No preferred local port: the backend's previous tunnel is still
+    // bound to it (we only dispose it once this returns successfully,
+    // so a failed upgrade leaves the user connected). Asking for it
+    // would just take the EADDRINUSE fallback anyway, and an upgrade
+    // invalidates the renderer's terminal ids regardless.
+    const tunnel = await openTunnel(ssh, state.port)
+    log(`tunnel live on localhost:${tunnel.localPort}`)
+    phase('connected')
+    return {
+      localPort: tunnel.localPort,
+      token: state.token,
+      ssh,
+      tunnelServer: tunnel.server,
+      remotePort: state.port,
+      serverVersion
+    }
+  } catch (err) {
+    try { ssh.dispose() } catch { /* ignore */ }
+    if ((err as { bootstrapError?: BootstrapError }).bootstrapError) throw err
+    const fallback: BootstrapError = {
+      code: 'unknown',
+      message: err instanceof Error ? err.message : String(err)
+    }
     throw Object.assign(new Error(fallback.message), { bootstrapError: fallback })
   }
 }

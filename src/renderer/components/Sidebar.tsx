@@ -1,41 +1,20 @@
-import { useState, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Plus, Sparkles, Trash2, X, Layers, Rows3, AlertCircle, PanelLeftClose, Loader2, RefreshCw, GitPullRequest } from 'lucide-react'
+import { Trash2, Layers, Rows3, PanelLeftClose, RefreshCw } from 'lucide-react'
 import { Tooltip } from './Tooltip'
-import { HotkeyBadge } from './HotkeyBadge'
-import type { Worktree, PtyStatus, PendingTool, PRStatus, PendingWorktree, PendingDeletion } from '../types'
-import type { SnoozeEntry } from '../../shared/state'
-import type { AssignedPR } from '../../shared/state/assigned-prs'
 import type { GroupKey } from '../worktree-sort'
-import { groupWorktrees } from '../worktree-sort'
-import { WorktreeTab } from './WorktreeTab'
-import { SnoozeCalendar } from './SnoozeCalendar'
-import { repoNameColor } from './RepoIcon'
+import type { WorktreeListModel } from '../worktree-list-model'
+import { WorktreeList } from './WorktreeList'
 import { BackendChipStrip } from './BackendChipStrip'
 import { BottomIconStrip } from './BottomIconStrip'
-import { useBackend } from '../backend'
 
+/** The desktop shell around the shared worktree list: fixed-width panel,
+ *  header controls, backend chip strip and bottom icon strip. The list
+ *  itself lives in WorktreeList so the touch picker renders the same tree —
+ *  only this chrome is desktop-specific. */
 interface SidebarProps {
-  worktrees: Worktree[]
-  pendingWorktrees: PendingWorktree[]
-  pendingDeletions: PendingDeletion[]
+  model: WorktreeListModel
   activeWorktreeId: string | null
-  statuses: Record<string, PtyStatus>
-  pendingTools: Record<string, PendingTool | null>
-  shellActivity: Record<string, boolean>
-  prStatuses: Record<string, PRStatus | null>
-  mergedPaths?: Record<string, boolean>
-  /** GitHub login of the current user. Used to route PRs you didn't
-   *  author into the Reviewing group. Null until the /user call lands. */
-  viewerLogin?: string | null
-  snoozedPaths?: Record<string, true>
-  snoozeByPath?: Record<string, SnoozeEntry>
   snoozeDefaultDays?: number
   prLoading: boolean
-  /** PRs the viewer is a requested reviewer on, keyed by repoRoot.
-   *  Populated only when the `showAssignedPRs` setting is on. Rendered as
-   *  phantom entries in each repo's Reviewing group (deduped against
-   *  existing worktrees). */
-  assignedPRsByRepo?: Record<string, AssignedPR[]>
   onOpenAssignedPR?: (repoRoot: string, prNumber: number) => void
   /** Non-main worktrees. Used to decide whether to show the "spawn your first agent" nudge. */
   agentCount: number
@@ -46,7 +25,7 @@ interface SidebarProps {
   onDeleteWorktree: (path: string) => Promise<void>
   onPruneWorktrees: (repoRoot: string) => Promise<void>
   onRefresh: () => void
-  repoRoots: string[]
+  repoCount: number
   onAddRepo: () => void
   onRemoveRepo: (repoRoot: string) => Promise<void>
   onOpenSettings: () => void
@@ -58,10 +37,7 @@ interface SidebarProps {
   onOpenNewProject: () => void
   onOpenMyWeek: () => void
   width: number
-  collapsedGroups: Record<string, boolean>
   onToggleGroup: (scope: string, key: GroupKey) => void
-  isGroupCollapsed: (scope: string, key: GroupKey) => boolean
-  collapsedRepos: Record<string, boolean>
   onToggleRepo: (repoRoot: string) => void
   unifiedRepos: boolean
   onToggleUnifiedRepos: () => void
@@ -72,21 +48,10 @@ interface SidebarProps {
 }
 
 export function Sidebar({
-  worktrees,
-  pendingWorktrees,
-  pendingDeletions,
+  model,
   activeWorktreeId,
-  statuses,
-  pendingTools,
-  shellActivity,
-  prStatuses,
-  mergedPaths,
-  viewerLogin,
-  snoozedPaths,
-  snoozeByPath,
   snoozeDefaultDays,
   prLoading,
-  assignedPRsByRepo,
   onOpenAssignedPR,
   agentCount,
   onSelectWorktree,
@@ -96,7 +61,7 @@ export function Sidebar({
   onDeleteWorktree,
   onPruneWorktrees,
   onRefresh,
-  repoRoots,
+  repoCount,
   onAddRepo,
   onRemoveRepo,
   onOpenSettings,
@@ -108,10 +73,7 @@ export function Sidebar({
   onOpenNewProject,
   onOpenMyWeek,
   width,
-  collapsedGroups: _collapsedGroups,
   onToggleGroup,
-  isGroupCollapsed,
-  collapsedRepos,
   onToggleRepo,
   unifiedRepos,
   onToggleUnifiedRepos,
@@ -120,182 +82,8 @@ export function Sidebar({
   onStartAliasEdit,
   onEndAliasEdit
 }: SidebarProps): JSX.Element {
-  const backend = useBackend()
-  const deletingPaths = useMemo(() => {
-    const s = new Set<string>()
-    for (const d of pendingDeletions) s.add(d.path)
-    return s
-  }, [pendingDeletions])
-  const [continueTarget, setContinueTarget] = useState<{ path: string; oldBranch: string } | null>(null)
-  const [continueBranchName, setContinueBranchName] = useState('')
-  const [continuing, setContinuing] = useState(false)
-  const [continueError, setContinueError] = useState<string | null>(null)
-
-  const suggestContinueName = useCallback((oldBranch: string) => {
-    // Strip any trailing "-N" suffix, then add "-continued" (or bump N)
-    const match = oldBranch.match(/^(.*?)-continued(?:-(\d+))?$/)
-    if (match) {
-      const next = match[2] ? parseInt(match[2], 10) + 1 : 2
-      return `${match[1]}-continued-${next}`
-    }
-    return `${oldBranch}-continued`
-  }, [])
-
-  const beginContinue = useCallback(
-    (path: string, oldBranch: string) => {
-      setContinueTarget({ path, oldBranch })
-      setContinueBranchName(suggestContinueName(oldBranch))
-      setContinueError(null)
-    },
-    [suggestContinueName]
-  )
-
-  const cancelContinue = useCallback(() => {
-    setContinueTarget(null)
-    setContinueBranchName('')
-    setContinueError(null)
-  }, [])
-
-  const submitContinue = useCallback(async () => {
-    if (!continueTarget) return
-    const name = continueBranchName.trim()
-    if (!name) return
-    setContinuing(true)
-    setContinueError(null)
-    try {
-      await onContinueWorktree(continueTarget.path, name)
-      cancelContinue()
-    } catch (err) {
-      setContinueError(err instanceof Error ? err.message : 'Failed to continue worktree')
-    } finally {
-      setContinuing(false)
-    }
-  }, [continueTarget, continueBranchName, onContinueWorktree, cancelContinue])
-
-  const [calendarFor, setCalendarFor] = useState<{
-    path: string
-    anchor: { top: number; left: number; width: number; height: number }
-  } | null>(null)
-
-  const onSnoozeRow = useCallback(
-    (path: string, e: React.MouseEvent) => {
-      if (e.altKey) {
-        const target = e.currentTarget as HTMLElement
-        const rect = target.getBoundingClientRect()
-        setCalendarFor({
-          path,
-          anchor: {
-            top: rect.top,
-            left: rect.left,
-            width: rect.width,
-            height: rect.height
-          }
-        })
-        return
-      }
-      const days = Math.max(1, Math.floor(snoozeDefaultDays ?? 7))
-      void backend.snooze(path, Date.now() + days * 86400000)
-    },
-    [snoozeDefaultDays, backend]
-  )
-
-  const onUnsnoozeRow = useCallback((path: string) => {
-    void backend.unsnooze(path)
-  }, [backend])
-
-  const handleCalendarPick = useCallback(
-    (wakeAt: number) => {
-      if (!calendarFor) return
-      void backend.snooze(calendarFor.path, wakeAt)
-      setCalendarFor(null)
-    },
-    [calendarFor, backend]
-  )
-
-  const handleContinueKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') submitContinue()
-      if (e.key === 'Escape') cancelContinue()
-    },
-    [submitContinue, cancelContinue]
-  )
-
-  // Group worktrees by repo, preserving the user's repo order. In unified
-  // mode we short-circuit and return a single "synthetic" repo containing
-  // every worktree. Phantom PR entries (assignedPRsByRepo) are injected
-  // into each repo's Reviewing group, matching how worktrees are grouped:
-  // unified mode flattens all repos' phantoms into one list; split mode
-  // buckets them per repo.
-  const byRepo = useMemo(() => {
-    const allAssignedPRs: AssignedPR[] = assignedPRsByRepo
-      ? Object.values(assignedPRsByRepo).flat()
-      : []
-    if (unifiedRepos && repoRoots.length > 1) {
-      return [{
-        repoRoot: '__unified__',
-        groups: groupWorktrees(
-          worktrees,
-          prStatuses,
-          mergedPaths,
-          snoozedPaths,
-          viewerLogin,
-          allAssignedPRs
-        )
-      }]
-    }
-    const map = new Map<string, Worktree[]>()
-    for (const root of repoRoots) map.set(root, [])
-    for (const wt of worktrees) {
-      if (!map.has(wt.repoRoot)) map.set(wt.repoRoot, [])
-      map.get(wt.repoRoot)!.push(wt)
-    }
-    return Array.from(map.entries()).map(([repoRoot, wts]) => ({
-      repoRoot,
-      groups: groupWorktrees(
-        wts,
-        prStatuses,
-        mergedPaths,
-        snoozedPaths,
-        viewerLogin,
-        assignedPRsByRepo?.[repoRoot]
-      )
-    }))
-  }, [repoRoots, worktrees, prStatuses, mergedPaths, snoozedPaths, viewerLogin, unifiedRepos, assignedPRsByRepo])
-
-  const showRepoHeaders = repoRoots.length > 1 && !unifiedRepos
-  const showRepoLabelsOnTabs = repoRoots.length > 1 && unifiedRepos
-
-  // Assign Cmd+1..9 ordinals in the same order as App.tsx visibleWorktrees:
-  // iterate repos → groups, skipping collapsed repos/groups, so ordinals
-  // match the actual hotkey targets.
-  const cmdOrdinals = useMemo(() => {
-    const map = new Map<string, number>()
-    let n = 1
-    for (const { repoRoot, groups } of byRepo) {
-      if (repoRoot !== '__unified__' && collapsedRepos[repoRoot]) continue
-      for (const group of groups) {
-        if (isGroupCollapsed(repoRoot, group.key)) continue
-        for (const wt of group.worktrees) {
-          if (n > 9) break
-          map.set(wt.path, n)
-          n += 1
-        }
-        if (n > 9) break
-      }
-      if (n > 9) break
-    }
-    return map
-  }, [byRepo, collapsedRepos, isGroupCollapsed])
-
-  const repoLabelFor = useCallback((repoRoot: string): string => {
-    return repoRoot.split('/').pop() || repoRoot
-  }, [])
-
   return (
-    <div
-      className="shrink-0 bg-panel flex flex-col h-full"
-      style={{ width }}
-    >
+    <div className="shrink-0 bg-panel flex flex-col h-full" style={{ width }}>
       <svg width="0" height="0" className="absolute" aria-hidden="true">
         <defs>
           <linearGradient id="harness-add-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -329,7 +117,7 @@ export function Sidebar({
           </Tooltip>
           <Tooltip
             label={
-              repoRoots.length <= 1
+              repoCount <= 1
                 ? 'Merge repos into one list (add another repo to enable)'
                 : unifiedRepos
                   ? 'Split by repo'
@@ -339,7 +127,7 @@ export function Sidebar({
           >
             <button
               onClick={onToggleUnifiedRepos}
-              disabled={repoRoots.length <= 1}
+              disabled={repoCount <= 1}
               className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-dim"
             >
               {unifiedRepos ? <Rows3 className="icon-xs" /> : <Layers className="icon-xs" />}
@@ -356,205 +144,27 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* Worktree list grouped by PR status */}
       <div className="flex-1 overflow-y-auto py-1">
-        {agentCount === 0 && (
-          <button
-            onClick={() => onNewWorktree()}
-            className="group relative mx-2 mb-2 mt-1 w-[calc(100%-1rem)] text-left bg-panel-raised border border-border-strong hover:border-accent rounded-lg overflow-hidden transition-colors cursor-pointer"
-          >
-            <div className="brand-gradient-bg h-0.5" />
-            <div className="p-3">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Sparkles className="icon-xs text-accent" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-accent">
-                  Get started
-                </span>
-              </div>
-              <div className="text-sm font-semibold text-fg-bright leading-snug">
-                Spawn your first agent
-              </div>
-              <div className="text-xs text-dim mt-0.5 leading-snug">
-                Fork a branch and send a Claude into it.
-              </div>
-              <div className="mt-2">
-                <HotkeyBadge action="newWorktree" />
-              </div>
-            </div>
-          </button>
-        )}
-        {byRepo.map(({ repoRoot, groups }) => {
-          const repoCollapsed = collapsedRepos[repoRoot] === true
-          const repoName = repoRoot === '__unified__' ? 'All repos' : repoRoot.split('/').pop() || repoRoot
-          const scope = repoRoot
-          const repoWorktreeCount = groups.reduce(
-            (n, g) => n + g.worktrees.length + (g.phantomPRs?.length ?? 0),
-            0
-          )
-          const groupsBody = groups.map((group) => (
-          <div key={group.key}>
-            <button
-              onClick={() => onToggleGroup(scope, group.key)}
-              className="w-full flex items-center gap-1 px-3 py-1.5 text-xs text-dim hover:text-fg transition-colors cursor-pointer"
-              title={isGroupCollapsed(scope, group.key) ? `Expand ${group.label}` : `Collapse ${group.label}`}
-            >
-              {isGroupCollapsed(scope, group.key)
-                ? <ChevronRight className="icon-xs shrink-0" />
-                : <ChevronDown className="icon-xs shrink-0" />
-              }
-              <span className="font-medium">{group.label}</span>
-              <span className="text-faint ml-auto">
-                {group.worktrees.length + (group.phantomPRs?.length ?? 0)}
-              </span>
-            </button>
-            {!isGroupCollapsed(scope, group.key) && group.worktrees.map((wt) => (
-              <div key={wt.path}>
-                <WorktreeTab
-                  worktree={wt}
-                  isActive={wt.path === activeWorktreeId}
-                  status={statuses[wt.path] || 'idle'}
-                  pendingTool={pendingTools[wt.path] || null}
-                  shellActive={!!shellActivity[wt.path]}
-                  prStatus={prStatuses[wt.path]}
-                  isMerged={group.key === 'merged'}
-                  isSnoozed={!!snoozedPaths?.[wt.path]}
-                  snoozeWakeAt={snoozeByPath?.[wt.path]?.wakeAt}
-                  repoLabel={showRepoLabelsOnTabs ? repoLabelFor(wt.repoRoot) : undefined}
-                  cmdOrdinal={cmdOrdinals.get(wt.path)}
-                  deleting={deletingPaths.has(wt.path)}
-                  onClick={() => onSelectWorktree(wt.path)}
-                  onDelete={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => onDeleteWorktree(wt.path)}
-                  onPrune={wt.prunable ? () => onPruneWorktrees(wt.repoRoot) : undefined}
-                  onContinue={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => beginContinue(wt.path, wt.branch)}
-                  onSnooze={wt.isMain || deletingPaths.has(wt.path) ? undefined : (e) => onSnoozeRow(wt.path, e)}
-                  onUnsnooze={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => onUnsnoozeRow(wt.path)}
-                  isEditingAlias={editingAliasPath === wt.path}
-                  onStartAliasEdit={() => onStartAliasEdit(wt.path)}
-                  onEndAliasEdit={onEndAliasEdit}
-                />
-                {continueTarget?.path === wt.path && (
-                  <div className="border-y-2 border-accent bg-panel-raised p-2.5 shadow-inner">
-                    <div className="text-xs font-semibold uppercase tracking-wider text-accent mb-1.5 px-0.5">
-                      Continue on new branch
-                    </div>
-                    <input
-                      type="text"
-                      value={continueBranchName}
-                      onChange={(e) => setContinueBranchName(e.target.value)}
-                      onKeyDown={handleContinueKeyDown}
-                      placeholder="new-branch-name"
-                      autoFocus
-                      disabled={continuing}
-                      className="w-full bg-app border-2 border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-accent"
-                    />
-                    {continueError && (
-                      <div className="text-xs text-danger mt-1 px-1 truncate" title={continueError}>
-                        {continueError}
-                      </div>
-                    )}
-                    <div className="flex gap-1 mt-1.5">
-                      <button
-                        onClick={submitContinue}
-                        disabled={continuing || !continueBranchName.trim()}
-                        className="flex-1 text-xs bg-accent hover:opacity-90 disabled:opacity-40 rounded px-2 py-1 text-app font-semibold transition-opacity cursor-pointer"
-                      >
-                        {continuing ? 'Continuing...' : 'Continue'}
-                      </button>
-                      <button
-                        onClick={cancelContinue}
-                        disabled={continuing}
-                        className="text-xs text-dim hover:text-fg px-2 py-1 transition-colors cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-            {!isGroupCollapsed(scope, group.key) && group.phantomPRs?.map((pr) => (
-              <AssignedPRRow
-                key={`${pr.repoRoot}#${pr.number}`}
-                pr={pr}
-                showRepoLabel={showRepoLabelsOnTabs}
-                repoLabel={repoLabelFor(pr.repoRoot)}
-                onClick={() => onOpenAssignedPR?.(pr.repoRoot, pr.number)}
-              />
-            ))}
-          </div>
-          ))
-          const repoPendings =
-            repoRoot === '__unified__'
-              ? pendingWorktrees
-              : pendingWorktrees.filter((p) => p.repoRoot === repoRoot)
-          const pendingBody = repoPendings.map((pending) => (
-            <PendingWorktreeRow
-              key={pending.id}
-              pending={pending}
-              isActive={pending.id === activeWorktreeId}
-              onClick={() => onSelectWorktree(pending.id)}
-              onDismiss={() => onDismissPendingWorktree(pending.id)}
-            />
-          ))
-          return (
-            <div key={repoRoot}>
-              {showRepoHeaders && (
-                <button
-                  onClick={() => onToggleRepo(repoRoot)}
-                  className="group w-full flex items-center gap-1 px-3 mt-1 py-1.5 text-xs font-semibold uppercase tracking-wider text-dim hover:text-fg transition-colors cursor-pointer"
-                  title={repoRoot}
-                >
-                  {repoCollapsed
-                    ? <ChevronRight className="icon-xs shrink-0" />
-                    : <ChevronDown className="icon-xs shrink-0" />}
-                  <span className={`truncate ${repoNameColor(repoName)}`}>{repoName}</span>
-                  <span className="ml-auto relative flex items-center">
-                    <span className="text-faint normal-case group-hover:opacity-0 transition-opacity">
-                      {repoWorktreeCount}
-                    </span>
-                    <span
-                      role="button"
-                      className="absolute inset-0 flex items-center justify-end opacity-0 group-hover:opacity-100 text-faint hover:text-danger transition-opacity"
-                      title={`Remove ${repoName} from workspace`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        if (window.confirm(`Remove ${repoName} from this window? Worktrees stay on disk.`)) {
-                          void onRemoveRepo(repoRoot)
-                        }
-                      }}
-                    >
-                      <X className="icon-xs" />
-                    </span>
-                  </span>
-                </button>
-              )}
-              {!repoCollapsed && agentCount > 0 && (
-                <button
-                  onClick={() => onNewWorktree(repoRoot === '__unified__' ? undefined : repoRoot)}
-                  className="group relative w-full flex items-center gap-2 px-3 py-1.5 text-dim hover:bg-panel-raised transition-colors cursor-pointer overflow-hidden"
-                >
-                  <span className="absolute left-0 top-0 bottom-0 w-0.5 brand-gradient-flow-bar opacity-0 group-hover:opacity-100 transition-opacity" />
-                  <Plus
-                    className="icon-sm shrink-0 text-dim group-hover:[stroke:url(#harness-add-gradient)] transition-colors"
-                  />
-                  <span className="text-sm font-medium brand-gradient-flow-text-hover">
-                    Add worktree
-                  </span>
-                  {(repoRoot === '__unified__' || !showRepoHeaders) && (
-                    <HotkeyBadge action="newWorktree" className="ml-auto" />
-                  )}
-                </button>
-              )}
-              {!repoCollapsed && pendingBody}
-              {!repoCollapsed && groupsBody}
-            </div>
-          )
-        })}
-        {worktrees.length === 0 && agentCount > 0 && (
-          <div className="px-4 py-3 text-xs text-faint">
-            No worktrees found
-          </div>
-        )}
+        <WorktreeList
+          model={model}
+          variant="desktop"
+          activeWorktreeId={activeWorktreeId}
+          snoozeDefaultDays={snoozeDefaultDays}
+          agentCount={agentCount}
+          editingAliasPath={editingAliasPath}
+          onStartAliasEdit={onStartAliasEdit}
+          onEndAliasEdit={onEndAliasEdit}
+          onSelectWorktree={onSelectWorktree}
+          onToggleGroup={onToggleGroup}
+          onToggleRepo={onToggleRepo}
+          onNewWorktree={onNewWorktree}
+          onDismissPendingWorktree={onDismissPendingWorktree}
+          onContinueWorktree={onContinueWorktree}
+          onDeleteWorktree={onDeleteWorktree}
+          onPruneWorktrees={onPruneWorktrees}
+          onRemoveRepo={onRemoveRepo}
+          onOpenAssignedPR={onOpenAssignedPR}
+        />
       </div>
 
       {/* Backend chip strip — multi-backend UX (Tier 1). Auto-hides
@@ -578,88 +188,6 @@ export function Sidebar({
         onOpenHotkeyCheatsheet={onOpenHotkeyCheatsheet}
         onOpenSettings={onOpenSettings}
       />
-      {calendarFor && (
-        <SnoozeCalendar
-          anchor={calendarFor.anchor}
-          defaultDays={Math.max(1, Math.floor(snoozeDefaultDays ?? 7))}
-          onPick={handleCalendarPick}
-          onDismiss={() => setCalendarFor(null)}
-        />
-      )}
     </div>
-  )
-}
-
-interface PendingWorktreeRowProps {
-  pending: PendingWorktree
-  isActive: boolean
-  onClick: () => void
-  onDismiss: () => void
-}
-
-function PendingWorktreeRow({ pending, isActive, onClick, onDismiss }: PendingWorktreeRowProps): JSX.Element {
-  const isError = pending.status === 'error'
-  return (
-    <div
-      onClick={onClick}
-      className={`group w-full text-left px-3 py-2 flex items-center gap-2 transition-colors cursor-pointer ${
-        isActive ? 'bg-surface text-fg-bright' : 'text-muted hover:bg-panel-raised hover:text-fg'
-      }`}
-    >
-      {isError ? (
-        <AlertCircle className="icon-sm shrink-0 text-danger" />
-      ) : (
-        <Loader2 className="icon-sm shrink-0 text-accent animate-spin" />
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium truncate">{pending.branchName}</div>
-        <div className="text-xs text-faint truncate">
-          {isError ? 'Failed to create' : 'Creating worktree…'}
-        </div>
-      </div>
-      {isError && (
-        <Tooltip label="Dismiss" side="left">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onDismiss()
-            }}
-            className="opacity-0 group-hover:opacity-100 text-faint hover:text-danger transition-all shrink-0 cursor-pointer"
-          >
-            <X className="icon-xs" />
-          </button>
-        </Tooltip>
-      )}
-    </div>
-  )
-}
-
-interface AssignedPRRowProps {
-  pr: AssignedPR
-  showRepoLabel: boolean
-  repoLabel: string
-  onClick: () => void
-}
-
-function AssignedPRRow({ pr, showRepoLabel, repoLabel, onClick }: AssignedPRRowProps): JSX.Element {
-  return (
-    <button
-      onClick={onClick}
-      title={`Open PR #${pr.number} from ${pr.repoNameWithOwner} as a new worktree`}
-      className="group w-full text-left px-3 py-2 flex items-center gap-2 text-muted hover:bg-panel-raised hover:text-fg transition-colors cursor-pointer border-l-2 border-transparent hover:border-accent"
-    >
-      <GitPullRequest className={`icon-sm shrink-0 ${pr.isDraft ? 'text-dim' : 'text-accent'}`} />
-      <div className="min-w-0 flex-1">
-        <div className="text-sm truncate flex items-center gap-1.5">
-          <span className="text-faint">#{pr.number}</span>
-          <span className="truncate">{pr.title}</span>
-        </div>
-        <div className="text-xs text-faint truncate">
-          {showRepoLabel ? `${repoLabel} · ` : ''}
-          {pr.author?.login ? `by ${pr.author.login}` : 'assigned to you'}
-        </div>
-      </div>
-      <Plus className="icon-xs shrink-0 text-faint opacity-0 group-hover:opacity-100 transition-opacity" />
-    </button>
   )
 }

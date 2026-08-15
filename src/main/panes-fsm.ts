@@ -219,7 +219,10 @@ export class PanesFSM {
     }
   ): PaneNode {
     const existing = this.getTree(wtPath)
-    if (existing && hasAnyTabs(existing)) return existing
+    if (existing && hasAnyTabs(existing)) {
+      this.deliverLateKickoff(wtPath, existing, opts?.initialPrompt)
+      return existing
+    }
 
     // Belt-and-suspenders for issue #185: a prunable worktree points at a
     // directory that no longer exists on disk. Spawning a default agent
@@ -241,6 +244,7 @@ export class PanesFSM {
     if (sleeping && hasAnyTabs(sleeping)) {
       this.sleepingPanes.delete(wtPath)
       this.commit(wtPath, sleeping)
+      this.deliverLateKickoff(wtPath, sleeping, opts?.initialPrompt)
       return sleeping
     }
 
@@ -317,6 +321,30 @@ export class PanesFSM {
       )
     }
     return pane
+  }
+
+  /** A prompt-less ensureInitialized can beat the one carrying a new
+   *  worktree's kickoff prompt — main's `worktrees/listChanged`
+   *  subscriber inits every path it sees, and a concurrent creation's
+   *  refreshList can surface this worktree while its setup script is
+   *  still running. Rather than dropping the prompt on the floor, hand
+   *  it to the chat tab that already exists. `startJsonClaudeWithPrompt`
+   *  is idempotent on the spawn and sends the prompt either way. */
+  private deliverLateKickoff(wtPath: string, tree: PaneNode, initialPrompt?: string): void {
+    if (!initialPrompt) return
+    const chatTab = getLeaves(tree)
+      .flatMap((leaf) => leaf.tabs)
+      .find((t) => t.type === 'json-claude')
+    if (!chatTab) {
+      log('panes-fsm', `late kickoff dropped — no chat tab wtPath=${wtPath}`)
+      return
+    }
+    log('panes-fsm', `late kickoff → sessionId=${chatTab.sessionId ?? chatTab.id} wtPath=${wtPath}`)
+    this.opts.startJsonClaudeWithPrompt?.(
+      chatTab.sessionId ?? chatTab.id,
+      wtPath,
+      initialPrompt
+    )
   }
 
   addTab(wtPath: string, tab: TerminalTab, paneId?: string): void {

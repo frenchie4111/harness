@@ -626,6 +626,11 @@ export interface ElectronAPI {
   getJsonClaudeEntries(sessionId: string): Promise<JsonClaudeChatEntry[]>
   killJsonClaude(id: string): Promise<boolean>
   interruptJsonClaude(id: string): Promise<boolean>
+  interruptAndSendJsonClaude(
+    id: string,
+    text: string,
+    images?: Array<{ mediaType: string; data: string; path: string }>
+  ): Promise<{ ok: boolean; reason?: string }>
   rewindJsonClaudeTo(
     id: string,
     entryId: string
@@ -694,6 +699,19 @@ export interface ElectronAPI {
     bootstrapId: string
     connectionId: string
   }): Promise<{ url: string; token: string; localPort: number }>
+  /** Re-install harness-server on an SSH backend and restart it.
+   *  Destructive — every session on that remote dies. Confirm with the
+   *  user first. Resolves with the new loopback URL/token; the caller
+   *  must drop and re-hydrate the backend's WS transport. */
+  sshUpgradeServer(input: {
+    bootstrapId: string
+    connectionId: string
+  }): Promise<{
+    url: string
+    token: string
+    localPort: number
+    serverVersion: string | null
+  }>
 }
 
 /** An SSH host parsed out of `~/.ssh/config`. Mirrors the main-process

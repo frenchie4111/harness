@@ -1,11 +1,13 @@
-import { useCallback } from 'react'
-import { Laptop, Server, Plus, X } from 'lucide-react'
+import { useCallback, useState } from 'react'
+import { Laptop, Server, Plus, X, ArrowUp, Loader2 } from 'lucide-react'
 import { useBackend } from '../backend'
 import {
   useConnections,
   useActiveBackend,
   useBackendStatus,
-  getBackendsRegistry
+  useRemoteServerVersion,
+  getBackendsRegistry,
+  reconnectBackend
 } from '../store'
 import { Tooltip } from './Tooltip'
 import type { BackendConnection } from '../types'
@@ -93,11 +95,43 @@ interface BackendChipProps {
 function BackendChip({ connection, isActive, onSelect, onRemove }: BackendChipProps): JSX.Element {
   const Icon = connection.kind === 'local' ? Laptop : Server
   const status = useBackendStatus(connection.id)
+  const backend = useBackend()
+  const serverVersion = useRemoteServerVersion(connection.id)
+  const [upgrading, setUpgrading] = useState(false)
   const disconnected = status.state === 'disconnected'
   const isRemote = connection.kind === 'remote'
+  const canUpgrade = Boolean(connection.ssh) && serverVersion?.upgradeAvailable === true
   const tooltip = disconnected
     ? `${connection.label} — disconnected${status.reason ? ': ' + status.reason : ''}`
-    : connection.label
+    : serverVersion
+      ? `${connection.label} — harness-server ${serverVersion.installed}`
+      : connection.label
+
+  const handleUpgrade = useCallback(async () => {
+    if (!serverVersion || upgrading) return
+    const ok = window.confirm(
+      `Upgrade harness-server on "${connection.label}" from ${serverVersion.installed} to ${serverVersion.expected}?\n\n` +
+        `The remote server will be restarted. Every terminal and agent session running on that machine will be terminated.`
+    )
+    if (!ok) return
+    setUpgrading(true)
+    try {
+      await backend.sshUpgradeServer({
+        bootstrapId: `upgrade-${connection.id}-${Date.now()}`,
+        connectionId: connection.id
+      })
+      // The server came back on a new port with a new token, so the
+      // existing socket is dead — swap in a transport pointed at the
+      // fresh tunnel.
+      await reconnectBackend(connection.id)
+    } catch (err) {
+      window.alert(
+        `Upgrade failed for "${connection.label}":\n\n${err instanceof Error ? err.message : String(err)}`
+      )
+    } finally {
+      setUpgrading(false)
+    }
+  }, [backend, connection.id, connection.label, serverVersion, upgrading])
   // Outer wrapper is a div, not a button, so the inner remove `<button>`
   // doesn't nest button elements (invalid HTML). The chip body is a
   // button; the remove X is a separate button positioned over the
@@ -140,6 +174,33 @@ function BackendChip({ connection, isActive, onSelect, onRemove }: BackendChipPr
           <span className="text-xs font-medium truncate min-w-0">{connection.label}</span>
         </button>
       </Tooltip>
+      {(canUpgrade || upgrading) && (
+        <Tooltip
+          label={
+            upgrading
+              ? `Upgrading ${connection.label}…`
+              : `harness-server ${serverVersion?.installed} — this Harness is ${serverVersion?.expected}. Click to upgrade (restarts the remote, ending its sessions).`
+          }
+          side="top"
+        >
+          <button
+            type="button"
+            disabled={upgrading}
+            onClick={(e) => {
+              e.stopPropagation()
+              void handleUpgrade()
+            }}
+            aria-label={`Upgrade harness-server on ${connection.label}`}
+            className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-panel-raised border border-accent text-accent flex items-center justify-center cursor-pointer disabled:cursor-default"
+          >
+            {upgrading ? (
+              <Loader2 strokeWidth={2.5} className="icon-2xs animate-spin" />
+            ) : (
+              <ArrowUp strokeWidth={3} className="icon-2xs" />
+            )}
+          </button>
+        </Tooltip>
+      )}
       {isRemote && (
         <Tooltip label="Remove backend" side="top">
           <button
