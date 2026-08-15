@@ -486,6 +486,130 @@ describe('JsonClaudeManager', () => {
     })
   })
 
+  // Envelopes below are verbatim from a stream-json capture against the
+  // bundled binary (claude_code_version 2.1.221) launching an Agent with
+  // run_in_background: true.
+  describe('background agent lifecycle', () => {
+    const TOOL_USE_ID = 'toolu_01STMJPUVRK9XDsKNYodS3yt'
+    const TASK_ID = 'a05e8b79e720910e8'
+
+    function setup(): { store: Store; feed: (ev: object) => void } {
+      const store = new Store()
+      const mgr = makeManager(store)
+      const sessionId = 'sess-bg'
+      store.dispatch({
+        type: 'jsonClaude/sessionStarted',
+        payload: { sessionId, worktreePath: '/tmp/wt' }
+      })
+      mgr.create(sessionId, '/tmp/wt')
+      const proc = sessionProcs()[0]
+      return {
+        store,
+        feed: (ev: object) =>
+          proc.stdout.emit('data', Buffer.from(JSON.stringify(ev) + '\n'))
+      }
+    }
+
+    function agents(store: Store) {
+      return store.getSnapshot().state.jsonClaude.sessions['sess-bg']
+        ?.backgroundAgents
+    }
+
+    const started = {
+      type: 'system',
+      subtype: 'task_started',
+      task_id: TASK_ID,
+      tool_use_id: TOOL_USE_ID,
+      description: 'Run echo/sleep command',
+      subagent_type: 'general-purpose',
+      task_type: 'local_agent'
+    }
+
+    it('task_started records a running agent keyed by tool_use id', () => {
+      const { store, feed } = setup()
+      feed(started)
+      const agent = agents(store)?.[TOOL_USE_ID]
+      expect(agent?.status).toBe('running')
+      expect(agent?.agentId).toBe(TASK_ID)
+      expect(agent?.description).toBe('Run echo/sleep command')
+    })
+
+    it('task_notification settles the agent and records usage', () => {
+      const { store, feed } = setup()
+      feed(started)
+      feed({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: TASK_ID,
+        tool_use_id: TOOL_USE_ID,
+        status: 'completed',
+        summary: 'Command run: `echo alpha`',
+        usage: { total_tokens: 10854, tool_uses: 1, duration_ms: 10133 }
+      })
+      const agent = agents(store)?.[TOOL_USE_ID]
+      expect(agent?.status).toBe('completed')
+      expect(agent?.usage).toEqual({
+        totalTokens: 10854,
+        toolUses: 1,
+        durationMs: 10133
+      })
+    })
+
+    it('a non-completed status settles as failed', () => {
+      const { store, feed } = setup()
+      feed(started)
+      feed({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: TASK_ID,
+        tool_use_id: TOOL_USE_ID,
+        status: 'cancelled'
+      })
+      expect(agents(store)?.[TOOL_USE_ID]?.status).toBe('failed')
+    })
+
+    // The card must show the agent's answer, not the "Async agent launched
+    // successfully…" stub that resolved the tool_use immediately.
+    it('the notification summary supersedes the launch stub tool_result', () => {
+      const { store, feed } = setup()
+      feed(started)
+      feed({
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: TOOL_USE_ID,
+              content: 'Async agent launched successfully.'
+            }
+          ]
+        }
+      })
+      feed({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: TASK_ID,
+        tool_use_id: TOOL_USE_ID,
+        status: 'completed',
+        summary: 'Exact stdout: alpha'
+      })
+      const entries =
+        store.getSnapshot().state.jsonClaude.sessions['sess-bg']?.entries ?? []
+      const results = entries
+        .flatMap((e) => e.blocks ?? [])
+        .filter((b) => b.type === 'tool_result' && b.toolUseId === TOOL_USE_ID)
+      expect(results[results.length - 1]?.content).toBe('Exact stdout: alpha')
+    })
+
+    it('ignores a task event with no tool_use_id', () => {
+      const { store, feed } = setup()
+      feed({ type: 'system', subtype: 'task_started', task_id: TASK_ID })
+      expect(Object.keys(agents(store) ?? {})).toHaveLength(0)
+    })
+  })
+
   it("new proc's own exit event still updates state (guard doesn't block legitimate exits)", () => {
     const store = new Store()
     const mgr = makeManager(store)

@@ -48,17 +48,32 @@ export function TaskCard({
   const autoExpandTrigger =
     taskInFlight || subAgentDescendantHasPendingApproval
 
-  const wasAutoExpandedRef = useRef(autoExpandTrigger)
+  // Auto-expand fires on the *edges* of the trigger, never on its steady
+  // state — depending on `expanded` here would re-open the card the instant
+  // the user collapsed it, which for a long-running background agent means
+  // it can't be collapsed at all.
+  const prevTriggerRef = useRef(autoExpandTrigger)
+  const prevApprovalRef = useRef(subAgentDescendantHasPendingApproval)
+  const userOverrodeRef = useRef(false)
   const [expanded, setExpanded] = useState<boolean>(autoExpandTrigger)
   useEffect(() => {
-    if (autoExpandTrigger && !expanded) {
-      wasAutoExpandedRef.current = true
+    const prevTrigger = prevTriggerRef.current
+    const prevApproval = prevApprovalRef.current
+    prevTriggerRef.current = autoExpandTrigger
+    prevApprovalRef.current = subAgentDescendantHasPendingApproval
+
+    // A newly-arrived approval overrides a manual collapse — the user has
+    // to see what they're being asked to approve.
+    if (subAgentDescendantHasPendingApproval && !prevApproval) {
+      userOverrodeRef.current = false
       setExpanded(true)
-    } else if (!autoExpandTrigger && wasAutoExpandedRef.current && expanded) {
-      wasAutoExpandedRef.current = false
+    } else if (autoExpandTrigger && !prevTrigger) {
+      userOverrodeRef.current = false
+      setExpanded(true)
+    } else if (!autoExpandTrigger && prevTrigger && !userOverrodeRef.current) {
       setExpanded(false)
     }
-  }, [autoExpandTrigger, expanded])
+  }, [autoExpandTrigger, subAgentDescendantHasPendingApproval])
 
   const isError = !!result?.isError || backgroundAgent?.status === 'failed'
   const countLabel =
@@ -90,7 +105,7 @@ export function TaskCard({
       <button
         type="button"
         onClick={() => {
-          wasAutoExpandedRef.current = false
+          userOverrodeRef.current = true
           setExpanded((v) => !v)
         }}
         className="w-full flex items-center gap-2 cursor-pointer hover:bg-app/60 transition-colors text-left"
