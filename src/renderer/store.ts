@@ -33,6 +33,7 @@ import {
   type StateEvent,
   type WireSnapshotState
 } from '../shared/state'
+import type { RemoteServerVersion } from '../shared/state/ssh-bootstrap'
 import type { LocalTransportHandle, BackendConnection } from './types'
 import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
 import { initBackend, getBackend } from './backend'
@@ -555,6 +556,20 @@ export async function hydrateRemoteBackend(
   }
 }
 
+/** Tear a remote backend's WS transport down and reconnect it from
+ *  scratch. Needed after an upgrade restarts the remote server: it comes
+ *  back on a new port with a new token, so the live socket is pointed at
+ *  a tunnel that no longer exists and no amount of WS-level retrying
+ *  will recover it. Active-backend selection survives the swap. */
+export async function reconnectBackend(connectionId: string): Promise<void> {
+  const conn = registry.getConnection(connectionId)
+  if (!conn || conn.kind !== 'remote') return
+  const wasActive = registry.getActiveId() === connectionId
+  registry.remove(connectionId)
+  await hydrateRemoteBackend(conn, { registry, backend: getBackend() })
+  if (wasActive && registry.has(connectionId)) registry.setActive(connectionId)
+}
+
 function getActiveState(): AppState {
   return registry.getActiveStore().getState()
 }
@@ -641,7 +656,7 @@ export function useScratchpad(worktreePath: string | null): string {
  *  when the bootstrap id is unknown (e.g. just cleared) so the modal can
  *  render a fresh state without dereferencing undefined. */
 export function useSshBootstrap(bootstrapId: string | null) {
-  return useAppState((s) =>
+  return useLocalAppState((s) =>
     bootstrapId ? (s.sshBootstrap.byId[bootstrapId] ?? null) : null
   )
 }
@@ -650,7 +665,39 @@ export function useSshBootstrap(bootstrapId: string | null) {
  *  chip strip when it wants to show "reconnecting…" on boot-time
  *  reconnects (commit 4). */
 export function useSshBootstrapAll() {
-  return useAppState((s) => s.sshBootstrap.byId)
+  return useLocalAppState((s) => s.sshBootstrap.byId)
+}
+
+/** Selector hook pinned to the LOCAL backend's store, whatever is
+ *  active. The local Electron process owns every SSH connection, so the
+ *  sshBootstrap slice only ever populates there — a chip-strip
+ *  affordance reading via `useAppState` would go blank the moment the
+ *  user switched to the remote it describes. */
+export function useLocalAppState<T>(selector: (s: AppState) => T): T {
+  return useSyncExternalStore(
+    subscribeLocal,
+    () => selector(getLocalState()),
+    () => selector(initialState)
+  )
+}
+
+// Module-level so the subscribe identity is stable across renders —
+// an inline arrow would make useSyncExternalStore re-subscribe on
+// every commit.
+function subscribeLocal(cb: () => void): () => void {
+  const store = registry.getStore(LOCAL_BACKEND_ID)
+  return store ? store.subscribe(cb) : () => {}
+}
+
+function getLocalState(): AppState {
+  return registry.getStore(LOCAL_BACKEND_ID)?.getState() ?? initialState
+}
+
+/** Version of `harness-server` running on an SSH backend, or null if we
+ *  haven't probed it (non-SSH backend, or the probe hasn't run yet).
+ *  `upgradeAvailable` drives the chip strip's upgrade affordance. */
+export function useRemoteServerVersion(connectionId: string): RemoteServerVersion | null {
+  return useLocalAppState((s) => s.sshBootstrap.serverVersions[connectionId] ?? null)
 }
 
 export function useAliases() {

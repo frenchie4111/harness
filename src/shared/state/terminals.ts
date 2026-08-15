@@ -449,7 +449,7 @@ export function terminalsReducer(
       for (const [path, tree] of Object.entries(state.panes)) {
         nextPanes[path] = mapLeaves(tree, (leaf) => {
           const newTabs = leaf.tabs.map((tab) => {
-            if (tab.id !== terminalId || tab.sessionId) return tab
+            if (tab.id !== terminalId || tab.sessionId === sessionId) return tab
             changed = true
             return { ...tab, sessionId }
           })

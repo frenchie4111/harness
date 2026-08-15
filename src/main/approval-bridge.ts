@@ -21,7 +21,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { mkdtempSync, existsSync, unlinkSync } from 'node:fs'
 import type { Store } from './store'
-import type { JsonClaudePendingApproval } from '../shared/state/json-claude'
+import {
+  QUESTION_TOOL_NAME,
+  type JsonClaudePendingApproval
+} from '../shared/state/json-claude'
 import { log } from './debug'
 import { autoReview, checkDenyList } from './auto-approver'
 import type { AutoReviewStatus } from '../shared/state/json-claude'
@@ -154,15 +157,17 @@ export class ApprovalBridge {
 
   /** Deny every pending approval attached to `sessionId` and drop them
    *  from the slice. Unlike stopSession, the per-session server keeps
-   *  listening — the caller is doing a kill+respawn (rewind) and a
-   *  fresh MCP connection will land on the same socket after respawn.
-   *  Mirrors the deny loop in stopSession. */
-  cancelPendingForSession(sessionId: string): void {
+   *  listening — the caller is either doing a kill+respawn (rewind), in
+   *  which case a fresh MCP connection lands on the same socket, or
+   *  abandoning the current turn on a live subprocess (interrupt-and-
+   *  send). `reason` is the denial message Claude sees. Mirrors the deny
+   *  loop in stopSession. */
+  cancelPendingForSession(sessionId: string, reason = 'session rewound'): void {
     for (const [id, pending] of Array.from(this.pendingResponses.entries())) {
       if (pending.sessionId !== sessionId) continue
       this.writeResponse(pending.socket, id, {
         behavior: 'deny',
-        message: 'session rewound'
+        message: reason
       })
       this.pendingResponses.delete(id)
       this.store.dispatch({
@@ -274,6 +279,11 @@ export class ApprovalBridge {
       timestamp: frame.timestamp || Date.now()
     }
 
+    // AskUserQuestion carries the user's answers back in the approval
+    // response itself, so it must always reach a human — see
+    // QUESTION_TOOL_NAME. Bail out above both auto-resolve paths.
+    const isQuestion = basePayload.toolName === QUESTION_TOOL_NAME
+
     // Session-scoped auto-allow set: the user clicked "Allow {tool} this
     // session" on a previous approval, so the bridge resolves matching
     // tools directly without surfacing a card. Checked before the LLM
@@ -281,7 +291,7 @@ export class ApprovalBridge {
     // authoritative than a Haiku call.
     const slice = this.store.getSnapshot().state.jsonClaude
     const session = slice.sessions[basePayload.sessionId]
-    if (session?.sessionToolApprovals.includes(basePayload.toolName)) {
+    if (!isQuestion && session?.sessionToolApprovals.includes(basePayload.toolName)) {
       this.writeResponse(socket, frame.id, {
         behavior: 'allow',
         updatedInput: basePayload.input
@@ -309,7 +319,7 @@ export class ApprovalBridge {
     //   - feature off            → no autoReview field, plain prompt.
     //   - deny-list match        → finished/ask, with the deny reason.
     //   - otherwise              → pending (spinner) + Haiku spawned below.
-    const enabled = this.deps?.isAutoApproveEnabled() ?? false
+    const enabled = (this.deps?.isAutoApproveEnabled() ?? false) && !isQuestion
     let autoReview: AutoReviewStatus | undefined
     let denyReason: string | null = null
     if (enabled) {

@@ -4,6 +4,7 @@ import type { Worktree, PtyStatus, PRStatus, ChangedFile } from '../types'
 import type { Action, HotkeyBinding } from '../hotkeys'
 import { ACTION_LABELS, bindingToString } from '../hotkeys'
 import { groupWorktrees, GROUP_ORDER, GROUP_LABELS, type GroupKey } from '../worktree-sort'
+import { STATUS_COLORS, STATUS_LABELS, prIconStyle } from '../worktree-row-style'
 import { repoNameColor } from './RepoIcon'
 import { fuzzyMatch } from '../fuzzy'
 import { useBackend } from '../backend'
@@ -154,35 +155,6 @@ function pushRecent(worktreePath: string, filePath: string): void {
   }
 }
 
-const STATUS_COLORS: Record<PtyStatus | 'merged', string> = {
-  idle: 'bg-faint',
-  processing: 'bg-success animate-pulse',
-  waiting: 'bg-warning',
-  'needs-approval': 'bg-danger animate-pulse',
-  merged: 'bg-accent',
-}
-
-const STATUS_LABELS: Record<PtyStatus | 'merged', string> = {
-  idle: 'Idle',
-  processing: 'Working...',
-  waiting: 'Waiting for input',
-  'needs-approval': 'Needs approval',
-  merged: 'Merged',
-}
-
-const PR_ICON_COLOR: Record<string, string> = {
-  success: 'text-success',
-  failure: 'text-danger',
-  pending: 'text-warning',
-  none: 'text-dim',
-}
-
-const PR_STATE_COLOR: Record<string, string> = {
-  open: 'text-success',
-  draft: 'text-dim',
-  merged: 'text-accent',
-  closed: 'text-danger',
-}
 
 const EXCLUDED_ACTIONS: Set<Action> = new Set([
   'worktree1', 'worktree2', 'worktree3', 'worktree4', 'worktree5',
@@ -208,16 +180,6 @@ function fuzzyScore(query: string, text: string): number {
   }
   if (t.startsWith(q)) score += 20
   return qi === q.length ? score : -1
-}
-
-function prIconColor(pr: PRStatus): string {
-  if (pr.state === 'merged') return PR_STATE_COLOR.merged
-  if (pr.state === 'closed') return PR_STATE_COLOR.closed
-  if (pr.hasConflict === true) return PR_ICON_COLOR.failure
-  if (pr.checksOverall === 'failure') return PR_ICON_COLOR.failure
-  if (pr.checksOverall === 'pending') return PR_ICON_COLOR.pending
-  if (pr.checksOverall === 'success') return PR_ICON_COLOR.success
-  return PR_STATE_COLOR[pr.state] || PR_ICON_COLOR.none
 }
 
 export function CommandPalette({
@@ -710,10 +672,7 @@ export function CommandPalette({
               const isActive = wt.path === activeWorktreeId
               const repoName = multiRepo ? (wt.repoRoot.split('/').pop() || wt.repoRoot) : undefined
 
-              let iconColor = ''
-              if (pr) {
-                iconColor = prIconColor(pr)
-              }
+              const { iconColor } = prIconStyle(pr)
 
               const key = item.kind === 'recent-worktree' ? `recent-wt-${wt.path}` : wt.path
 

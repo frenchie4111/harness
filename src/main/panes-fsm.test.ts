@@ -299,6 +299,49 @@ describe('PanesFSM.ensureInitialized', () => {
     expect(shell!.id).not.toContain('/')
     expect(shell!.id).toMatch(/^shell-/)
   })
+
+  it('sends the kickoff prompt to an existing chat tab instead of dropping it', () => {
+    // A prompt-less ensureInitialized (main's worktrees/listChanged sweep)
+    // can win the race against the creation FSM's prompt-carrying one while
+    // the setup script is still running.
+    const store = new Store()
+    const startJsonClaudeWithPrompt = vi.fn()
+    const fsm = new PanesFSM(store, {
+      persist: () => {},
+      getRepoRootForWorktree: () => undefined,
+      getLatestClaudeSessionId: async () => null,
+      getDefaultClaudeTabType: () => 'json',
+      startJsonClaudeWithPrompt
+    })
+    const wtPath = '/tmp/raced'
+    store.dispatch({
+      type: 'worktrees/listChanged',
+      payload: [
+        {
+          path: wtPath,
+          branch: 'feature',
+          head: '',
+          isBare: false,
+          isMain: false,
+          createdAt: 0,
+          repoRoot: '/tmp/repo'
+        }
+      ]
+    })
+
+    fsm.ensureInitialized(wtPath)
+    expect(startJsonClaudeWithPrompt).not.toHaveBeenCalled()
+    const raced = store.getSnapshot().state.terminals.panes[wtPath] as PaneLeaf
+    const chat = raced.tabs.find((t) => t.type === 'json-claude')!
+
+    fsm.ensureInitialized(wtPath, { initialPrompt: 'go build the thing' })
+
+    expect(startJsonClaudeWithPrompt).toHaveBeenCalledWith(
+      chat.id,
+      wtPath,
+      'go build the thing'
+    )
+  })
 })
 
 describe('PanesFSM.openFileTab', () => {

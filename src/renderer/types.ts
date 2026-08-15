@@ -1,8 +1,8 @@
 import type { StateEvent, StateSnapshot } from '../shared/state'
 export type { StateEvent, StateSnapshot }
 
-import type { Worktree, PendingWorktree, PendingDeletion } from '../shared/state/worktrees'
-export type { Worktree, PendingWorktree, PendingDeletion }
+import type { Worktree, PendingWorktree, PendingDeletion, ForkSource } from '../shared/state/worktrees'
+export type { Worktree, PendingWorktree, PendingDeletion, ForkSource }
 
 import type { RepoConfig } from '../shared/state/repo-configs'
 export type { RepoConfig }
@@ -212,6 +212,7 @@ export interface ElectronAPI {
     teleportSessionId?: string
     agentKind?: AgentKind
     model?: string,
+    forkSource?: ForkSource
     checkoutExisting?: boolean
     baseRef?: string
   }): Promise<
@@ -361,6 +362,7 @@ export interface ElectronAPI {
   getLanAddresses(): Promise<Array<{ iface: string; address: string }>>
   setBrowserToolsEnabled(enabled: boolean): Promise<boolean>
   setBrowserToolsMode(mode: 'view' | 'full'): Promise<boolean>
+  setConversationForkEnabled(enabled: boolean): Promise<boolean>
   setDefaultClaudeTabType(value: 'xterm' | 'json'): Promise<boolean>
   setChatPromotionDismissed(value: boolean): Promise<boolean>
   setJsonModeChatDensity(value: 'compact' | 'comfy'): Promise<boolean>
@@ -624,6 +626,11 @@ export interface ElectronAPI {
   getJsonClaudeEntries(sessionId: string): Promise<JsonClaudeChatEntry[]>
   killJsonClaude(id: string): Promise<boolean>
   interruptJsonClaude(id: string): Promise<boolean>
+  interruptAndSendJsonClaude(
+    id: string,
+    text: string,
+    images?: Array<{ mediaType: string; data: string; path: string }>
+  ): Promise<{ ok: boolean; reason?: string }>
   rewindJsonClaudeTo(
     id: string,
     entryId: string
@@ -692,6 +699,19 @@ export interface ElectronAPI {
     bootstrapId: string
     connectionId: string
   }): Promise<{ url: string; token: string; localPort: number }>
+  /** Re-install harness-server on an SSH backend and restart it.
+   *  Destructive — every session on that remote dies. Confirm with the
+   *  user first. Resolves with the new loopback URL/token; the caller
+   *  must drop and re-hydrate the backend's WS transport. */
+  sshUpgradeServer(input: {
+    bootstrapId: string
+    connectionId: string
+  }): Promise<{
+    url: string
+    token: string
+    localPort: number
+    serverVersion: string | null
+  }>
 }
 
 /** An SSH host parsed out of `~/.ssh/config`. Mirrors the main-process

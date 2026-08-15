@@ -12,7 +12,8 @@ import { randomUUID } from 'crypto'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { ApprovalBridge } from './approval-bridge'
-import { JsonClaudeManager, bundledClaudeBinPath } from './json-claude-manager'
+import { JsonClaudeManager, bundledClaudeBinPath, forkTranscript, hasForkableTranscript } from './json-claude-manager'
+import { buildRelocationPreamble } from './fork-relocation'
 import { shellQuote } from './shell-quote'
 import {
   readAttachmentImage,
@@ -87,6 +88,7 @@ import { resolveRepoPath } from './repo-resolve'
 import { registerRepoRoot } from './repo-roots'
 import type { AddRepoResult } from '../shared/repo-pick'
 import { isWorktreeMerged } from '../shared/state/prs'
+import type { ForkSource } from '../shared/state/worktrees'
 import { MAX_WAKE } from '../shared/state/snooze'
 import { hasScratchpadNote } from '../shared/state/scratchpad'
 import { normalizeAlias } from '../shared/state/aliases'
@@ -119,7 +121,7 @@ import { getControlServerInfo } from './control-server'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
 import { log, getLogFilePath } from './debug'
 import { loadCustomThemes } from './themes-loader'
-import { perfLog } from './perf-log'
+import { perfLog, flushPerfLogSync } from './perf-log'
 import { buildInitialAppState } from './build-initial-state'
 import { AnnouncementsPoller } from './announcements-poller'
 
@@ -922,13 +924,104 @@ function startJsonClaudeSession(sessionId: string, worktreePath: string): void {
   jsonClaudeManager.create(sessionId, worktreePath, permMode, findJsonClaudeTabModel(sessionId))
 }
 
+/** Resolve what the new worktree's first agent tab should start from,
+ *  performing the transcript fork when one was requested. Shared by the FSM
+ *  path (UI creation) and the MCP path (worktrees:externalCreate) so both
+ *  produce an identically-seeded session. */
+async function resolveForkedKickoff(args: {
+  createdPath: string
+  initialPrompt?: string
+  forkSource?: ForkSource
+  baseRef?: string
+}): Promise<{ initialPrompt?: string; forkedSessionId?: string }> {
+  const { createdPath, initialPrompt, forkSource, baseRef } = args
+  if (!forkSource) return { initialPrompt }
+
+  const outcome = forkTranscript({
+    sourceSessionId: forkSource.sessionId,
+    sourceWorktreePath: forkSource.worktreePath,
+    destWorktreePath: createdPath
+  })
+  if (!outcome.ok || !outcome.newSessionId) {
+    // Degrade to a normal empty session rather than failing creation —
+    // the worktree already exists on disk at this point.
+    log('worktrees', `conversation fork into ${createdPath} failed: ${outcome.reason}`)
+    return { initialPrompt }
+  }
+
+  const preamble = await buildRelocationPreamble({
+    sourceWorktreePath: forkSource.worktreePath,
+    destWorktreePath: createdPath,
+    baseRef
+  })
+  return {
+    initialPrompt: `${preamble}${initialPrompt ?? ''}`,
+    forkedSessionId: outcome.newSessionId
+  }
+}
+
+/** Interrupt an in-flight json-claude turn and wait for it to actually
+ *  reach a boundary. Callers that touch the session's stdin or jsonl
+ *  right after (interrupt-and-send, rewind, model swap) need the turn
+ *  stopped first, not merely asked to stop.
+ *
+ *  Two ordering traps, both load-bearing:
+ *  - Subscribe BEFORE writing the interrupt frame, or the dispatch we're
+ *    waiting for can land before the listener exists.
+ *  - Ignore anything dispatched DURING manager.interrupt(): it flips busy
+ *    off optimistically in its own synchronous dispatch, so an ungated
+ *    listener resolves on that instead of on the subprocess's `result`
+ *    frame and we're back to racing the dying turn.
+ *
+ *  An aborted turn doesn't always emit a result frame, hence the timeout
+ *  fallback. `via=` in the log line says which path a given call took. */
+const QUIESCE_TIMEOUT_MS = 1500
+async function interruptAndQuiesce(sessionId: string): Promise<void> {
+  await new Promise<void>((resolve) => {
+    let settled = false
+    let armed = false
+    const startedAt = Date.now()
+    const finish = (via: 'boundary' | 'timeout'): void => {
+      if (settled) return
+      settled = true
+      unsub()
+      clearTimeout(timer)
+      log(
+        'json-claude',
+        `quiesce sessionId=${sessionId} via=${via} ms=${Date.now() - startedAt}`
+      )
+      resolve()
+    }
+    const unsub = store.subscribe((event) => {
+      if (!armed) return
+      if (
+        event.type === 'jsonClaude/busyChanged' &&
+        event.payload.sessionId === sessionId &&
+        event.payload.busy === false
+      ) {
+        finish('boundary')
+      }
+    })
+    const timer = setTimeout(() => finish('timeout'), QUIESCE_TIMEOUT_MS)
+    jsonClaudeManager.interrupt(sessionId)
+    armed = true
+  })
+}
+
 const worktreesFSM = new WorktreesFSM(store, {
   getRepoRoots: () => config.repoRoots || [],
   getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
   getWorktreeBaseMode: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
-  onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId, agentKind, model }) => {
+  onWorktreeCreated: async ({ createdPath, initialPrompt, teleportSessionId, agentKind, model, forkSource, baseRef }) => {
     void prPoller.refreshAll()
-    panesFSM.ensureInitialized(createdPath, { initialPrompt, teleportSessionId, agentKind, model })
+    const kickoff = await resolveForkedKickoff({ createdPath, initialPrompt, forkSource, baseRef })
+    panesFSM.ensureInitialized(createdPath, {
+      initialPrompt: kickoff.initialPrompt,
+      teleportSessionId,
+      agentKind,
+      model,
+      forkedSessionId: kickoff.forkedSessionId
+    })
     if (teleportSessionId) {
       setTimeout(() => void worktreesFSM.refreshList(), 10_000)
     }
@@ -1055,6 +1148,27 @@ let bootTimer: NodeJS.Timeout | null = null
 // boot freezes the UI for seconds while the renderer can't paint
 // between dispatches.
 const BOOT_INIT_BATCH_SIZE = 3
+
+// Worktrees created over MCP never enter the pending list — control-server
+// calls addWorktree directly — so they claim their path here instead for the
+// window where seeding is async (a conversation fork shells out to git to
+// build the relocation preamble).
+const seedingWorktreePaths = new Set<string>()
+
+// A worktree that's still mid-creation belongs to whoever is creating it: the
+// creator seeds the first agent tab with the kickoff prompt and, for a
+// conversation fork, the forked session id. The path is already in
+// `git worktree list` by then, so an unguarded sweep can win the race —
+// ensureInitialized is first-write-wins and silently drops the seeding.
+function isMidCreation(wtPath: string): boolean {
+  if (seedingWorktreePaths.has(wtPath)) return true
+  return store
+    .getSnapshot()
+    .state.worktrees.pending.some(
+      (p) => p.createdPath === wtPath && (p.status === 'creating' || p.status === 'setup')
+    )
+}
+
 async function drainBootInit(force: boolean): Promise<void> {
   if (bootDrained) return
   bootDrained = true
@@ -1067,7 +1181,7 @@ async function drainBootInit(force: boolean): Promise<void> {
   pendingBootInit.clear()
   for (let i = 0; i < paths.length; i++) {
     const path = paths[i]
-    if (force || !isWorktreeMerged(state.prs, path)) {
+    if ((force || !isWorktreeMerged(state.prs, path)) && !isMidCreation(path)) {
       panesFSM.ensureInitialized(path)
     }
     if (i + 1 < paths.length && (i + 1) % BOOT_INIT_BATCH_SIZE === 0) {
@@ -1078,9 +1192,15 @@ async function drainBootInit(force: boolean): Promise<void> {
 
 store.subscribe((event) => {
   if (event.type === 'worktrees/listChanged') {
-    const list = store.getSnapshot().state.worktrees.list
+    const worktrees = store.getSnapshot().state.worktrees
+    const list = worktrees.list
     if (bootDrained) {
-      for (const wt of list) panesFSM.ensureInitialized(wt.path)
+      // Paths whose creation FSM hasn't reached onWorktreeCreated yet own
+      // their own init — it carries the kickoff prompt, agent kind and
+      // model that this sweep doesn't have.
+      for (const wt of list) {
+        if (!isMidCreation(wt.path)) panesFSM.ensureInitialized(wt.path)
+      }
       return
     }
     for (const wt of list) pendingBootInit.add(wt.path)
@@ -1173,6 +1293,26 @@ function setWarnBeforeQuitting(enabled: boolean): void {
   })
 }
 
+/** Publish what version of `harness-server` a remote is running, and
+ *  whether it matches us. Headless tarballs ship on the same tag as the
+ *  desktop build, so anything other than exact equality means the two
+ *  halves can disagree about the wire protocol — we flag it and let the
+ *  user decide (upgrading restarts the remote, killing its sessions). */
+function recordRemoteServerVersion(connectionId: string, installed: string | null): void {
+  if (!installed) return
+  const expected = getHarnessVersion()
+  store.dispatch({
+    type: 'sshBootstrap/serverVersionProbed',
+    payload: {
+      connectionId,
+      installed,
+      expected,
+      upgradeAvailable: expected !== 'unknown' && installed !== expected,
+      checkedAt: Date.now()
+    }
+  })
+}
+
 /** Re-establish (or reuse) the SSH tunnel for an existing SSH backend.
  *  Shared between the `ssh:reconnect` IPC handler and the boot-time
  *  pre-warm loop in runBoot(). Idempotent: if a tunnel for this
@@ -1233,9 +1373,11 @@ async function runSshReconnect(input: {
       },
       {
         preferredLocalPort: conn.ssh.tunnelLocalPort,
-        skipInstallIfRunning: true
+        skipInstallIfRunning: true,
+        expectedVersion: getHarnessVersion()
       }
     )
+    recordRemoteServerVersion(conn.id, result.serverVersion)
     sshTunnelManager.register({
       backendId: conn.id,
       localPort: result.localPort,
@@ -1309,6 +1451,7 @@ function registerIpcHandlers(): void {
       teleportSessionId?: string
       agentKind?: AgentKind
       model?: string
+      forkSource?: ForkSource
       checkoutExisting?: boolean
       baseRef?: string
     }) => {
@@ -2276,6 +2419,20 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setConversationForkEnabled', (_ctx, enabled: boolean) => {
+    if (enabled) {
+      config.conversationForkEnabled = true
+    } else {
+      delete config.conversationForkEnabled
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/conversationForkEnabledChanged',
+      payload: config.conversationForkEnabled === true
+    })
+    return true
+  })
+
   transport.onRequest('config:setBrowserToolsMode', (_ctx, mode: 'view' | 'full') => {
     const next = mode === 'view' ? 'view' : 'full'
     if (next === 'full') {
@@ -2731,7 +2888,7 @@ function registerIpcHandlers(): void {
   // skips merged worktrees, so this is the only path that wakes them.
   // No-op for paths that already have panes.
   transport.onRequest('panes:ensureInitialized', (_ctx, wtPath: string) => {
-    panesFSM.ensureInitialized(wtPath)
+    if (!isMidCreation(wtPath)) panesFSM.ensureInitialized(wtPath)
     return true
   })
 
@@ -3181,6 +3338,40 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  // "Stop what you're doing and do this instead." Abort the in-flight
+  // turn, then deliver the draft as a fresh one. Sequenced here rather
+  // than as interrupt()+send() from the renderer because both frames go
+  // to the same stdin with no flush between them — a user message
+  // written straight after the interrupt frame can be drained by the
+  // very turn we're killing. Lives in the handler, not the manager,
+  // because a turn parked on a tool approval won't reach a boundary
+  // until the approval is resolved, and only the handler layer reaches
+  // approvalBridge (same rationale as rewindTo).
+  transport.onRequest(
+    'jsonClaude:interruptAndSend',
+    async (
+      _ctx,
+      sessionId: string,
+      text: string,
+      images?: Array<{ mediaType: string; data: string; path: string }>
+    ): Promise<{ ok: boolean; reason?: string }> => {
+      if (!sessionId) return { ok: false, reason: 'missing args' }
+      if (!text && !(images && images.length > 0)) {
+        return { ok: false, reason: 'empty message' }
+      }
+      const session = store.getSnapshot().state.jsonClaude.sessions[sessionId]
+      if (!session) return { ok: false, reason: 'unknown session' }
+
+      if (session.busy) await interruptAndQuiesce(sessionId)
+      approvalBridge.cancelPendingForSession(sessionId, 'interrupted by user')
+
+      // busy is false by now (interrupt flips it, or it already was), so
+      // this takes the fresh-turn path rather than the queue path.
+      jsonClaudeManager.send(sessionId, text, images)
+      return { ok: true }
+    }
+  )
+
   // Rewind to a clicked assistant message. Orchestrates: interrupt
   // in-flight stream (if any) → await `result` boundary (≤1500ms) so
   // the jsonl is quiesced → deny pending approvals for the session →
@@ -3198,31 +3389,7 @@ function registerIpcHandlers(): void {
       const startSession = store.getSnapshot().state.jsonClaude.sessions[sessionId]
       if (!startSession) return { ok: false, reason: 'unknown session' }
 
-      // Quiesce in-flight stream. Subscribe first, then send the
-      // interrupt so we can't miss the resulting busy=false dispatch.
-      if (startSession.busy) {
-        await new Promise<void>((resolve) => {
-          let done = false
-          const finish = (): void => {
-            if (done) return
-            done = true
-            unsub()
-            clearTimeout(timer)
-            resolve()
-          }
-          const unsub = store.subscribe((event) => {
-            if (
-              event.type === 'jsonClaude/busyChanged' &&
-              event.payload.sessionId === sessionId &&
-              event.payload.busy === false
-            ) {
-              finish()
-            }
-          })
-          const timer = setTimeout(finish, 1500)
-          jsonClaudeManager.interrupt(sessionId)
-        })
-      }
+      if (startSession.busy) await interruptAndQuiesce(sessionId)
 
       approvalBridge.cancelPendingForSession(sessionId)
 
@@ -3401,33 +3568,10 @@ function registerIpcHandlers(): void {
         payload: { worktreePath, tabId: sessionId, model: trimmed }
       })
 
-      // Quiesce any in-flight turn cleanly — same interrupt-then-await
-      // pattern jsonClaude:rewindTo uses. Interrupt is a soft
+      // Quiesce any in-flight turn cleanly. Interrupt is a soft
       // control_request that keeps the subprocess alive and preserves
       // the partial turn in the jsonl, so --resume picks up cleanly.
-      if (session.busy) {
-        await new Promise<void>((resolve) => {
-          let done = false
-          const finish = (): void => {
-            if (done) return
-            done = true
-            unsub()
-            clearTimeout(timer)
-            resolve()
-          }
-          const unsub = store.subscribe((event) => {
-            if (
-              event.type === 'jsonClaude/busyChanged' &&
-              event.payload.sessionId === sessionId &&
-              event.payload.busy === false
-            ) {
-              finish()
-            }
-          })
-          const timer = setTimeout(finish, 1500)
-          jsonClaudeManager.interrupt(sessionId)
-        })
-      }
+      if (session.busy) await interruptAndQuiesce(sessionId)
 
       approvalBridge.cancelPendingForSession(sessionId)
 
@@ -3731,6 +3875,10 @@ function registerIpcHandlers(): void {
     // harness-server is intentionally left running — see
     // plans/remote-main.md §4 "Things to NOT do".
     sshTunnelManager.unregister(id)
+    store.dispatch({
+      type: 'sshBootstrap/serverVersionForgotten',
+      payload: { connectionId: id }
+    })
     saveConfig(config)
     return true
   })
@@ -3834,7 +3982,7 @@ function registerIpcHandlers(): void {
               payload: { bootstrapId: input.bootstrapId, line, now: Date.now() }
             })
           }
-        })
+        }, { expectedVersion: getHarnessVersion() })
 
         // Mint the BackendConnection + persist + register tunnel. The
         // URL is the ephemeral loopback we just opened; on next launch
@@ -3869,6 +4017,7 @@ function registerIpcHandlers(): void {
           type: 'sshBootstrap/connectionLinked',
           payload: { bootstrapId: input.bootstrapId, connectionId: id }
         })
+        recordRemoteServerVersion(id, result.serverVersion)
         store.dispatch({
           type: 'sshBootstrap/phaseChanged',
           payload: { bootstrapId: input.bootstrapId, phase: 'connected', now: Date.now() }
@@ -3900,6 +4049,104 @@ function registerIpcHandlers(): void {
     'ssh:reconnect',
     (_ctx, input: { bootstrapId: string; connectionId: string }) =>
       runSshReconnect(input)
+  )
+
+  // Re-install harness-server on an SSH backend and restart it. Only
+  // reachable from an explicit user action — it kills the running
+  // server, so every session on that remote dies. Returns the new
+  // loopback URL + token; the renderer drops its WS transport and
+  // re-hydrates against the fresh tunnel.
+  transport.onRequest(
+    'ssh:upgradeServer',
+    async (
+      _ctx,
+      input: { bootstrapId: string; connectionId: string }
+    ): Promise<{ url: string; token: string; localPort: number; serverVersion: string | null }> => {
+      if (!input || typeof input.connectionId !== 'string') {
+        throw new Error('connectionId is required')
+      }
+      if (typeof input.bootstrapId !== 'string' || !input.bootstrapId) {
+        throw new Error('bootstrapId is required')
+      }
+      const conn = (config.connections ?? []).find((c) => c.id === input.connectionId)
+      if (!conn) throw new Error(`unknown backend ${input.connectionId}`)
+      if (!conn.ssh) throw new Error(`backend ${input.connectionId} is not an SSH backend`)
+
+      const { parseSshTarget, upgradeRemoteServer } = await import('./ssh-bootstrap')
+      const target = parseSshTarget(conn.ssh.target)
+      store.dispatch({
+        type: 'sshBootstrap/started',
+        payload: {
+          bootstrapId: input.bootstrapId,
+          label: conn.label,
+          target: target.raw,
+          now: Date.now()
+        }
+      })
+      store.dispatch({
+        type: 'sshBootstrap/connectionLinked',
+        payload: { bootstrapId: input.bootstrapId, connectionId: conn.id }
+      })
+
+      try {
+        const result = await upgradeRemoteServer(target, {
+          onPhase: (phase) => {
+            store.dispatch({
+              type: 'sshBootstrap/phaseChanged',
+              payload: { bootstrapId: input.bootstrapId, phase, now: Date.now() }
+            })
+          },
+          onLine: (line) => {
+            store.dispatch({
+              type: 'sshBootstrap/lineLogged',
+              payload: { bootstrapId: input.bootstrapId, line, now: Date.now() }
+            })
+          }
+        })
+        // register() disposes the previous entry's SSH connection +
+        // tunnel server, so the old loopback port stops accepting.
+        sshTunnelManager.register({
+          backendId: conn.id,
+          localPort: result.localPort,
+          remotePort: result.remotePort,
+          token: result.token,
+          ssh: result.ssh,
+          tunnelServer: result.tunnelServer
+        })
+        const url = `ws://127.0.0.1:${result.localPort}/?token=${result.token}`
+        const idx = (config.connections ?? []).findIndex((c) => c.id === conn.id)
+        if (idx >= 0) {
+          const next = config.connections!.slice()
+          next[idx] = {
+            ...next[idx],
+            url,
+            ssh: { target: target.raw, tunnelLocalPort: result.localPort }
+          }
+          config.connections = next
+          setSecret(`backend-token:${conn.id}`, result.token)
+          saveConfig(config)
+        }
+        recordRemoteServerVersion(conn.id, result.serverVersion)
+        return {
+          url,
+          token: result.token,
+          localPort: result.localPort,
+          serverVersion: result.serverVersion
+        }
+      } catch (err) {
+        const bootstrapErr =
+          (err as { bootstrapError?: import('../shared/state/ssh-bootstrap').BootstrapError })
+            .bootstrapError ?? {
+            code: 'unknown' as const,
+            message: err instanceof Error ? err.message : String(err)
+          }
+        store.dispatch({
+          type: 'sshBootstrap/errored',
+          payload: { bootstrapId: input.bootstrapId, error: bootstrapErr, now: Date.now() }
+        })
+        throw err
+      }
+    }
   )
 
   transport.onSignal('terminal:join', (ctx, id: string) => {
@@ -4230,6 +4477,8 @@ async function runBoot(): Promise<void> {
     getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
     getPrReviewPrompt: () => config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT,
     resolveCallerScope,
+    hasForkableTranscript,
+    getConversationForkEnabled: () => config.conversationForkEnabled === true,
     getBrowserPerms: () => ({
       enabled: config.browserToolsEnabled !== false,
       mode: config.browserToolsMode === 'view' ? 'view' : 'full'
@@ -4437,15 +4686,33 @@ async function runBoot(): Promise<void> {
           initialPrompt?: string
           agentKind?: AgentKind
           model?: string
+          forkSource?: ForkSource
+          baseRef?: string
         }
-        panesFSM.ensureInitialized(p.worktree.path, {
-          initialPrompt: p.initialPrompt,
-          agentKind: p.agentKind,
-          model: p.model
-        })
-        void worktreesFSM.refreshList().then(() => {
+        // A conversation fork makes the seeding async (the relocation
+        // preamble shells out to git), so claim the path first — the
+        // worktree is already on disk and visible to `git worktree list`.
+        seedingWorktreePaths.add(p.worktree.path)
+        void (async () => {
+          try {
+            const kickoff = await resolveForkedKickoff({
+              createdPath: p.worktree.path,
+              initialPrompt: p.initialPrompt,
+              forkSource: p.forkSource,
+              baseRef: p.baseRef
+            })
+            panesFSM.ensureInitialized(p.worktree.path, {
+              initialPrompt: kickoff.initialPrompt,
+              agentKind: p.agentKind,
+              model: p.model,
+              forkedSessionId: kickoff.forkedSessionId
+            })
+          } finally {
+            seedingWorktreePaths.delete(p.worktree.path)
+          }
+          await worktreesFSM.refreshList()
           broadcastToAllWindows(channel, payload)
-        })
+        })()
         void prPoller.refreshAll()
         return
       }
@@ -4510,6 +4777,7 @@ if (desktopShellMod && desktopEarly) {
       // running (intentional; see plans/remote-main.md §4).
       sshTunnelManager.closeAll()
       worktreeWatcher.shutdown()
+      flushPerfLogSync()
     },
     setWarnBeforeQuitting
   })
@@ -4535,6 +4803,7 @@ if (desktopShellMod && desktopEarly) {
     sshTunnelManager.closeAll()
     sealAllActive()
     saveConfigSync(config)
+    flushPerfLogSync()
     process.exit(0)
   }
   process.on('SIGINT', shutdown)

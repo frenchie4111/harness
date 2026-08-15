@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react'
 import type { ChangedFile } from '../types'
 import { useBackend } from '../backend'
 import { useWatchedQuery } from './useWatchedQuery'
+import { requestChangedFiles } from './changed-files-request'
 
 /** Single-letter glyphs that mirror the labels used in the
  *  ChangedFilesPanel "Committed" section. Surfaces that want to
@@ -45,7 +46,8 @@ const EMPTY: ChangedFilesSetResult = {
 export function useChangedFilesSet(worktreePath: string | null): ChangedFilesSetResult {
   const backend = useBackend()
   const fetcher = useCallback(
-    (path: string) => backend.getChangedFiles(path, 'branch'),
+    (path: string, opts: { force: boolean }) =>
+      requestChangedFiles(backend, path, 'branch', opts),
     [backend]
   )
 
