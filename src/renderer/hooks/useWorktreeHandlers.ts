@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AddRepoResult, Worktree, PendingWorktree, PRStatus, TerminalTab, AgentKind } from '../types'
+import type { AddRepoResult, Worktree, PendingWorktree, PRStatus, TerminalTab, AgentKind, ForkSource } from '../types'
 import { markTerminalClosing } from '../components/XTerminal'
 import { useActiveBackend } from '../store'
 import { useBackend } from '../backend'
@@ -184,7 +184,8 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       agentKind?: AgentKind,
       model?: string,
       checkoutExisting?: boolean,
-      baseRef?: string
+      baseRef?: string,
+      forkSource?: ForkSource
     ) => {
       const id = `pending:${crypto.randomUUID()}`
 
@@ -202,6 +203,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
         teleportSessionId,
         agentKind,
         model,
+        forkSource,
         checkoutExisting,
         baseRef
       })

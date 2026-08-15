@@ -7,7 +7,7 @@ import { useHotkeyHandlers } from './hooks/useHotkeyHandlers'
 import { useWorktreeHandlers } from './hooks/useWorktreeHandlers'
 import { useWorktreeCollapse } from './hooks/useWorktreeCollapse'
 import { useWorktreeListModel, useTabsByWorktree } from './hooks/useWorktreeListModel'
-import type { Worktree, TerminalTab, PtyStatus, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig, PaneNode } from './types'
+import type { Worktree, TerminalTab, PtyStatus, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig, PaneNode, ForkSource } from './types'
 import { getLeaves, findLeaf } from '../shared/state/terminals'
 import { CheckCircle2, FolderOpen } from 'lucide-react'
 import { BUILT_IN_THEMES_BY_MODE } from './themes'
@@ -20,7 +20,7 @@ import { HotkeysProvider, Tooltip } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
 import { ResizeHandle } from './components/ResizeHandle'
 import { AppTitleSegment } from './components/AppTitleSegment'
-import { NewWorktreeScreen } from './components/NewWorktreeScreen'
+import { NewWorktreeScreen, onOpenForkIntoWorktree } from './components/NewWorktreeScreen'
 import { CreatingWorktreeScreen } from './components/CreatingWorktreeScreen'
 import { DeletingWorktreeScreen } from './components/DeletingWorktreeScreen'
 import { QuestCard } from './components/QuestCard'
@@ -238,12 +238,27 @@ function DesktopApp(): JSX.Element {
   // the "new worktree from PR" screen opens with that PR pre-selected.
   // Cleared alongside the repo when the modal closes.
   const [newWorktreeInitialPRNumber, setNewWorktreeInitialPRNumber] = useState<number | undefined>(undefined)
+  const [newWorktreeForkSource, setNewWorktreeForkSource] = useState<ForkSource | undefined>(undefined)
   useEffect(() => {
     if (!showNewWorktree) {
       setNewWorktreeRepo(undefined)
       setNewWorktreeInitialPRNumber(undefined)
+      setNewWorktreeForkSource(undefined)
     }
   }, [showNewWorktree])
+  // Chat's "Fork into new worktree" opens the create screen with the
+  // conversation queued up; main copies the transcript once the worktree
+  // exists on disk.
+  useEffect(() => {
+    return onOpenForkIntoWorktree((source) => {
+      setShowActivity(false)
+      setShowCleanup(false)
+      setShowCommandCenter(false)
+      setNewWorktreeRepo(worktreeRepoByPath[source.worktreePath])
+      setNewWorktreeForkSource(source)
+      setShowNewWorktree(true)
+    })
+  }, [worktreeRepoByPath])
   const handleOpenAssignedPR = useCallback((repoRoot: string, prNumber: number) => {
     setShowActivity(false)
     setShowCleanup(false)
@@ -1626,6 +1641,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             repoRoots={repoRoots}
             defaultRepoRoot={newWorktreeRepo ?? (activeWorktreeId ? worktreeRepoByPath[activeWorktreeId] : undefined)}
             initialPRNumber={newWorktreeInitialPRNumber}
+            forkSource={newWorktreeForkSource}
           />
         )}
         {reportIssueState !== null && (

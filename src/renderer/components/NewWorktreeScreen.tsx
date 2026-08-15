@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Sparkles, Loader2, X, Map as MapIcon, ListChecks, BookOpen, Radio, GitPullRequest, ChevronRight, ChevronDown, Check } from 'lucide-react'
+import { Sparkles, Loader2, X, Map as MapIcon, ListChecks, BookOpen, Radio, GitPullRequest, GitBranch, ChevronRight, ChevronDown, Check } from 'lucide-react'
 import iconUrl from '../../../resources/icon.png'
 import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
 import { RepoIcon } from './RepoIcon'
@@ -7,6 +7,24 @@ import { useBackend } from '../backend'
 import { useSettings } from '../store'
 import { CLAUDE_MODELS, CODEX_MODELS, CURSOR_MODELS, AGENT_REGISTRY } from '../../shared/agent-registry'
 import type { PRSummary, AgentKind } from '../types'
+import type { ForkSource } from '../../shared/state/worktrees'
+
+const FORK_INTO_WORKTREE_EVENT = 'harness:fork-into-worktree'
+
+/** Open the New Worktree screen with a conversation fork queued up. Fired
+ *  from the chat's fork menu, which sits too deep in the tree to hand a
+ *  callback down. Mirrors `openReportIssue`. */
+export function openForkIntoWorktree(source: ForkSource): void {
+  window.dispatchEvent(new CustomEvent(FORK_INTO_WORKTREE_EVENT, { detail: source }))
+}
+
+export function onOpenForkIntoWorktree(handler: (source: ForkSource) => void): () => void {
+  const listener = (e: Event): void => {
+    handler((e as CustomEvent).detail as ForkSource)
+  }
+  window.addEventListener(FORK_INTO_WORKTREE_EVENT, listener)
+  return () => window.removeEventListener(FORK_INTO_WORKTREE_EVENT, listener)
+}
 
 interface NewWorktreeScreenProps {
   onSubmit: (
@@ -17,7 +35,8 @@ interface NewWorktreeScreenProps {
     agentKind?: AgentKind,
     model?: string,
     checkoutExisting?: boolean,
-    baseRef?: string
+    baseRef?: string,
+    forkSource?: ForkSource
   ) => Promise<void>
   onPRSubmit: (
     repoRoot: string,
@@ -35,6 +54,9 @@ interface NewWorktreeScreenProps {
    *  pre-selected. Used by the sidebar's phantom review-requested rows to
    *  jump straight into the review-worktree creation flow. */
   initialPRNumber?: number
+  /** When set, the new worktree's first agent tab resumes a copy of this
+   *  conversation instead of starting empty. */
+  forkSource?: ForkSource
 }
 
 /** Sort + clean the local-branch list from the backend. The backend already
@@ -104,7 +126,7 @@ const STARTER_PROMPTS = [
 const KBD_CHIP = 'text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono'
 const KBD_CHIP_ON_ACCENT = 'text-xs text-white bg-white/20 px-1.5 py-0.5 rounded border border-white/30 font-mono'
 
-export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, defaultRepoRoot, initialPRNumber }: NewWorktreeScreenProps): JSX.Element {
+export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, defaultRepoRoot, initialPRNumber, forkSource }: NewWorktreeScreenProps): JSX.Element {
   const [mode, setMode] = useState<'fresh' | 'teleport' | 'pr'>(initialPRNumber ? 'pr' : 'fresh')
   const [selectedRepo, setSelectedRepo] = useState<string>(
     defaultRepoRoot && repoRoots.includes(defaultRepoRoot) ? defaultRepoRoot : repoRoots[0] || ''
@@ -353,9 +375,9 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
     setError(null)
     try {
       // Teleport mode always Claude — codex has no resume-by-session-id
-      // analog today.
+      // analog today. Same for a forked transcript: only Claude can resume one.
       const effectiveAgent: AgentKind =
-        mode === 'teleport' ? 'claude' : agentKindOverride
+        mode === 'teleport' || forkSource ? 'claude' : agentKindOverride
       // Existing tab: `git worktree add <dir> <branch>` (no `-b`) so git
       // checks out the already-existing local branch as-is. Ref tab: create
       // a new branch named `effectiveBranch` forked from `baseRef`.
@@ -368,13 +390,14 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
         effectiveAgent,
         modelOverride.trim() || undefined,
         checkoutExisting,
-        baseRef
+        baseRef,
+        forkSource
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create worktree')
       setSubmitting(false)
     }
-  }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport, selectedRepo, mode, agentKindOverride, modelOverride, branchTab, baseRef])
+  }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport, selectedRepo, mode, agentKindOverride, modelOverride, branchTab, baseRef, forkSource])
 
   const cycleRepo = useCallback((direction: 1 | -1) => {
     if (repoRoots.length <= 1) return
@@ -654,11 +677,23 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
               </div>
             )}
 
+            {mode === 'fresh' && forkSource && (
+              <div className="mt-6 flex items-start gap-2 rounded-lg border-2 border-accent/40 bg-accent/5 px-4 py-3">
+                <GitBranch className="icon-sm text-accent shrink-0 mt-0.5" />
+                <div className="text-xs text-dim">
+                  <span className="text-fg-bright font-semibold">Continuing an existing conversation.</span>{' '}
+                  The new worktree opens with the full history from{' '}
+                  <span className="font-mono">{forkSource.worktreePath.split('/').pop()}</span>, plus a note
+                  telling it where it moved and which of its earlier changes came along.
+                </div>
+              </div>
+            )}
+
             {mode === 'fresh' && (
               <label className="block mt-6">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-semibold uppercase tracking-wider text-dim">
-                    Kickoff prompt
+                    {forkSource ? 'What to do next' : 'Kickoff prompt'}
                   </span>
                   <span className="text-xs text-faint">optional</span>
                 </div>
@@ -666,7 +701,11 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                   ref={promptRef}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="What should Claude start on? Leave blank to drop in and take it from there."
+                  placeholder={
+                    forkSource
+                      ? 'What should it work on in the new worktree? Leave blank to just carry the conversation over.'
+                      : 'What should Claude start on? Leave blank to drop in and take it from there.'
+                  }
                   disabled={submitting}
                   rows={5}
                   className="w-full bg-app border-2 border-border-strong rounded-lg px-4 py-3 text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors resize-none"
@@ -824,6 +863,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                 defaultCodexModel={settings.codexModel}
                 defaultCursorModel={settings.cursorModel}
                 disabled={submitting}
+                forkLocked={forkSource !== undefined}
               />
             )}
 
@@ -1181,6 +1221,9 @@ interface AgentModelRowProps {
   defaultCodexModel: string | null
   defaultCursorModel: string | null
   disabled: boolean
+  /** Pins the agent to Claude because the new worktree resumes a forked
+   *  transcript, which no other agent can pick up. */
+  forkLocked?: boolean
 }
 
 function AgentModelRow({
@@ -1192,9 +1235,10 @@ function AgentModelRow({
   defaultClaudeModel,
   defaultCodexModel,
   defaultCursorModel,
-  disabled
+  disabled,
+  forkLocked
 }: AgentModelRowProps): JSX.Element {
-  const locked = mode === 'teleport'
+  const locked = mode === 'teleport' || forkLocked === true
   const effectiveAgent = locked ? 'claude' : agentKind
   const modelOptions =
     effectiveAgent === 'codex'
@@ -1262,7 +1306,13 @@ function AgentModelRow({
               value={effectiveAgent}
               onChange={(e) => handleAgentChange(e.target.value as AgentKind)}
               disabled={disabled || locked}
-              title={locked ? 'Teleport sessions require Claude' : undefined}
+              title={
+                forkLocked
+                  ? 'Forked conversations can only be resumed by Claude'
+                  : locked
+                    ? 'Teleport sessions require Claude'
+                    : undefined
+              }
               className="bg-app border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-accent disabled:opacity-50 cursor-pointer"
             >
               {AGENT_REGISTRY.map((agent) => (

@@ -1,7 +1,8 @@
 import type { Worktree } from '../shared/state/worktrees'
 import {
   DEFAULT_HARNESS_SYSTEM_PROMPT,
-  DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN
+  DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
+  HARNESS_SYSTEM_PROMPT_FORK_PARAGRAPH
 } from './persistence'
 
 export interface ClaudeLaunchConfig {
@@ -11,6 +12,7 @@ export interface ClaudeLaunchConfig {
   harnessSystemPromptMain?: string
   claudeTuiFullscreen?: boolean
   nameClaudeSessions?: boolean
+  conversationForkEnabled?: boolean
 }
 
 export interface ClaudeLaunchSettings {
@@ -36,7 +38,10 @@ export function buildClaudeLaunchSettings(input: {
 
   let systemPrompt: string | undefined
   if (config.harnessSystemPromptEnabled !== false) {
-    const base = config.harnessSystemPrompt || DEFAULT_HARNESS_SYSTEM_PROMPT
+    let base = config.harnessSystemPrompt || DEFAULT_HARNESS_SYSTEM_PROMPT
+    if (config.conversationForkEnabled !== true) {
+      base = base.replace(`\n\n${HARNESS_SYSTEM_PROMPT_FORK_PARAGRAPH}`, '')
+    }
     if (isMain) {
       const mainAddition =
         config.harnessSystemPromptMain || DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN

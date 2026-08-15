@@ -69,6 +69,37 @@ describe('buildSpawnArgs', () => {
     expect(result).toContain('--append-system-prompt')
     expect(result).toContain("'\\''")
   })
+
+  const sessionPath = (cwd: string, id: string): string =>
+    join(homedir(), '.claude', 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${id}.jsonl`)
+
+  it('passes the initial prompt through on the --resume path', () => {
+    // A worktree forked from an existing conversation resumes a transcript
+    // AND needs its new instructions; dropping the prompt here left the
+    // agent sitting idle with history it was never told what to do with.
+    fsState.files.set(sessionPath('/tmp/test', 'abc'), '{}')
+    const result = buildSpawnArgs({ ...base, sessionId: 'abc', initialPrompt: 'do the thing' })
+    expect(result).toContain('--resume abc')
+    expect(result).toContain("'do the thing'")
+  })
+
+  it('omits a positional prompt on --resume when there is none', () => {
+    fsState.files.set(sessionPath('/tmp/test', 'abc'), '{}')
+    const result = buildSpawnArgs({ ...base, sessionId: 'abc' })
+    expect(result).toBe('claude --resume abc')
+  })
+
+  it('uses --session-id with the prompt when no transcript exists yet', () => {
+    const result = buildSpawnArgs({ ...base, sessionId: 'abc', initialPrompt: 'hello' })
+    expect(result).toContain('--session-id abc')
+    expect(result).toContain("'hello'")
+  })
+
+  it('shell-quotes the initial prompt on the resume path', () => {
+    fsState.files.set(sessionPath('/tmp/test', 'abc'), '{}')
+    const result = buildSpawnArgs({ ...base, sessionId: 'abc', initialPrompt: "it's got quotes" })
+    expect(result).toContain("'\\''")
+  })
 })
 
 describe('claude extractSessionId', () => {

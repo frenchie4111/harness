@@ -12,7 +12,8 @@ import { randomUUID } from 'crypto'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { ApprovalBridge } from './approval-bridge'
-import { JsonClaudeManager, bundledClaudeBinPath } from './json-claude-manager'
+import { JsonClaudeManager, bundledClaudeBinPath, forkTranscript, hasForkableTranscript } from './json-claude-manager'
+import { buildRelocationPreamble } from './fork-relocation'
 import { shellQuote } from './shell-quote'
 import {
   readAttachmentImage,
@@ -87,6 +88,7 @@ import { resolveRepoPath } from './repo-resolve'
 import { registerRepoRoot } from './repo-roots'
 import type { AddRepoResult } from '../shared/repo-pick'
 import { isWorktreeMerged } from '../shared/state/prs'
+import type { ForkSource } from '../shared/state/worktrees'
 import { MAX_WAKE } from '../shared/state/snooze'
 import { hasScratchpadNote } from '../shared/state/scratchpad'
 import { normalizeAlias } from '../shared/state/aliases'
@@ -922,6 +924,42 @@ function startJsonClaudeSession(sessionId: string, worktreePath: string): void {
   jsonClaudeManager.create(sessionId, worktreePath, permMode, findJsonClaudeTabModel(sessionId))
 }
 
+/** Resolve what the new worktree's first agent tab should start from,
+ *  performing the transcript fork when one was requested. Shared by the FSM
+ *  path (UI creation) and the MCP path (worktrees:externalCreate) so both
+ *  produce an identically-seeded session. */
+async function resolveForkedKickoff(args: {
+  createdPath: string
+  initialPrompt?: string
+  forkSource?: ForkSource
+  baseRef?: string
+}): Promise<{ initialPrompt?: string; forkedSessionId?: string }> {
+  const { createdPath, initialPrompt, forkSource, baseRef } = args
+  if (!forkSource) return { initialPrompt }
+
+  const outcome = forkTranscript({
+    sourceSessionId: forkSource.sessionId,
+    sourceWorktreePath: forkSource.worktreePath,
+    destWorktreePath: createdPath
+  })
+  if (!outcome.ok || !outcome.newSessionId) {
+    // Degrade to a normal empty session rather than failing creation —
+    // the worktree already exists on disk at this point.
+    log('worktrees', `conversation fork into ${createdPath} failed: ${outcome.reason}`)
+    return { initialPrompt }
+  }
+
+  const preamble = await buildRelocationPreamble({
+    sourceWorktreePath: forkSource.worktreePath,
+    destWorktreePath: createdPath,
+    baseRef
+  })
+  return {
+    initialPrompt: `${preamble}${initialPrompt ?? ''}`,
+    forkedSessionId: outcome.newSessionId
+  }
+}
+
 /** Interrupt an in-flight json-claude turn and wait for it to actually
  *  reach a boundary. Callers that touch the session's stdin or jsonl
  *  right after (interrupt-and-send, rewind, model swap) need the turn
@@ -974,9 +1012,16 @@ const worktreesFSM = new WorktreesFSM(store, {
   getRepoRoots: () => config.repoRoots || [],
   getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
   getWorktreeBaseMode: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
-  onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId, agentKind, model }) => {
+  onWorktreeCreated: async ({ createdPath, initialPrompt, teleportSessionId, agentKind, model, forkSource, baseRef }) => {
     void prPoller.refreshAll()
-    panesFSM.ensureInitialized(createdPath, { initialPrompt, teleportSessionId, agentKind, model })
+    const kickoff = await resolveForkedKickoff({ createdPath, initialPrompt, forkSource, baseRef })
+    panesFSM.ensureInitialized(createdPath, {
+      initialPrompt: kickoff.initialPrompt,
+      teleportSessionId,
+      agentKind,
+      model,
+      forkedSessionId: kickoff.forkedSessionId
+    })
     if (teleportSessionId) {
       setTimeout(() => void worktreesFSM.refreshList(), 10_000)
     }
@@ -1103,6 +1148,27 @@ let bootTimer: NodeJS.Timeout | null = null
 // boot freezes the UI for seconds while the renderer can't paint
 // between dispatches.
 const BOOT_INIT_BATCH_SIZE = 3
+
+// Worktrees created over MCP never enter the pending list — control-server
+// calls addWorktree directly — so they claim their path here instead for the
+// window where seeding is async (a conversation fork shells out to git to
+// build the relocation preamble).
+const seedingWorktreePaths = new Set<string>()
+
+// A worktree that's still mid-creation belongs to whoever is creating it: the
+// creator seeds the first agent tab with the kickoff prompt and, for a
+// conversation fork, the forked session id. The path is already in
+// `git worktree list` by then, so an unguarded sweep can win the race —
+// ensureInitialized is first-write-wins and silently drops the seeding.
+function isMidCreation(wtPath: string): boolean {
+  if (seedingWorktreePaths.has(wtPath)) return true
+  return store
+    .getSnapshot()
+    .state.worktrees.pending.some(
+      (p) => p.createdPath === wtPath && (p.status === 'creating' || p.status === 'setup')
+    )
+}
+
 async function drainBootInit(force: boolean): Promise<void> {
   if (bootDrained) return
   bootDrained = true
@@ -1115,7 +1181,7 @@ async function drainBootInit(force: boolean): Promise<void> {
   pendingBootInit.clear()
   for (let i = 0; i < paths.length; i++) {
     const path = paths[i]
-    if (force || !isWorktreeMerged(state.prs, path)) {
+    if ((force || !isWorktreeMerged(state.prs, path)) && !isMidCreation(path)) {
       panesFSM.ensureInitialized(path)
     }
     if (i + 1 < paths.length && (i + 1) % BOOT_INIT_BATCH_SIZE === 0) {
@@ -1132,13 +1198,8 @@ store.subscribe((event) => {
       // Paths whose creation FSM hasn't reached onWorktreeCreated yet own
       // their own init — it carries the kickoff prompt, agent kind and
       // model that this sweep doesn't have.
-      const claimed = new Set(
-        worktrees.pending
-          .filter((p) => p.status === 'creating' || p.status === 'setup')
-          .map((p) => p.createdPath)
-      )
       for (const wt of list) {
-        if (!claimed.has(wt.path)) panesFSM.ensureInitialized(wt.path)
+        if (!isMidCreation(wt.path)) panesFSM.ensureInitialized(wt.path)
       }
       return
     }
@@ -1390,6 +1451,7 @@ function registerIpcHandlers(): void {
       teleportSessionId?: string
       agentKind?: AgentKind
       model?: string
+      forkSource?: ForkSource
       checkoutExisting?: boolean
       baseRef?: string
     }) => {
@@ -2357,6 +2419,20 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setConversationForkEnabled', (_ctx, enabled: boolean) => {
+    if (enabled) {
+      config.conversationForkEnabled = true
+    } else {
+      delete config.conversationForkEnabled
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/conversationForkEnabledChanged',
+      payload: config.conversationForkEnabled === true
+    })
+    return true
+  })
+
   transport.onRequest('config:setBrowserToolsMode', (_ctx, mode: 'view' | 'full') => {
     const next = mode === 'view' ? 'view' : 'full'
     if (next === 'full') {
@@ -2812,7 +2888,7 @@ function registerIpcHandlers(): void {
   // skips merged worktrees, so this is the only path that wakes them.
   // No-op for paths that already have panes.
   transport.onRequest('panes:ensureInitialized', (_ctx, wtPath: string) => {
-    panesFSM.ensureInitialized(wtPath)
+    if (!isMidCreation(wtPath)) panesFSM.ensureInitialized(wtPath)
     return true
   })
 
@@ -4401,6 +4477,8 @@ async function runBoot(): Promise<void> {
     getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
     getPrReviewPrompt: () => config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT,
     resolveCallerScope,
+    hasForkableTranscript,
+    getConversationForkEnabled: () => config.conversationForkEnabled === true,
     getBrowserPerms: () => ({
       enabled: config.browserToolsEnabled !== false,
       mode: config.browserToolsMode === 'view' ? 'view' : 'full'
@@ -4608,15 +4686,33 @@ async function runBoot(): Promise<void> {
           initialPrompt?: string
           agentKind?: AgentKind
           model?: string
+          forkSource?: ForkSource
+          baseRef?: string
         }
-        panesFSM.ensureInitialized(p.worktree.path, {
-          initialPrompt: p.initialPrompt,
-          agentKind: p.agentKind,
-          model: p.model
-        })
-        void worktreesFSM.refreshList().then(() => {
+        // A conversation fork makes the seeding async (the relocation
+        // preamble shells out to git), so claim the path first — the
+        // worktree is already on disk and visible to `git worktree list`.
+        seedingWorktreePaths.add(p.worktree.path)
+        void (async () => {
+          try {
+            const kickoff = await resolveForkedKickoff({
+              createdPath: p.worktree.path,
+              initialPrompt: p.initialPrompt,
+              forkSource: p.forkSource,
+              baseRef: p.baseRef
+            })
+            panesFSM.ensureInitialized(p.worktree.path, {
+              initialPrompt: kickoff.initialPrompt,
+              agentKind: p.agentKind,
+              model: p.model,
+              forkedSessionId: kickoff.forkedSessionId
+            })
+          } finally {
+            seedingWorktreePaths.delete(p.worktree.path)
+          }
+          await worktreesFSM.refreshList()
           broadcastToAllWindows(channel, payload)
-        })
+        })()
         void prPoller.refreshAll()
         return
       }

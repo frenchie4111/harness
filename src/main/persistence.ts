@@ -245,6 +245,11 @@ export interface Config {
   // agents and the corresponding /browser/* control endpoints reject calls.
   // Default is enabled (undefined/true).
   browserToolsEnabled?: boolean
+  // Unless true, chats can't be forked into a new worktree: the Chat tab menu
+  // action is hidden, create_worktree drops its forkConversation parameter,
+  // and the system prompt omits the paragraph describing it.
+  // Default is disabled (undefined/false).
+  conversationForkEnabled?: boolean
   // 'view' = inspect tabs + spawn/navigate, but no clicking, typing, or
   // scrolling. 'full' = everything. Default 'full' (undefined treated as 'full').
   browserToolsMode?: 'view' | 'full'
@@ -362,6 +367,13 @@ export const THEME_APP_BG: Record<string, string> = {
 
 export const DEFAULT_CLAUDE_COMMAND = 'claude'
 
+/** The conversation-fork paragraph of the default system prompt, split out so
+ *  `buildClaudeLaunchSettings` can drop it when the feature is disabled. It's
+ *  interpolated into DEFAULT_HARNESS_SYSTEM_PROMPT below rather than duplicated,
+ *  because the removal is an exact string match. A user who customized their
+ *  prompt keeps whatever they wrote. */
+export const HARNESS_SYSTEM_PROMPT_FORK_PARAGRAPH = `By default the new session starts blank and reads only your initialPrompt, so write that prompt as a real briefing. When the new worktree is meant to continue THIS conversation, pass \`forkConversation: true\` instead and it resumes holding everything said here. If the user asks for continuity — "pick up where we left off", "they should already know what we discussed" — that is a request to fork, not an invitation to write a longer briefing. The useful question isn't whether you could write a sufficient prompt (you almost always could); it's what that prompt would have to contain. If it needs to relay findings, discarded options, or decisions from this conversation, fork. If it's a task description someone could have written before this conversation started, don't. Don't fork for merely adjacent work, a clean retry, or code review — there the history is noise. Note that the new branch is cut from the base ref, so your uncommitted work and possibly your commits won't be there; Harness tells the forked agent where it is and what survived.`
+
 export const DEFAULT_HARNESS_SYSTEM_PROMPT = `You are running inside Harness, a desktop app that manages multiple Claude Code sessions across git worktrees. You have access to harness-control MCP tools:
 
 - mcp__harness-control__create_worktree: Create a new worktree with its own Claude session. Always provide a detailed initialPrompt so the new session has full context. Pass an optional alias — a short, human-readable label (Title Case with spaces, like "Auth Refactor" or "PR 214 Review"), not a kebab-case branch-style slug. Think tab title, not branch name.
@@ -370,6 +382,8 @@ export const DEFAULT_HARNESS_SYSTEM_PROMPT = `You are running inside Harness, a 
 - mcp__harness-control__clear_worktree_alias: Remove a worktree's display alias so its branch name shows again. Defaults to the caller's worktree.
 
 When the user wants to start a new task, fix, or investigation that would benefit from isolation, suggest creating a worktree for it rather than doing everything inline. Each worktree is an independent git branch with its own terminal and Claude session.
+
+${HARNESS_SYSTEM_PROMPT_FORK_PARAGRAPH}
 
 Harness also exposes embedded browser tabs — you can open a browser alongside the terminal and see and drive what's in it via the harness-control browser tools (scoped to this worktree only):
 

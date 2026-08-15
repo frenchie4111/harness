@@ -1,8 +1,8 @@
 import type { StateEvent, StateSnapshot } from '../shared/state'
 export type { StateEvent, StateSnapshot }
 
-import type { Worktree, PendingWorktree, PendingDeletion } from '../shared/state/worktrees'
-export type { Worktree, PendingWorktree, PendingDeletion }
+import type { Worktree, PendingWorktree, PendingDeletion, ForkSource } from '../shared/state/worktrees'
+export type { Worktree, PendingWorktree, PendingDeletion, ForkSource }
 
 import type { RepoConfig } from '../shared/state/repo-configs'
 export type { RepoConfig }
@@ -212,6 +212,7 @@ export interface ElectronAPI {
     teleportSessionId?: string
     agentKind?: AgentKind
     model?: string,
+    forkSource?: ForkSource
     checkoutExisting?: boolean
     baseRef?: string
   }): Promise<
@@ -361,6 +362,7 @@ export interface ElectronAPI {
   getLanAddresses(): Promise<Array<{ iface: string; address: string }>>
   setBrowserToolsEnabled(enabled: boolean): Promise<boolean>
   setBrowserToolsMode(mode: 'view' | 'full'): Promise<boolean>
+  setConversationForkEnabled(enabled: boolean): Promise<boolean>
   setDefaultClaudeTabType(value: 'xterm' | 'json'): Promise<boolean>
   setChatPromotionDismissed(value: boolean): Promise<boolean>
   setJsonModeChatDensity(value: 'compact' | 'comfy'): Promise<boolean>
