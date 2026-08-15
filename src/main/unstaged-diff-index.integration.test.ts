@@ -12,6 +12,11 @@ import { WorktreeWatcher } from './worktree-watcher'
 // `git diff` — the write lands in the gitdir WorktreeWatcher watches and
 // retriggers the very refresh that caused it. These tests pin that down.
 //
+// The fix is to run that one read through `diff-files` — the plumbing
+// equivalent, which does no opportunistic refresh. These tests are
+// deliberately mechanism-agnostic: they assert the index doesn't move and the
+// counts stay correct, not how that is achieved.
+//
 // The write-back only happens for a tracked file that is touched-but-CLEAN
 // (mtime moved, content identical): that's the entry git wants to record as
 // clean so it needn't re-hash next time. A file whose content actually differs
@@ -77,7 +82,7 @@ describe('unstaged diff index write-back (real git)', () => {
     expect(indexStamp(linked)).toBe(before)
   }, 20000)
 
-  it('still reports unstaged changes correctly through the snapshot index', async () => {
+  it('still reports unstaged changes and their counts', async () => {
     const { linked } = makeRepoWithLinkedWorktree()
     fs.appendFileSync(join(linked, 'seed.txt'), 'unstaged change\n')
 

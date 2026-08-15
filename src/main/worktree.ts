@@ -17,7 +17,6 @@ import { perfLog } from './perf-log'
 import { resolveUserShell, loginShellCommandArgs } from './user-shell'
 import { detectInProgressOp } from './git-ops-state'
 import { cachedGitRead } from './git-poll-cache'
-import { unstagedDiffIndexEnv } from './git-index-snapshot'
 import type { Worktree } from '../shared/state/worktrees'
 
 const execFileAsync = promisify(execFile)
@@ -593,18 +592,23 @@ function parseNumstatZ(stdout: string): Map<string, NumstatCounts> {
   return map
 }
 
+/** `command` exists because GIT_OPTIONAL_LOCKS=0 does not cover every form of
+ * `git diff`. It suppresses the index write-back for `status` and for
+ * `diff --cached`, but the unstaged worktree-vs-index `git diff` refreshes and
+ * writes the index anyway (git 2.50.1). That write lands in the gitdir
+ * WorktreeWatcher watches, and `index` is in CHANGED_FILES_RELEVANT — so the
+ * changed-files read retriggers its own invalidation, doubling the git work
+ * behind every edit. `diff-files` is the plumbing equivalent of that one form
+ * and does no opportunistic refresh, so the unstaged call uses it instead. */
 async function numstatExec(
   worktreePath: string,
   args: string[],
-  snapshotIndex = false
+  command: 'diff' | 'diff-files' = 'diff'
 ): Promise<{ stdout: string; execMs: number; outputBytes: number }> {
-  // Only the unstaged form writes the index back — see git-index-snapshot.ts.
-  const indexEnv = snapshotIndex ? unstagedDiffIndexEnv(worktreePath) : null
   try {
-    return await tracedExec(['diff', '--numstat', '-z', ...args], {
+    return await tracedExec([command, '--numstat', '-z', ...args], {
       cwd: worktreePath,
-      maxBuffer: 16 * 1024 * 1024,
-      ...(indexEnv ? { env: { ...readOnlyGitEnv(), ...indexEnv } } : {})
+      maxBuffer: 16 * 1024 * 1024
     })
   } catch {
     return { stdout: '', execMs: 0, outputBytes: 0 }
@@ -722,7 +726,7 @@ async function getChangedFilesImpl(
       const [status, stagedNs, unstagedNs] = await Promise.all([
         tracedExec(['status', '--porcelain', '-uall'], { cwd: worktreePath }),
         numstatExec(worktreePath, ['--cached']),
-        numstatExec(worktreePath, [], true)
+        numstatExec(worktreePath, [], 'diff-files')
       ])
       walledExec += performance.now() - tA
       cumExec += status.execMs + stagedNs.execMs + unstagedNs.execMs
