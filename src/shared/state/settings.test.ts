@@ -458,6 +458,20 @@ describe('settingsReducer', () => {
     expect(off.conversationForkEnabled).toBe(false)
   })
 
+  it('worktreeMessagingEnabledChanged toggles flag, defaulting off', () => {
+    expect(initialSettings.worktreeMessagingEnabled).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/worktreeMessagingEnabledChanged',
+      payload: true
+    })
+    expect(on.worktreeMessagingEnabled).toBe(true)
+    const off = apply(on, {
+      type: 'settings/worktreeMessagingEnabledChanged',
+      payload: false
+    })
+    expect(off.worktreeMessagingEnabled).toBe(false)
+  })
+
   it('browserToolsModeChanged switches between view and full', () => {
     expect(initialSettings.browserToolsMode).toBe('full')
     const view = apply(initialSettings, {

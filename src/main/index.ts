@@ -93,6 +93,7 @@ import type { ForkSource } from '../shared/state/worktrees'
 import { MAX_WAKE } from '../shared/state/snooze'
 import { hasScratchpadNote } from '../shared/state/scratchpad'
 import { normalizeAlias } from '../shared/state/aliases'
+import { deriveWorktreeStatus } from './worktree-status'
 import {
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
@@ -117,6 +118,11 @@ import { listDir as fsListDir, resolveHome as fsResolveHome } from './fs-listing
 import { listConfiguredHosts } from './ssh-config'
 import { SshTunnelManager } from './ssh-tunnel-manager'
 import { startControlServer } from './control-server'
+import {
+  deliverToWorktreeChat,
+  describeWorktree,
+  resolveWorktreeQuery
+} from './chat-delivery'
 import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
 import { getControlServerInfo } from './control-server'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
@@ -1067,14 +1073,19 @@ store.subscribe((event) => {
 
 const activityDeriver = new ActivityDeriver(store)
 
+// How anything in main reaches a worktree's agent chat. Shared by the CI
+// notifier and the send_message MCP tool so both route (and wake) alike.
+const chatDeliveryDeps = {
+  send: (sessionId: string, text: string) => jsonClaudeManager.send(sessionId, text),
+  hasSession: (sessionId: string) => jsonClaudeManager.hasSession(sessionId),
+  wake: (worktreePath: string, tabId: string) =>
+    panesFSM.wakeJsonClaudeTab(worktreePath, tabId)
+}
+
 // Injects a "CI is failing" message into a worktree's agent chat when its
 // PR checks go red. Kept out of PRPoller so the poller stays ignorant of
 // chat sessions.
-const ciNotifier = new CiNotifier(store, {
-  send: (sessionId, text) => jsonClaudeManager.send(sessionId, text),
-  hasSession: (sessionId) => jsonClaudeManager.hasSession(sessionId),
-  wake: (worktreePath, tabId) => panesFSM.wakeJsonClaudeTab(worktreePath, tabId)
-})
+const ciNotifier = new CiNotifier(store, chatDeliveryDeps)
 
 // Tears down idle json-mode subprocesses (yellow-dot tabs older than
 // settings.autoSleepMinutes). Constructed after panesFSM since it
@@ -2480,6 +2491,20 @@ function registerIpcHandlers(): void {
     store.dispatch({
       type: 'settings/browserToolsModeChanged',
       payload: next
+    })
+    return true
+  })
+
+  transport.onRequest('config:setWorktreeMessagingEnabled', (_ctx, enabled: boolean) => {
+    if (enabled) {
+      config.worktreeMessagingEnabled = true
+    } else {
+      delete config.worktreeMessagingEnabled
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/worktreeMessagingEnabledChanged',
+      payload: config.worktreeMessagingEnabled === true
     })
     return true
   })
@@ -4548,6 +4573,7 @@ async function runBoot(): Promise<void> {
       enabled: config.browserToolsEnabled !== false,
       mode: config.browserToolsMode === 'view' ? 'view' : 'full'
     }),
+    getWorktreeStatus: (wt) => deriveWorktreeStatus(store.getSnapshot().state, wt),
     setAlias: (worktreePath, alias) => {
       const normalized = normalizeAlias(alias)
       if (!normalized) {
@@ -4561,6 +4587,20 @@ async function runBoot(): Promise<void> {
     },
     clearAlias: (worktreePath) => {
       store.dispatch({ type: 'aliases/cleared', payload: { path: worktreePath } })
+    },
+    messaging: {
+      isEnabled: () => config.worktreeMessagingEnabled === true,
+      resolveTarget: (query) =>
+        resolveWorktreeQuery(store.getSnapshot().state, query),
+      describe: (worktreePath) =>
+        describeWorktree(store.getSnapshot().state, worktreePath),
+      send: (worktreePath, message) =>
+        deliverToWorktreeChat(
+          store.getSnapshot().state,
+          chatDeliveryDeps,
+          worktreePath,
+          message
+        )
     },
     browser: {
       listTabsForWorktree: (wtPath) => {

@@ -280,6 +280,8 @@ export function buildBackend(
     setBrowserToolsMode: (mode: 'view' | 'full') => req('config:setBrowserToolsMode', mode),
     setConversationForkEnabled: (enabled: boolean) =>
       req('config:setConversationForkEnabled', enabled),
+    setWorktreeMessagingEnabled: (enabled: boolean) =>
+      req('config:setWorktreeMessagingEnabled', enabled),
     setDefaultClaudeTabType: (value: 'xterm' | 'json') =>
       req('config:setDefaultClaudeTabType', value),
     setChatPromotionDismissed: (value: boolean) =>

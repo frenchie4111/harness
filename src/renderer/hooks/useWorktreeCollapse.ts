@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
-import type { GroupKey } from '../worktree-sort'
+import type { GroupKey } from '../../shared/worktree-sort'
 
 /** Per-client collapse / layout preferences for the worktree list. Renderer
  *  state by design (CLAUDE.md: per-viewer UI layout isn't slice state), but

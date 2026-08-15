@@ -2,7 +2,7 @@ import { useCallback, useState, type MouseEvent as ReactMouseEvent } from 'react
 import { ChevronDown, ChevronRight, Plus, X, AlertCircle, Loader2, GitPullRequest, Sparkles } from 'lucide-react'
 import type { PendingWorktree } from '../types'
 import type { AssignedPR } from '../../shared/state/assigned-prs'
-import type { GroupKey } from '../worktree-sort'
+import type { GroupKey } from '../../shared/worktree-sort'
 import type {
   WorktreeListModel,
   WorktreeRepoSectionModel,

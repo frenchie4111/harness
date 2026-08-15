@@ -251,6 +251,10 @@ export interface SettingsState {
    *  off hides the feature rather than merely rejecting it, so agents aren't
    *  told about an option that will fail. */
   conversationForkEnabled: boolean
+  /** When true, agents get the `send_message` MCP tool and can deliver a
+   *  message into another worktree's chat — the one capability that
+   *  deliberately crosses the worktree boundary. Default off. */
+  worktreeMessagingEnabled: boolean
   /** Controls whether new Claude tabs spawn as the terminal-hosted TUI
    *  ('xterm') or the React chat interface ('json'). Internal values are
    *  unchanged; the user-facing label is "Terminal" / "Chat". */
@@ -401,6 +405,7 @@ export type SettingsEvent =
   | { type: 'settings/browserToolsEnabledChanged'; payload: boolean }
   | { type: 'settings/conversationForkEnabledChanged'; payload: boolean }
   | { type: 'settings/browserToolsModeChanged'; payload: BrowserToolsMode }
+  | { type: 'settings/worktreeMessagingEnabledChanged'; payload: boolean }
   | { type: 'settings/defaultClaudeTabTypeChanged'; payload: 'xterm' | 'json' }
   | { type: 'settings/chatPromotionDismissedChanged'; payload: boolean }
   | { type: 'settings/autoApprovePermissionsChanged'; payload: boolean }
@@ -472,6 +477,7 @@ export const initialSettings: SettingsState = {
   browserToolsEnabled: true,
   conversationForkEnabled: false,
   browserToolsMode: 'full',
+  worktreeMessagingEnabled: false,
   defaultClaudeTabType: 'xterm',
   chatPromotionDismissed: false,
   autoApprovePermissions: false,
@@ -602,6 +608,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, conversationForkEnabled: event.payload }
     case 'settings/browserToolsModeChanged':
       return { ...state, browserToolsMode: event.payload }
+    case 'settings/worktreeMessagingEnabledChanged':
+      return { ...state, worktreeMessagingEnabled: event.payload }
     case 'settings/defaultClaudeTabTypeChanged':
       return { ...state, defaultClaudeTabType: event.payload }
     case 'settings/chatPromotionDismissedChanged':

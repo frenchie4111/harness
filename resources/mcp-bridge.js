@@ -190,7 +190,8 @@ const TOOLS = [
   },
   {
     name: 'list_worktrees',
-    description: 'List git worktrees currently managed by Harness.',
+    description:
+      "List git worktrees currently managed by Harness, with the same status Harness groups the sidebar by. Each entry carries `status` + `statusLabel`: 'merged' (Merged / Closed — the work landed, treat it as finished), 'needs-attention' (open PR of yours with failing checks, conflicts, or changes requested), 'active' (Open PRs — yours, healthy, awaiting review), 'reviewing' (someone else's PR you're reviewing), 'no-pr' (labelled Active — a branch with no PR yet, i.e. work still in progress), 'snoozed' (deliberately parked). Note 'active' means \"has an open PR\" and 'no-pr' is the one labelled Active — read statusLabel, not the key. `prunable: true` means the directory was deleted and only a stale git ref remains. Entries also carry `alias` when the user has named the worktree — that's the name to pass to send_message, and the name a message from it will show. This describes PR/review state, NOT whether an agent is currently running there; Harness does not report agent liveness.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -240,6 +241,27 @@ const TOOLS = [
             "Absolute path of the worktree whose alias to clear. Optional — defaults to the caller's current worktree."
         }
       }
+    }
+  },
+  {
+    name: 'send_message',
+    description:
+      "Send a message to the agent working in another Harness worktree. It arrives as a turn in that agent's chat, labelled with your worktree as the sender, and wakes the tab if it was asleep. Use it to hand off work (\"the API change landed, you can rebase now\"), ask a question, or report that something you were asked to do is finished.\n\nThere is no separate reply channel. If you want an answer, say so in the message and ask them to send_message back to you — name your own worktree so they know where to reply. Then end your turn: you'll be woken when their message arrives, so there is no need to poll or wait.\n\nDelivery is immediate or not at all — nothing is queued. If the target worktree has no agent chat tab the call fails and the message is lost, so report that to the user rather than assuming it landed. The recipient always sees which worktree you are; the sender name cannot be set by you.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        worktree: {
+          type: 'string',
+          description:
+            'Which worktree to message — its display alias, its branch name, or its absolute path. Call list_worktrees first if you are unsure what exists.'
+        },
+        message: {
+          type: 'string',
+          description:
+            'What to say. Write it for an agent who has none of your context: state what you did, what you need, and what you want them to do next.'
+        }
+      },
+      required: ['worktree', 'message']
     }
   },
   {
@@ -536,9 +558,10 @@ const FULL_CONTROL_BROWSER_TOOLS = new Set([
 ])
 
 // One /scope fetch backs every capability gate below. Defaults on failure are
-// permissive for browser tools (pre-existing behaviour) but the fork gate
-// defaults off — the setting is opt-in, and a server that doesn't report it
-// would reject the call anyway, so advertising it would only waste a turn.
+// permissive for browser tools (pre-existing behaviour) but the fork and
+// messaging gates default off — both are opt-in, and a server that doesn't
+// report them would reject the call anyway, so advertising them would only
+// waste a turn.
 let cachedScope = null
 async function getScopeInfo() {
   if (cachedScope) return cachedScope
@@ -550,9 +573,12 @@ async function getScopeInfo() {
   return cachedScope
 }
 
-async function getBrowserPerms() {
+async function getToolPerms() {
   const s = await getScopeInfo()
-  return s.browser || { enabled: true, mode: 'full' }
+  return {
+    browser: s.browser || { enabled: true, mode: 'full' },
+    messaging: s.messaging || { enabled: false }
+  }
 }
 
 async function getConversationForkEnabled() {
@@ -562,11 +588,12 @@ async function getConversationForkEnabled() {
 
 function filterToolsByPerms(tools, perms) {
   return tools.filter((t) => {
+    if (t.name === 'send_message') return perms.messaging.enabled
     const isView = VIEW_BROWSER_TOOLS.has(t.name)
     const isFull = FULL_CONTROL_BROWSER_TOOLS.has(t.name)
     if (!isView && !isFull) return true
-    if (!perms.enabled) return false
-    if (isFull && perms.mode !== 'full') return false
+    if (!perms.browser.enabled) return false
+    if (isFull && perms.browser.mode !== 'full') return false
     return true
   })
 }
@@ -657,6 +684,26 @@ async function handleToolCall(name, args) {
       worktreePath: args && args.worktreePath
     })
     return 'Cleared alias for ' + r.worktreePath
+  }
+  if (name === 'send_message') {
+    if (!args || typeof args.worktree !== 'string' || !args.worktree.trim()) {
+      throw new Error('worktree is required')
+    }
+    if (typeof args.message !== 'string' || !args.message.trim()) {
+      throw new Error('message is required')
+    }
+    const r = await callControl('POST', '/messages', {
+      worktree: args.worktree,
+      message: args.message
+    })
+    return (
+      'Delivered to ' +
+      r.worktreePath +
+      ', sent as "' +
+      r.from +
+      '"' +
+      (r.woke ? ' (woke its sleeping chat tab)' : '')
+    )
   }
   if (name === 'list_browser_tabs') {
     const r = await callControl('GET', '/browser/tabs')
@@ -846,7 +893,7 @@ async function handle(msg) {
     }
     if (method === 'tools/list') {
       logErr('tools/list received')
-      const perms = await getBrowserPerms()
+      const perms = await getToolPerms()
       let tools = filterToolsByPerms(TOOLS, perms)
       if (!(await getConversationForkEnabled())) tools = stripForkAffordance(tools)
       return { jsonrpc: '2.0', id, result: { tools } }
