@@ -1415,6 +1415,11 @@ function recordRemoteServerVersion(connectionId: string, installed: string | nul
  *  pre-warm loop in runBoot(). Idempotent: if a tunnel for this
  *  backend is already live, returns its URL+token without re-running
  *  the SSH handshake. */
+const sshReconnectsInFlight = new Map<
+  string,
+  Promise<{ url: string; token: string; localPort: number }>
+>()
+
 async function runSshReconnect(input: {
   bootstrapId: string
   connectionId: string
@@ -1425,6 +1430,26 @@ async function runSshReconnect(input: {
   if (typeof input.bootstrapId !== 'string' || !input.bootstrapId) {
     throw new Error('bootstrapId is required')
   }
+  // The boot pre-warm and the renderer's hydrate fire for the same
+  // backend at almost the same moment. The liveness check below can't
+  // separate them — neither has registered a tunnel yet — so both would
+  // run a full bootstrap and leave two tunnels (and two harness-servers)
+  // behind. Whoever asks second joins the first attempt instead.
+  const existingAttempt = sshReconnectsInFlight.get(input.connectionId)
+  if (existingAttempt) return existingAttempt
+  const attempt = runSshReconnectUncoalesced(input)
+  sshReconnectsInFlight.set(input.connectionId, attempt)
+  try {
+    return await attempt
+  } finally {
+    sshReconnectsInFlight.delete(input.connectionId)
+  }
+}
+
+async function runSshReconnectUncoalesced(input: {
+  bootstrapId: string
+  connectionId: string
+}): Promise<{ url: string; token: string; localPort: number }> {
   const conn = (config.connections ?? []).find((c) => c.id === input.connectionId)
   if (!conn) throw new Error(`unknown backend ${input.connectionId}`)
   if (!conn.ssh) throw new Error(`backend ${input.connectionId} is not an SSH backend`)

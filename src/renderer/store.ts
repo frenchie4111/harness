@@ -35,7 +35,7 @@ import {
 } from '../shared/state'
 import type { RemoteServerVersion } from '../shared/state/ssh-bootstrap'
 import type { LocalTransportHandle, BackendConnection } from './types'
-import type { BootstrapProgress } from '../shared/state/ssh-bootstrap'
+import type { BootstrapProgress, SshBootstrapState } from '../shared/state/ssh-bootstrap'
 import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
 import { initBackend, getBackend } from './backend'
 
@@ -459,7 +459,24 @@ export async function initStore(): Promise<void> {
     console.warn('[harness] failed to hydrate remote backends', err)
   }
 
-  watchForTunnelPortChanges()
+  const local = registry.getStore(LOCAL_BACKEND_ID)
+  if (local) {
+    watchForTunnelPortChanges({
+      subscribe: (cb) => local.subscribe(cb),
+      getById: () => local.getState().sshBootstrap.byId,
+      hasConnection: (id) => !!registry.getConnection(id),
+      getLivePort: (id) => {
+        const conn = registry.getConnection(id)
+        if (!conn) return null
+        try {
+          return Number(new URL(conn.url).port) || null
+        } catch {
+          return null
+        }
+      },
+      resync: resyncRemoteBackend
+    })
+  }
 }
 
 /** Rebuild a remote's WS transport when its tunnel comes back on a
@@ -472,29 +489,50 @@ export async function initStore(): Promise<void> {
  *  the live transport is left retrying an address that will never
  *  answer. Watching the sshBootstrap slice (which main dispatches into,
  *  and which carries the bound port) is how the renderer finds out. */
-function watchForTunnelPortChanges(): void {
-  const local = registry.getStore(LOCAL_BACKEND_ID)
-  if (!local) return
-  // Last port we've already reconciled per connection, so a slice event
-  // storm doesn't kick a rebuild per event.
+export interface TunnelPortWatchDeps {
+  subscribe: (cb: () => void) => () => void
+  getById: () => SshBootstrapState['byId']
+  /** False for connections the registry doesn't know about — nothing to
+   *  rebuild, so they're skipped rather than resynced. */
+  hasConnection: (connectionId: string) => boolean
+  /** Port the persisted ws:// URL points at, or null if unparseable. */
+  getLivePort: (connectionId: string) => number | null
+  resync: (connectionId: string) => Promise<void>
+}
+
+export function watchForTunnelPortChanges(deps: TunnelPortWatchDeps): void {
+  const { subscribe, getById, hasConnection, getLivePort, resync } = deps
   const reconciled = new Map<string, number>()
-  local.subscribe(() => {
-    const byId = local.getState().sshBootstrap.byId
+  const inFlight = new Set<string>()
+  let lastById: SshBootstrapState['byId'] | null = null
+  subscribe(() => {
+    // This fires on EVERY local-store event, so bail on the common case
+    // before touching anything. The reducer preserves `byId`'s identity
+    // when nothing in the slice changed.
+    const byId = getById()
+    if (byId === lastById) return
+    lastById = byId
+    // One connection accumulates several attempts over its lifetime
+    // (`boot-`, `hydrate-`, `reconnect-`), each pinned to whatever port
+    // it bound. Only the newest describes reality — comparing all of
+    // them against one per-connection guard let two stale entries
+    // invalidate each other and resync on a loop.
+    const newest = new Map<string, BootstrapProgress>()
     for (const entry of Object.values(byId)) {
       const id = entry.connectionId
       if (!id || entry.phase !== 'connected' || !entry.localPort) continue
-      if (reconciled.get(id) === entry.localPort) continue
-      const conn = registry.getConnection(id)
-      if (!conn) continue
-      reconciled.set(id, entry.localPort)
-      let livePort: number | null = null
-      try {
-        livePort = Number(new URL(conn.url).port) || null
-      } catch {
-        livePort = null
-      }
-      if (livePort === entry.localPort) continue
-      void resyncRemoteBackend(id)
+      const prev = newest.get(id)
+      if (!prev || entry.updatedAt > prev.updatedAt) newest.set(id, entry)
+    }
+    for (const [id, entry] of newest) {
+      if (inFlight.has(id) || reconciled.get(id) === entry.localPort) continue
+      if (!hasConnection(id)) continue
+      reconciled.set(id, entry.localPort!)
+      if (getLivePort(id) === entry.localPort) continue
+      // A rebuild dispatches into this very slice, so without the guard
+      // the resync re-enters through its own state events.
+      inFlight.add(id)
+      void resync(id).finally(() => inFlight.delete(id))
     }
   })
 }
