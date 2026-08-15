@@ -398,7 +398,12 @@ export async function initStore(): Promise<void> {
   // as the standalone web client).
   initBackend({
     getActiveTransport: () => registry.getActiveTransport(),
-    getLocalTransport: () => localTransport
+    getLocalTransport: () => localTransport,
+    getTransportById: (id) => {
+      const t = registry.getTransport(id)
+      if (!t) throw new Error(`no transport for backend ${id}`)
+      return t
+    }
   })
 
   const [snapshot, id] = await Promise.all([

@@ -19,6 +19,13 @@ export type { AddRepoResult }
 import type { PreventSleepMode } from '../shared/state/settings'
 export type { PreventSleepMode }
 
+import type {
+  TransferCapability,
+  TransferExport,
+  TransferImport
+} from '../shared/transfer'
+export type { TransferCapability, TransferExport, TransferImport }
+
 /** Per-kind dirtiness flags for a worktree. `git` reflects
  *  uncommitted changes; `scratchpad` reflects a non-empty scratchpad
  *  note. The delete-worktree flow surfaces each kind separately so the
@@ -255,6 +262,34 @@ export interface ElectronAPI {
   dismissPendingDeletion(path: string): Promise<boolean>
   pruneWorktrees(repoRoot: string): Promise<boolean>
   getWorktreeDir(repoRoot: string): Promise<string>
+
+  transferProbe(backendId: string): Promise<TransferCapability>
+  transferExport(
+    backendId: string,
+    params: { worktreePath: string }
+  ): Promise<TransferExport>
+  transferReadChunk(
+    backendId: string,
+    handle: string,
+    index: number
+  ): Promise<{ base64: string }>
+  transferBegin(
+    backendId: string,
+    params: {
+      repoRoot: string
+      branchName: string
+      chunkCount: number
+      totalBytes: number
+    }
+  ): Promise<{ handle: string }>
+  transferWriteChunk(
+    backendId: string,
+    handle: string,
+    index: number,
+    base64: string
+  ): Promise<{ received: number }>
+  transferFinish(backendId: string, handle: string): Promise<TransferImport>
+  transferDiscard(backendId: string, handle: string): Promise<boolean>
   listRepos(): Promise<string[]>
   addRepo(): Promise<AddRepoResult>
   addRepoAtPath(repoRoot: string): Promise<AddRepoResult>

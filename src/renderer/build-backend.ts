@@ -55,6 +55,7 @@ type ExitCallback = (id: string, exitCode: number) => void
 export function buildBackend(
   getActiveTransport: () => LocalTransportHandle,
   getLocalTransport: () => LocalTransportHandle,
+  getTransportById: (id: string) => LocalTransportHandle,
   electronHelpers: ElectronOnlyHelpers | null
 ): ElectronAPI {
   // Active-routed (most things). Goes to whichever backend the user
@@ -79,6 +80,20 @@ export function buildBackend(
     name: string,
     handler: ClientSignalHandler
   ): (() => void) => getLocalTransport().onSignal(name, handler)
+
+  // Explicitly addressed. The only routing mode that can reach a
+  // backend other than the active one, which is what a worktree
+  // transfer needs: it drives two backends in one operation, and
+  // neither is necessarily the one the user is looking at. Every other
+  // method on this object deliberately cannot do this — routing by
+  // active/local is what keeps the UI's commands unambiguous — so keep
+  // this reserved for operations that are genuinely about a specific
+  // backend rather than about "here".
+  const reqOn = (
+    backendId: string,
+    name: string,
+    ...args: unknown[]
+  ): Promise<unknown> => getTransportById(backendId).request(name, ...args)
 
   // Stub used when an Electron-only helper is called in the web
   // client (where `electronHelpers` is null). Logged once per call
@@ -142,6 +157,33 @@ export function buildBackend(
     dismissPendingDeletion: (path: string) => req('worktree:dismissPendingDeletion', path),
     pruneWorktrees: (repoRoot: string) => req('worktrees:prune', repoRoot),
     getWorktreeDir: (repoRoot: string) => req('worktree:dir', repoRoot),
+
+    // Worktree transfer. Every call takes an explicit backend id
+    // because one transfer spans two backends — see `reqOn` above.
+    transferProbe: (backendId: string) => reqOn(backendId, 'transfer:probe'),
+    transferExport: (backendId: string, params: { worktreePath: string }) =>
+      reqOn(backendId, 'transfer:export', params),
+    transferReadChunk: (backendId: string, handle: string, index: number) =>
+      reqOn(backendId, 'transfer:readChunk', handle, index),
+    transferBegin: (
+      backendId: string,
+      params: {
+        repoRoot: string
+        branchName: string
+        chunkCount: number
+        totalBytes: number
+      }
+    ) => reqOn(backendId, 'transfer:begin', params),
+    transferWriteChunk: (
+      backendId: string,
+      handle: string,
+      index: number,
+      base64: string
+    ) => reqOn(backendId, 'transfer:writeChunk', handle, index, base64),
+    transferFinish: (backendId: string, handle: string) =>
+      reqOn(backendId, 'transfer:finish', handle),
+    transferDiscard: (backendId: string, handle: string) =>
+      reqOn(backendId, 'transfer:discard', handle),
 
     listRepos: () => req('repo:list'),
     addRepo: () => req('repo:add'),

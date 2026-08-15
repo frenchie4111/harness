@@ -37,9 +37,15 @@ declare global {
 export function initBackend(opts: {
   getActiveTransport: () => LocalTransportHandle
   getLocalTransport: () => LocalTransportHandle
+  getTransportById: (id: string) => LocalTransportHandle
 }): void {
   const electronHelpers = window.__harness_electron_helpers ?? null
-  backend = buildBackend(opts.getActiveTransport, opts.getLocalTransport, electronHelpers)
+  backend = buildBackend(
+    opts.getActiveTransport,
+    opts.getLocalTransport,
+    opts.getTransportById,
+    electronHelpers
+  )
 }
 
 export function getBackend(): ElectronAPI {
