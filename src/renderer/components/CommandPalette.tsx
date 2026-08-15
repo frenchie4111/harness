@@ -3,7 +3,7 @@ import { Search, GitPullRequest, ArrowRight, FileText, Server } from 'lucide-rea
 import type { Worktree, PtyStatus, PRStatus, ChangedFile } from '../types'
 import type { Action, HotkeyBinding } from '../hotkeys'
 import { ACTION_LABELS, bindingToString } from '../hotkeys'
-import { groupWorktrees, GROUP_ORDER, GROUP_LABELS, type GroupKey } from '../worktree-sort'
+import { groupWorktrees, GROUP_ORDER, GROUP_LABELS, type GroupKey } from '../../shared/worktree-sort'
 import { repoNameColor } from './RepoIcon'
 import { fuzzyMatch } from '../fuzzy'
 import { useBackend } from '../backend'

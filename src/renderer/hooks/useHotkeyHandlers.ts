@@ -4,7 +4,7 @@ import { getLeaves, findLeaf } from '../../shared/state/terminals'
 import { resolveHotkeys, isEditableTarget, type Action, type HotkeyBinding } from '../hotkeys'
 import { useHotkeys } from './useHotkeys'
 import { useDoubleTapShift } from './useDoubleTapShift'
-import { groupWorktrees, getGroupKey, type GroupKey } from '../worktree-sort'
+import { groupWorktrees, getGroupKey, type GroupKey } from '../../shared/worktree-sort'
 import { focusTerminalById } from '../components/XTerminal'
 import {
   useConnections,

@@ -45,6 +45,7 @@ type SubSectionId =
   | 'hotkeys-overlays'
   | 'hotkeys-external'
   | 'experimental-browser-control'
+  | 'experimental-worktree-messaging'
   | 'experimental-auto-approve'
   | 'experimental-web-mobile'
 
@@ -92,6 +93,7 @@ const SECTIONS: Section[] = [
   { id: 'support', label: 'Support', icon: LifeBuoy },
   { id: 'experimental', label: 'Experimental', icon: FlaskConical, children: [
     { id: 'experimental-browser-control', label: 'Browser control' },
+    { id: 'experimental-worktree-messaging', label: 'Worktree messaging' },
     { id: 'experimental-auto-approve', label: 'Auto-approve' },
     { id: 'experimental-web-mobile', label: 'Web & mobile' }
   ]}
@@ -181,6 +183,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     'hotkeys-overlays': null,
     'hotkeys-external': null,
     'experimental-browser-control': null,
+    'experimental-worktree-messaging': null,
     'experimental-auto-approve': null,
     'experimental-web-mobile': null
   })
@@ -367,6 +370,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     claudeTuiFullscreen,
     browserToolsEnabled,
     browserToolsMode,
+    worktreeMessagingEnabled,
     wsTransportEnabled,
     wsTransportPort,
     wsTransportHost,
@@ -3485,6 +3489,43 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     </select>
                   </div>
                 </div>
+              </div>
+
+              {/* Worktree messaging sub-card */}
+              <div
+                ref={(el) => { subSectionRefs.current['experimental-worktree-messaging'] = el }}
+                id="experimental-worktree-messaging"
+                className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-sm font-semibold text-fg-bright">Worktree messaging</h3>
+                  <span className="text-xs font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                    Experimental
+                  </span>
+                </div>
+                <p className="text-xs text-dim mb-3">
+                  Lets an agent send a message straight into another worktree&apos;s
+                  Chat tab — handing off work, or telling a waiting worktree that
+                  the thing it needed is done. Unlike the browser and shell tools,
+                  this deliberately crosses the worktree boundary. Messages arrive
+                  labelled with the sending worktree, and waking a sleeping Chat
+                  tab counts as activity. Only takes effect on the next agent
+                  session.
+                </p>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={worktreeMessagingEnabled}
+                    onChange={(e) => { void backend.setWorktreeMessagingEnabled(e.target.checked) }}
+                    className="mt-0.5 cursor-pointer icon-base" />
+                  <div className="flex-1">
+                    <div className="text-sm text-fg-bright">Enable worktree messaging</div>
+                    <div className="text-xs text-dim mt-0.5">
+                      Exposes the <code className="bg-panel px-1 rounded text-xs">send_message</code> MCP tool. Senders can&apos;t forge who a message came from — the name is taken from the calling worktree.
+                    </div>
+                  </div>
+                </label>
               </div>
 
               {/* Auto-approve safe tool calls sub-card */}
