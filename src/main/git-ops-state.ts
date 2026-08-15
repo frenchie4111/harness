@@ -167,6 +167,23 @@ async function detectCherryPick(
   return { kind: 'cherry-pick', label: `cherry-picking ${done}/${total}` }
 }
 
+const BUSY_MARKERS = [
+  'rebase-merge',
+  'rebase-apply',
+  'MERGE_HEAD',
+  'CHERRY_PICK_HEAD',
+  'REVERT_HEAD',
+  'BISECT_LOG',
+  'sequencer',
+  'index.lock'
+]
+
+/** True while a git operation is mid-flight in this gitdir. Pure existsSync —
+ * no subprocess — so it is cheap enough to call on every polled read. */
+export function isGitBusy(gitDir: string): boolean {
+  return BUSY_MARKERS.some((m) => existsSync(join(gitDir, m)))
+}
+
 export async function detectInProgressOp(worktreePath: string): Promise<InProgressOp | null> {
   const gitDir = await readGitDir(worktreePath)
   if (!gitDir) return null
