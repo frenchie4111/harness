@@ -131,7 +131,7 @@ To pin a specific version:
 HARNESS_SERVER_VERSION=2.6.1 sh -c 'curl -fsSL https://raw.githubusercontent.com/frenchie4111/harness/main/scripts/install-headless.sh | sh'
 ```
 
-Re-running the install script bumps the version. There's no in-place self-update yet.
+Re-running the install script bumps the version. The server never self-updates. Backends you connected over SSH are the exception: when the remote's version doesn't match your Harness, the backend's chip shows an upgrade badge that re-runs the installer and restarts the server for you — restarting ends every session on that machine, so it's always an explicit click.
 
 ### Connecting the Electron app to a remote server
 
