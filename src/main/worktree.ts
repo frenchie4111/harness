@@ -17,6 +17,7 @@ import { perfLog } from './perf-log'
 import { resolveUserShell, loginShellCommandArgs } from './user-shell'
 import { detectInProgressOp } from './git-ops-state'
 import { cachedGitRead } from './git-poll-cache'
+import { unstagedDiffIndexEnv } from './git-index-snapshot'
 import type { Worktree } from '../shared/state/worktrees'
 
 const execFileAsync = promisify(execFile)
@@ -594,12 +595,16 @@ function parseNumstatZ(stdout: string): Map<string, NumstatCounts> {
 
 async function numstatExec(
   worktreePath: string,
-  args: string[]
+  args: string[],
+  snapshotIndex = false
 ): Promise<{ stdout: string; execMs: number; outputBytes: number }> {
+  // Only the unstaged form writes the index back — see git-index-snapshot.ts.
+  const indexEnv = snapshotIndex ? unstagedDiffIndexEnv(worktreePath) : null
   try {
     return await tracedExec(['diff', '--numstat', '-z', ...args], {
       cwd: worktreePath,
-      maxBuffer: 16 * 1024 * 1024
+      maxBuffer: 16 * 1024 * 1024,
+      ...(indexEnv ? { env: { ...readOnlyGitEnv(), ...indexEnv } } : {})
     })
   } catch {
     return { stdout: '', execMs: 0, outputBytes: 0 }
@@ -717,7 +722,7 @@ async function getChangedFilesImpl(
       const [status, stagedNs, unstagedNs] = await Promise.all([
         tracedExec(['status', '--porcelain', '-uall'], { cwd: worktreePath }),
         numstatExec(worktreePath, ['--cached']),
-        numstatExec(worktreePath, [])
+        numstatExec(worktreePath, [], true)
       ])
       walledExec += performance.now() - tA
       cumExec += status.execMs + stagedNs.execMs + unstagedNs.execMs
