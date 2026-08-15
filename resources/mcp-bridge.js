@@ -537,8 +537,8 @@ const FULL_CONTROL_BROWSER_TOOLS = new Set([
 
 // One /scope fetch backs every capability gate below. Defaults on failure are
 // permissive for browser tools (pre-existing behaviour) but the fork gate
-// defaults on too — a server too old to report the field is one that predates
-// the setting, so forking was unconditionally available there.
+// defaults off — the setting is opt-in, and a server that doesn't report it
+// would reject the call anyway, so advertising it would only waste a turn.
 let cachedScope = null
 async function getScopeInfo() {
   if (cachedScope) return cachedScope
@@ -557,7 +557,7 @@ async function getBrowserPerms() {
 
 async function getConversationForkEnabled() {
   const s = await getScopeInfo()
-  return !(s.conversationFork && s.conversationFork.enabled === false)
+  return s.conversationFork ? s.conversationFork.enabled === true : false
 }
 
 function filterToolsByPerms(tools, perms) {

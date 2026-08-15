@@ -2347,14 +2347,14 @@ function registerIpcHandlers(): void {
 
   transport.onRequest('config:setConversationForkEnabled', (_ctx, enabled: boolean) => {
     if (enabled) {
-      delete config.conversationForkEnabled
+      config.conversationForkEnabled = true
     } else {
-      config.conversationForkEnabled = false
+      delete config.conversationForkEnabled
     }
     saveConfig(config)
     store.dispatch({
       type: 'settings/conversationForkEnabledChanged',
-      payload: config.conversationForkEnabled !== false
+      payload: config.conversationForkEnabled === true
     })
     return true
   })
@@ -4314,7 +4314,7 @@ async function runBoot(): Promise<void> {
     getPrReviewPrompt: () => config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT,
     resolveCallerScope,
     hasForkableTranscript,
-    getConversationForkEnabled: () => config.conversationForkEnabled !== false,
+    getConversationForkEnabled: () => config.conversationForkEnabled === true,
     getBrowserPerms: () => ({
       enabled: config.browserToolsEnabled !== false,
       mode: config.browserToolsMode === 'view' ? 'view' : 'full'

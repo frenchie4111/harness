@@ -2,9 +2,16 @@ import { describe, it, expect } from 'vitest'
 import { buildClaudeLaunchSettings } from './claude-launch'
 import {
   DEFAULT_HARNESS_SYSTEM_PROMPT,
-  DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN
+  DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
+  HARNESS_SYSTEM_PROMPT_FORK_PARAGRAPH
 } from './persistence'
 import type { Worktree } from '../shared/state/worktrees'
+
+/** Conversation fork is opt-in, so the default prompt omits its paragraph. */
+const PROMPT_WITHOUT_FORK = DEFAULT_HARNESS_SYSTEM_PROMPT.replace(
+  `\n\n${HARNESS_SYSTEM_PROMPT_FORK_PARAGRAPH}`,
+  ''
+)
 
 function makeWorktree(overrides: Partial<Worktree> = {}): Worktree {
   return {
@@ -27,7 +34,29 @@ describe('buildClaudeLaunchSettings', () => {
       worktrees: [wt],
       config: {}
     })
-    expect(out.systemPrompt).toBe(DEFAULT_HARNESS_SYSTEM_PROMPT)
+    expect(out.systemPrompt).toBe(PROMPT_WITHOUT_FORK)
+  })
+
+  it('includes the fork paragraph only when conversationForkEnabled is true', () => {
+    const wt = makeWorktree()
+    const on = buildClaudeLaunchSettings({
+      cwd: wt.path,
+      worktrees: [wt],
+      config: { conversationForkEnabled: true }
+    })
+    expect(on.systemPrompt).toBe(DEFAULT_HARNESS_SYSTEM_PROMPT)
+    expect(on.systemPrompt).toContain(HARNESS_SYSTEM_PROMPT_FORK_PARAGRAPH)
+    expect(PROMPT_WITHOUT_FORK).not.toContain(HARNESS_SYSTEM_PROMPT_FORK_PARAGRAPH)
+  })
+
+  it('leaves a custom system prompt untouched when fork is disabled', () => {
+    const wt = makeWorktree()
+    const out = buildClaudeLaunchSettings({
+      cwd: wt.path,
+      worktrees: [wt],
+      config: { harnessSystemPrompt: 'MY PROMPT' }
+    })
+    expect(out.systemPrompt).toBe('MY PROMPT')
   })
 
   it('appends the main-worktree addition when isMain', () => {
@@ -38,7 +67,7 @@ describe('buildClaudeLaunchSettings', () => {
       config: {}
     })
     expect(out.systemPrompt).toBe(
-      `${DEFAULT_HARNESS_SYSTEM_PROMPT}\n\n${DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN}`
+      `${PROMPT_WITHOUT_FORK}\n\n${DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN}`
     )
   })
 

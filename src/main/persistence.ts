@@ -245,10 +245,10 @@ export interface Config {
   // agents and the corresponding /browser/* control endpoints reject calls.
   // Default is enabled (undefined/true).
   browserToolsEnabled?: boolean
-  // When false, chats can't be forked into a new worktree: the Chat tab menu
+  // Unless true, chats can't be forked into a new worktree: the Chat tab menu
   // action is hidden, create_worktree drops its forkConversation parameter,
   // and the system prompt omits the paragraph describing it.
-  // Default is enabled (undefined/true).
+  // Default is disabled (undefined/false).
   conversationForkEnabled?: boolean
   // 'view' = inspect tabs + spawn/navigate, but no clicking, typing, or
   // scrolling. 'full' = everything. Default 'full' (undefined treated as 'full').

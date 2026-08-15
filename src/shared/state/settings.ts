@@ -247,9 +247,9 @@ export interface SettingsState {
   browserToolsEnabled: boolean
   browserToolsMode: BrowserToolsMode
   /** Whether a chat can be forked into a new worktree — both the Chat tab
-   *  menu action and the create_worktree MCP parameter. Off hides the
-   *  feature rather than merely rejecting it, so agents aren't told about
-   *  an option that will fail. */
+   *  menu action and the create_worktree MCP parameter. Off by default, and
+   *  off hides the feature rather than merely rejecting it, so agents aren't
+   *  told about an option that will fail. */
   conversationForkEnabled: boolean
   /** Controls whether new Claude tabs spawn as the terminal-hosted TUI
    *  ('xterm') or the React chat interface ('json'). Internal values are
@@ -465,7 +465,7 @@ export const initialSettings: SettingsState = {
   wsTransportPort: 37291,
   wsTransportHost: '127.0.0.1',
   browserToolsEnabled: true,
-  conversationForkEnabled: true,
+  conversationForkEnabled: false,
   browserToolsMode: 'full',
   defaultClaudeTabType: 'xterm',
   chatPromotionDismissed: false,
