@@ -37,6 +37,25 @@
   --color-accent: #c084fc;
 }
 
+/* --- Syntax tokens ---
+ * highlight.js token colors, kept separate from the semantic tokens so a
+ * theme can tune code contrast without moving its chrome colors. The
+ * defaults alias the semantic tokens, which reads well on dark themes;
+ * light themes override them (semantic tokens tuned for chrome on a pale
+ * background land around 2.5:1 in a code block).
+ */
+:root {
+  --syntax-keyword: var(--color-accent);
+  --syntax-type: var(--color-info);
+  --syntax-string: var(--color-success);
+  --syntax-number: var(--color-warning);
+  --syntax-comment: var(--color-faint);
+  --syntax-variable: var(--color-fg);
+  --syntax-params: var(--color-muted);
+  --syntax-addition: var(--color-success);
+  --syntax-deletion: var(--color-danger);
+}
+
 /* --- JSON-mode chat density tokens ---
  * The chat root carries data-chat-density="compact" | "comfy". Compact
  * (the default) matches the historical Tailwind utility values exactly,
@@ -102,6 +121,18 @@
   --color-danger: #dc322f;
   --color-info: #268bd2;
   --color-accent: #6c71c4;
+
+  /* Solarized accents darkened until each clears 4.5:1 against
+   * --color-panel-raised (#eee8d5), the code-block background. */
+  --syntax-keyword: #585dbc;
+  --syntax-type: #1d6ba2;
+  --syntax-string: #5f6e00;
+  --syntax-number: #826200;
+  --syntax-comment: #566c73;
+  --syntax-variable: #45585f;
+  --syntax-params: #4f6268;
+  --syntax-addition: #5f6e00;
+  --syntax-deletion: #c72422;
 }
 
 [data-theme="dracula"] {
@@ -396,14 +427,14 @@ mark.find-hit-current {
   color: var(--color-muted);
 }
 .markdown code:not(pre code) {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--color-panel-raised);
   padding: 0.05em 0.35em;
   border-radius: 3px;
   font-size: 0.9em;
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
 }
 .markdown pre {
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-panel-raised);
   border-radius: 4px;
   padding: 0.6em 0.8em;
   overflow-x: auto;
@@ -652,69 +683,71 @@ button, [role="button"], a[href], [onclick] {
 .claude-loader-dots span:nth-child(3) { animation-delay: 0.36s; }
 
 /* --- Syntax highlighting ---
- * Maps highlight.js token classes to the active theme's semantic color
- * tokens, so the file/diff viewers retheme automatically when the user
- * switches themes. No prebuilt hljs stylesheet is imported.
+ * Maps highlight.js token classes to the active theme's syntax tokens, so
+ * the chat/file/diff viewers retheme automatically when the user switches
+ * themes. No prebuilt hljs stylesheet is imported — importing one (e.g.
+ * github-dark.css) would load after this block and pin every theme to that
+ * stylesheet's hardcoded colors.
  */
 .hljs-keyword,
 .hljs-selector-tag,
 .hljs-literal,
 .hljs-doctag {
-  color: var(--color-accent);
+  color: var(--syntax-keyword);
 }
 .hljs-built_in,
 .hljs-type,
 .hljs-class .hljs-title,
 .hljs-title.class_ {
-  color: var(--color-info);
+  color: var(--syntax-type);
 }
 .hljs-string,
 .hljs-regexp,
 .hljs-symbol,
 .hljs-template-tag,
 .hljs-template-variable {
-  color: var(--color-success);
+  color: var(--syntax-string);
 }
 .hljs-number,
 .hljs-meta {
-  color: var(--color-warning);
+  color: var(--syntax-number);
 }
 .hljs-comment,
 .hljs-quote {
-  color: var(--color-faint);
+  color: var(--syntax-comment);
   font-style: italic;
 }
 .hljs-function .hljs-title,
 .hljs-title.function_,
 .hljs-title {
-  color: var(--color-info);
+  color: var(--syntax-type);
 }
 .hljs-variable,
 .hljs-attr,
 .hljs-attribute,
 .hljs-property {
-  color: var(--color-fg);
+  color: var(--syntax-variable);
 }
 .hljs-params {
-  color: var(--color-muted);
+  color: var(--syntax-params);
 }
 .hljs-tag,
 .hljs-name {
-  color: var(--color-accent);
+  color: var(--syntax-keyword);
 }
 .hljs-section,
 .hljs-bullet {
-  color: var(--color-warning);
+  color: var(--syntax-number);
 }
 .hljs-link {
-  color: var(--color-info);
+  color: var(--syntax-type);
   text-decoration: underline;
 }
 .hljs-deletion {
-  color: var(--color-danger);
+  color: var(--syntax-deletion);
 }
 .hljs-addition {
-  color: var(--color-success);
+  color: var(--syntax-addition);
 }
 .hljs-emphasis {
   font-style: italic;

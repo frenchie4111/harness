@@ -44,7 +44,6 @@ import { JsonModeMentionPopover, type MentionPopoverItem } from './JsonModeMenti
 import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
 import { CLAUDE_MODELS } from '../../shared/agent-registry'
-import 'highlight.js/styles/github-dark.css'
 import {
   QUESTION_TOOL_NAME,
   type JsonClaudeChatEntry
