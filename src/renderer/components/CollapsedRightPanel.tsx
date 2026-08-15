@@ -21,6 +21,7 @@ import { CommitInfoModal } from './CommitInfoModal'
 import { useActiveBackend, usePanes, usePrs, useRepoConfigs, useSettings, useWorktrees } from '../store'
 import { useBackend } from '../backend'
 import { useWatchedQuery } from '../hooks/useWatchedQuery'
+import { requestChangedFiles } from '../hooks/changed-files-request'
 import { useReviewProgress } from '../review-progress'
 import { getLeaves } from '../../shared/state/terminals'
 import { effectiveHiddenRightPanels } from '../../shared/state/repo-configs'
@@ -86,10 +87,10 @@ export function CollapsedRightPanel({
   // and BranchCommitsPanel so the expanded right column doesn't re-fetch
   // when the user toggles between collapsed and expanded.
   const changedFilesFetcher = useCallback(
-    async (path: string): Promise<ChangedFilesData> => {
+    async (path: string, opts: { force: boolean }): Promise<ChangedFilesData> => {
       const [working, branch] = await Promise.all([
-        backend.getChangedFiles(path, 'working'),
-        backend.getChangedFiles(path, 'branch')
+        requestChangedFiles(backend, path, 'working', opts),
+        requestChangedFiles(backend, path, 'branch', opts)
       ])
       return { working, branch }
     },

@@ -5,6 +5,8 @@ import {
   type ControlServerDeps,
   type CallerScope
 } from './control-server'
+import type { ChatDeliveryResult } from './chat-delivery'
+import { parseAutomatedMessage } from '../shared/state/json-claude'
 
 // Integration test for the local HTTP control server. Exercises the
 // `/aliases` endpoint end-to-end (POST + DELETE, both scoped and
@@ -18,10 +20,17 @@ import {
 
 const setAlias = vi.fn<(worktreePath: string, alias: string) => void>()
 const clearAlias = vi.fn<(worktreePath: string) => void>()
+const sendMessage = vi.fn<(worktreePath: string, message: string) => ChatDeliveryResult>(
+  () => ({ ok: true, sessionId: 'tab-1', woke: false })
+)
+let messagingEnabled = true
 
 const CALLER_TERMINAL = 'terminal-abc'
 const CALLER_WORKTREE = '/repo/wt/callers-tree'
 const EXPLICIT_WORKTREE = '/repo/wt/other'
+/** Scoped to a worktree like a chat tab, but with no transcript on disk —
+ * how a plain terminal tab looks to the fork path. */
+const NO_TRANSCRIPT_TERMINAL = 'terminal-no-transcript'
 
 const scope: CallerScope = {
   terminalId: CALLER_TERMINAL,
@@ -30,6 +39,10 @@ const scope: CallerScope = {
   isMain: false
 }
 
+/** Mutable so a test can flip the setting off without restarting the server —
+ * mirrors how the real dep re-reads config per request. */
+let conversationForkEnabled = true
+
 const deps: ControlServerDeps = {
   getRepoRoots: () => ['/repo'],
   getWorktreeBase: () => 'remote',
@@ -37,8 +50,12 @@ const deps: ControlServerDeps = {
   broadcast: () => {},
   runWorktreeSetup: async () => {},
   runPendingPRWorktree: async () => ({ ok: false, error: 'not used in these tests' }),
-  resolveCallerScope: (terminalId) => (terminalId === CALLER_TERMINAL ? scope : null),
+  resolveCallerScope: (terminalId) =>
+    terminalId === CALLER_TERMINAL || terminalId === NO_TRANSCRIPT_TERMINAL ? scope : null,
+  hasForkableTranscript: (sessionId) => sessionId === CALLER_TERMINAL,
+  getConversationForkEnabled: () => conversationForkEnabled,
   getBrowserPerms: () => ({ enabled: false, mode: 'full' }),
+  getWorktreeStatus: () => ({ status: 'no-pr', statusLabel: 'Active' }),
   browser: {
     listTabsForWorktree: () => [],
     getTabWorktree: () => null,
@@ -65,7 +82,21 @@ const deps: ControlServerDeps = {
     killShell: () => {}
   },
   setAlias: (path, alias) => setAlias(path, alias),
-  clearAlias: (path) => clearAlias(path)
+  clearAlias: (path) => clearAlias(path),
+  messaging: {
+    isEnabled: () => messagingEnabled,
+    resolveTarget: (query) => {
+      if (query === EXPLICIT_WORKTREE || query === 'Other Tree') {
+        return { path: EXPLICIT_WORKTREE }
+      }
+      if (query === CALLER_WORKTREE || query === 'Callers Tree') {
+        return { path: CALLER_WORKTREE }
+      }
+      return { error: `no worktree matching "${query}"` }
+    },
+    describe: (path) => (path === CALLER_WORKTREE ? 'Callers Tree' : 'Other Tree'),
+    send: (path, message) => sendMessage(path, message)
+  }
 }
 
 let baseUrl: string
@@ -94,15 +125,15 @@ async function call(
   return { status: res.status, json }
 }
 
-describe('control-server /aliases endpoint', () => {
-  beforeAll(async () => {
-    await startControlServer(deps)
-    const info = getControlServerInfo()
-    if (!info) throw new Error('control server failed to start')
-    baseUrl = `http://127.0.0.1:${info.port}`
-    token = info.token
-  })
+beforeAll(async () => {
+  await startControlServer(deps)
+  const info = getControlServerInfo()
+  if (!info) throw new Error('control server failed to start')
+  baseUrl = `http://127.0.0.1:${info.port}`
+  token = info.token
+})
 
+describe('control-server /aliases endpoint', () => {
   it('POST /aliases with explicit worktreePath dispatches setAlias', async () => {
     setAlias.mockClear()
     const r = await call('POST', '/aliases', {
@@ -182,5 +213,175 @@ describe('control-server /aliases endpoint', () => {
     expect(r.status).toBe(200)
     expect(r.json.worktreePath).toBe(CALLER_WORKTREE)
     expect(clearAlias).toHaveBeenCalledWith(CALLER_WORKTREE)
+  })
+})
+
+// These all reject before addWorktree runs, so no git work happens. The
+// accept path isn't covered here — it would create a real worktree.
+describe('control-server POST /worktrees forkConversation', () => {
+  it('rejects a caller whose terminal has no forkable transcript', async () => {
+    const r = await call(
+      'POST',
+      '/worktrees',
+      { branchName: 'spinoff', forkConversation: true },
+      { terminalId: NO_TRANSCRIPT_TERMINAL }
+    )
+    expect(r.status).toBe(400)
+    expect(r.json.error).toMatch(/only available from a Harness Chat tab/)
+  })
+
+  it('rejects a caller with no resolvable scope', async () => {
+    const r = await call(
+      'POST',
+      '/worktrees',
+      { branchName: 'spinoff', forkConversation: true },
+      { terminalId: 'unknown-terminal' }
+    )
+    expect(r.status).toBe(400)
+    expect(r.json.error).toMatch(/only available from a Harness Chat tab/)
+  })
+
+  it('rejects forkConversation combined with prNumber', async () => {
+    const r = await call('POST', '/worktrees', { prNumber: 7, forkConversation: true })
+    expect(r.status).toBe(400)
+    expect(r.json.error).toMatch(/cannot be combined with prNumber/)
+  })
+
+  it('rejects forkConversation into an agent that cannot resume a transcript', async () => {
+    for (const agentKind of ['codex', 'cursor']) {
+      const r = await call('POST', '/worktrees', {
+        branchName: 'spinoff',
+        agentKind,
+        forkConversation: true
+      })
+      expect(r.status).toBe(400)
+      expect(r.json.error).toMatch(/only Claude Code can resume a forked transcript/)
+    }
+  })
+
+  it('rejects forkConversation when the setting is disabled', async () => {
+    conversationForkEnabled = false
+    try {
+      const r = await call('POST', '/worktrees', { branchName: 'spinoff', forkConversation: true })
+      expect(r.status).toBe(400)
+      expect(r.json.error).toMatch(/disabled in Harness settings/)
+    } finally {
+      conversationForkEnabled = true
+    }
+  })
+})
+
+describe('control-server /messages endpoint', () => {
+  beforeAll(async () => {
+    // The server is already listening from the suite above — vitest runs
+    // both describes in the same worker, and startControlServer is
+    // idempotent from the caller's perspective here.
+    const info = getControlServerInfo()
+    if (!info) throw new Error('control server failed to start')
+    baseUrl = `http://127.0.0.1:${info.port}`
+    token = info.token
+  })
+
+  it('delivers a wrapped message to the resolved worktree', async () => {
+    sendMessage.mockClear()
+    const r = await call('POST', '/messages', {
+      worktree: 'Other Tree',
+      message: 'build is green, you can rebase'
+    })
+    expect(r.status).toBe(200)
+    expect(r.json).toMatchObject({
+      delivered: true,
+      worktreePath: EXPLICIT_WORKTREE,
+      from: 'Callers Tree',
+      woke: false
+    })
+    const [path, wire] = sendMessage.mock.calls[0]
+    expect(path).toBe(EXPLICIT_WORKTREE)
+    expect(parseAutomatedMessage(wire)).toEqual({
+      source: 'worktree-message',
+      body: 'build is green, you can rebase',
+      from: 'Callers Tree'
+    })
+  })
+
+  it('takes the sender from caller scope, not the body', async () => {
+    sendMessage.mockClear()
+    await call('POST', '/messages', {
+      worktree: EXPLICIT_WORKTREE,
+      message: 'hi',
+      from: 'Some Other Worktree'
+    })
+    expect(parseAutomatedMessage(sendMessage.mock.calls[0][1])?.from).toBe('Callers Tree')
+  })
+
+  it('reports woke: true when delivery had to wake a slept tab', async () => {
+    sendMessage.mockReturnValueOnce({ ok: true, sessionId: 'tab-2', woke: true })
+    const r = await call('POST', '/messages', {
+      worktree: EXPLICIT_WORKTREE,
+      message: 'hi'
+    })
+    expect(r.json.woke).toBe(true)
+  })
+
+  it('rejects an unknown worktree', async () => {
+    const r = await call('POST', '/messages', { worktree: 'nope', message: 'hi' })
+    expect(r.status).toBe(404)
+    expect(r.json.error).toMatch(/no worktree matching/)
+  })
+
+  it('rejects sending to your own worktree', async () => {
+    sendMessage.mockClear()
+    const r = await call('POST', '/messages', {
+      worktree: 'Callers Tree',
+      message: 'hi'
+    })
+    expect(r.status).toBe(400)
+    expect(r.json.error).toMatch(/your own worktree/)
+    expect(sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('requires a non-empty worktree and message', async () => {
+    expect((await call('POST', '/messages', { message: 'hi' })).status).toBe(400)
+    expect(
+      (await call('POST', '/messages', { worktree: EXPLICIT_WORKTREE, message: '  ' }))
+        .status
+    ).toBe(400)
+  })
+
+  it('surfaces an undelivered message rather than silently queueing it', async () => {
+    sendMessage.mockReturnValueOnce({ ok: false, reason: 'no-chat-tab' })
+    const r = await call('POST', '/messages', {
+      worktree: EXPLICIT_WORKTREE,
+      message: 'hi'
+    })
+    expect(r.status).toBe(409)
+    expect(r.json.error).toMatch(/no agent chat tab/)
+    expect(r.json.error).toMatch(/was not sent/)
+  })
+
+  it('refuses delivery when the experimental setting is off', async () => {
+    sendMessage.mockClear()
+    messagingEnabled = false
+    try {
+      const r = await call('POST', '/messages', {
+        worktree: EXPLICIT_WORKTREE,
+        message: 'hi'
+      })
+      expect(r.status).toBe(403)
+      expect(r.json.error).toMatch(/disabled in Harness settings/)
+      expect(sendMessage).not.toHaveBeenCalled()
+    } finally {
+      messagingEnabled = true
+    }
+  })
+
+  it('rejects a caller with no worktree scope', async () => {
+    const r = await call(
+      'POST',
+      '/messages',
+      { worktree: EXPLICIT_WORKTREE, message: 'hi' },
+      { terminalId: 'unknown-terminal' }
+    )
+    expect(r.status).toBe(404)
   })
 })

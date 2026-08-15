@@ -17,6 +17,7 @@ import { InsightCard } from './InsightCard'
 import {
   AlertOctagon,
   AlertTriangle,
+  Bot,
   Brain,
   ChevronDown,
   ChevronUp,
@@ -28,14 +29,18 @@ import {
   RotateCcw,
   ShieldAlert,
   Sparkles,
-  GitBranch
+  GitBranch,
+  GitBranchPlus
 } from 'lucide-react'
+import { openForkIntoWorktree } from './NewWorktreeScreen'
 import { useJsonClaudeSession, useSettings } from '../store'
 import { useBackend } from '../backend'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
+import { JsonClaudeQuestionCard } from './JsonClaudeQuestionCard'
 import { Tooltip } from './Tooltip'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
+import { HarnessIcon } from './json-mode-cards/tool-icons'
 import { ToolGroup } from './json-mode-cards/ToolGroup'
 import { TaskCard } from './json-mode-cards/TaskCard'
 import { buildChildrenMap, isSubAgentToolName } from './json-mode-cards/grouping'
@@ -43,10 +48,11 @@ import { JsonModeMentionPopover, type MentionPopoverItem } from './JsonModeMenti
 import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
 import { CLAUDE_MODELS } from '../../shared/agent-registry'
-import 'highlight.js/styles/github-dark.css'
-import type {
-  JsonClaudeBackgroundAgent,
-  JsonClaudeChatEntry
+import {
+  QUESTION_TOOL_NAME,
+  type JsonClaudeAutomationSource,
+  type JsonClaudeBackgroundAgent,
+  type JsonClaudeChatEntry
 } from '../../shared/state/json-claude'
 import {
   COMPACT_BODY_TEXT,
@@ -669,6 +675,105 @@ function RateLimitErrorCard({
   )
 }
 
+/** `brand` picks the gradient chrome the harness-control tool cards use.
+ *  A CI failure keeps the warning tone — it's a problem report, not a
+ *  Harness feature showing off. */
+function automationLabel(
+  source: JsonClaudeAutomationSource,
+  from?: string
+): { label: string; note: string; brand: boolean } {
+  if (source === 'worktree-message') {
+    return {
+      label: from ? `Agent Message · from ${from}` : 'Agent Message',
+      note: 'sent by another worktree',
+      brand: true
+    }
+  }
+  return { label: 'Harness · CI failure', note: 'sent automatically', brand: false }
+}
+
+/** A user turn Harness injected on the human's behalf. Sits on the user
+ *  side of the transcript because that's what it is on the wire, but is
+ *  toned and labelled so nobody mistakes it for something they typed. */
+function AutomatedTurnCard({
+  source,
+  from,
+  text,
+  isQueued,
+  onCancelQueued
+}: {
+  source: JsonClaudeAutomationSource
+  from?: string
+  text: string
+  isQueued: boolean
+  onCancelQueued: () => void
+}): JSX.Element {
+  const { label, note, brand } = automationLabel(source, from)
+  const Icon = brand ? HarnessIcon : Bot
+  return (
+    <div className="flex justify-end">
+      <div
+        className={`group border overflow-hidden ${
+          brand ? 'border-warning/40 bg-panel' : 'border-warning/40 bg-warning/5'
+        } ${isQueued ? 'opacity-70' : ''}`}
+        style={{
+          maxWidth: 'var(--chat-bubble-max)',
+          borderRadius: 'var(--chat-bubble-radius)'
+        }}
+      >
+        {brand && <div className="brand-gradient-bg h-0.5" />}
+        <div
+          className={`flex items-center gap-2 border-b ${
+            brand ? 'bg-app/40 border-border' : 'bg-warning/10 border-warning/30'
+          }`}
+          style={{
+            paddingInline: 'var(--chat-chrome-px)',
+            paddingBlock: 'var(--chat-chrome-py)',
+            fontSize: 'var(--chat-chrome-text)'
+          }}
+        >
+          <Icon className={brand ? 'icon-sm shrink-0' : 'icon-xs shrink-0 text-warning'} />
+          <span
+            className={`font-semibold shrink-0 ${
+              brand
+                ? 'brand-gradient-text brand-gradient-flow-text-hover'
+                : 'text-warning'
+            }`}
+            style={{ fontFamily: 'var(--chat-tool-name-family)' }}
+          >
+            {label}
+          </span>
+          <span className="text-muted truncate">{note}</span>
+          {isQueued && (
+            <div className="flex items-center gap-1 shrink-0 ml-auto">
+              <span
+                className="uppercase tracking-wide text-muted bg-panel/60 border border-border px-1.5 py-0.5 rounded"
+                style={{ fontSize: 'var(--chat-meta-text)' }}
+              >
+                queued
+              </span>
+              <button
+                onClick={onCancelQueued}
+                className="p-1 rounded hover:bg-panel text-muted hover:text-fg cursor-pointer"
+                title="Cancel queued message"
+                aria-label="Cancel queued message"
+              >
+                <X className="icon-xs" />
+              </button>
+            </div>
+          )}
+        </div>
+        <div
+          className="px-3 py-2 whitespace-pre-wrap break-words"
+          style={{ fontSize: 'var(--chat-body-text)' }}
+        >
+          <HighlightedText text={text} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface RenderContext {
   resultsByToolUseId: Map<string, { content: string; isError: boolean }>
   childrenByParentToolUseId: Map<string, JsonClaudeChatEntry[]>
@@ -698,6 +803,23 @@ function renderEntries(
 ): RenderedRow[] {
   const rows: RenderedRow[] = []
   for (const entry of entries) {
+    if (entry.kind === 'user' && entry.automation) {
+      rows.push({
+        key: entry.entryId,
+        entryId: entry.entryId,
+        type: 'text',
+        node: (
+          <AutomatedTurnCard
+            source={entry.automation}
+            from={entry.automationFrom}
+            text={entry.text ?? ''}
+            isQueued={!!entry.isQueued}
+            onCancelQueued={() => ctx.onCancelQueued(entry.entryId)}
+          />
+        )
+      })
+      continue
+    }
     if (entry.kind === 'user') {
       const queued = !!entry.isQueued
       rows.push({
@@ -1043,7 +1165,8 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     jsonModeChatDensity: density,
     jsonModeSendOnEnter: sendOnEnter,
     autoScrollToBottom,
-    defaultClaudeTabType
+    defaultClaudeTabType,
+    conversationForkEnabled
   } = useSettings()
   const cameFromTerminalDefault = defaultClaudeTabType === 'xterm'
   const isMac =
@@ -1061,6 +1184,12 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       ? `${modKeySymbol}↵`
       : `${modKeySymbol}Enter`
   const sendHotkeyAria = sendOnEnter ? 'Enter' : `${modKeyWord}+Enter`
+  // Interrupt & send is the same combo in both sendOnEnter modes — Shift
+  // disambiguates it from plain send either way.
+  const interruptSendHotkeyLabel = isMac
+    ? `${modKeySymbol}⇧↵`
+    : `${modKeySymbol}Shift+Enter`
+  const interruptSendHotkeyAria = `${modKeyWord}+Shift+Enter`
   const composerPlaceholder = sendOnEnter
     ? 'Message Claude — Enter to send, Shift+Enter for newline'
     : `Message Claude — ${modKeyWord}+Enter to send`
@@ -1377,6 +1506,14 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     if (!toolUseId) return null
     const approval = approvalByToolUseId.get(toolUseId)
     if (!approval) return null
+    if (approval.toolName === QUESTION_TOOL_NAME) {
+      return (
+        <JsonClaudeQuestionCard
+          approval={approval}
+          onResolve={(result) => resolve(approval.requestId, result)}
+        />
+      )
+    }
     return (
       <JsonClaudeApprovalCard
         approval={approval}
@@ -1632,6 +1769,12 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     },
     [backend, sessionId]
   )
+  // Unlike the in-place fork, this carries the WHOLE conversation, so
+  // there's no fork point to resolve and no assistant-message guard.
+  const performForkIntoWorktree = useCallback(() => {
+    setRewindMenu(null)
+    openForkIntoWorktree({ sessionId, worktreePath })
+  }, [sessionId, worktreePath])
   useEffect(() => {
     if (!rewindMenu) return
     const onAway = (): void => setRewindMenu(null)
@@ -2024,7 +2167,23 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     }
   }
 
-  function send(textOverride?: string): void {
+  function clearComposer(): void {
+    setDraft('')
+    setAttachments([])
+    setMentionDismissed(null)
+  }
+
+  /** Shared draft→wire step for both delivery paths (send, interrupt &
+   *  send): validates, maps attachments, handles client-side slash
+   *  commands, and clears the composer. Returns null when there's
+   *  nothing left for the caller to deliver — either the draft was
+   *  empty/unsendable or it was a slash command already handled here. */
+  function takeDraft(
+    textOverride?: string
+  ): {
+    text: string
+    images?: Array<{ mediaType: string; data: string; path: string }>
+  } | null {
     const text = (textOverride ?? draft).trim()
     const images = attachments.map((a) => ({
       mediaType: a.mediaType,
@@ -2033,8 +2192,8 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       // "no path known", just sends bytes with no path annotation.
       path: a.path ?? ''
     }))
-    if (!session || state === 'exited') return
-    if (!text && images.length === 0) return
+    if (!session || state === 'exited') return null
+    if (!text && images.length === 0) return null
     // /model handled entirely client-side: swap the running subprocess
     // to the requested model (empty = clear override). This catches
     // Cmd+Enter bypass of the popover, or any dismissed-popover path
@@ -2045,20 +2204,18 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       void backend.setJsonClaudeTabModel(sessionId, arg).catch(() => {
         /* toast surface TBD — for now silently fail. */
       })
-      setDraft('')
-      setAttachments([])
-      setMentionDismissed(null)
-      return
+      clearComposer()
+      return null
     }
-    backend.sendJsonClaudeMessage(
-      sessionId,
-      text,
-      images.length > 0 ? images : undefined
-    )
-    setDraft('')
-    setAttachments([])
-    setMentionDismissed(null)
+    clearComposer()
     setUserScrolledUp(false)
+    return { text, images: images.length > 0 ? images : undefined }
+  }
+
+  function send(textOverride?: string): void {
+    const outgoing = takeDraft(textOverride)
+    if (!outgoing) return
+    backend.sendJsonClaudeMessage(sessionId, outgoing.text, outgoing.images)
   }
 
   async function attachImageFile(
@@ -2105,8 +2262,29 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     void backend.interruptJsonClaude(sessionId)
   }
 
+  /** Abort the in-flight turn and deliver the draft as a fresh one
+   *  instead of queueing it behind the turn the way send() does. Main
+   *  owns the sequencing — see the jsonClaude:interruptAndSend handler.
+   *  With nothing in flight there's nothing to interrupt, so this
+   *  degrades to a plain send (matches the button, which reads "send"
+   *  when idle because the interrupt affordance is hidden). */
+  function interruptAndSend(): void {
+    if (!busy) {
+      send()
+      return
+    }
+    const outgoing = takeDraft()
+    if (!outgoing) return
+    void backend.interruptAndSendJsonClaude(
+      sessionId,
+      outgoing.text,
+      outgoing.images
+    )
+  }
+
   const state = session?.state ?? 'idle'
   const busy = !!session?.busy
+  const hasOutgoing = draft.trim().length > 0 || attachments.length > 0
   const permissionMode = session?.permissionMode ?? 'default'
 
   function cyclePermissionMode(): void {
@@ -2219,6 +2397,24 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
               </span>
             </div>
           </button>
+          {conversationForkEnabled && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                performForkIntoWorktree()
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-fg-bright hover:bg-panel cursor-pointer"
+            >
+              <GitBranchPlus className="icon-xs shrink-0" />
+              <div className="flex flex-col">
+                <span>Fork into new worktree…</span>
+                <span className="text-xs text-muted">
+                  carries this whole conversation to a new branch
+                </span>
+              </div>
+            </button>
+          )}
         </div>
       )}
       {isDragOver && (
@@ -2516,6 +2712,15 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                 // IME composition guard — don't send while composing
                 // CJK input.
                 if (e.nativeEvent.isComposing || e.keyCode === 229) return
+                // Cmd/Ctrl+Shift+Enter → interrupt & send. Must be
+                // checked before wantsSend: in the !sendOnEnter mode
+                // wantsSend is just meta||ctrl, so this combo would
+                // otherwise be swallowed as a plain (queueing) send.
+                if ((e.metaKey || e.ctrlKey) && e.shiftKey) {
+                  e.preventDefault()
+                  interruptAndSend()
+                  return
+                }
                 const wantsSend = sendOnEnter
                   ? !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey
                   : e.metaKey || e.ctrlKey
@@ -2563,11 +2768,28 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             <div className="flex-1" />
             {busy && (
               <button
-                onClick={interrupt}
+                onClick={hasOutgoing ? interruptAndSend : interrupt}
                 className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-danger hover:bg-danger/10 cursor-pointer"
-                title="Interrupt the current model turn"
+                aria-label={
+                  hasOutgoing
+                    ? `Interrupt and send (${interruptSendHotkeyAria})`
+                    : 'Interrupt the current model turn'
+                }
+                title={
+                  hasOutgoing
+                    ? `Stop the current turn and send this message instead (${interruptSendHotkeyAria})`
+                    : 'Interrupt the current model turn'
+                }
               >
-                <Square fill="currentColor" className="icon-2xs" /> interrupt
+                <Square fill="currentColor" className="icon-2xs" />
+                {hasOutgoing ? (
+                  <>
+                    <span>interrupt &amp; send</span>
+                    <span className="opacity-60">{interruptSendHotkeyLabel}</span>
+                  </>
+                ) : (
+                  'interrupt'
+                )}
               </button>
             )}
             <button

@@ -123,11 +123,18 @@ function callControl(method, path, body) {
   })
 }
 
+// Appended to create_worktree's description, and removed again by
+// stripForkAffordance when the feature is off. Kept as its own constant so the
+// two stay in sync — a literal that drifts would silently stop being stripped.
+const FORK_DESCRIPTION_SENTENCE =
+  ' The new tab normally starts as a blank conversation seeded with initialPrompt; set forkConversation to instead hand it a copy of THIS conversation to continue from.'
+
 const TOOLS = [
   {
     name: 'create_worktree',
     description:
-      "Create a new git worktree in a Harness-managed repo. Either create a brand-new branch (set branchName) OR check out an existing GitHub PR for review (set prNumber). Harness will open a new agent chat tab inside the new worktree automatically. Defaults to the caller's current repo when repoRoot is omitted.",
+      "Create a new git worktree in a Harness-managed repo. Either create a brand-new branch (set branchName) OR check out an existing GitHub PR for review (set prNumber). Harness will open a new agent chat tab inside the new worktree automatically. Defaults to the caller's current repo when repoRoot is omitted." +
+      FORK_DESCRIPTION_SENTENCE,
     inputSchema: {
       type: 'object',
       properties: {
@@ -172,13 +179,19 @@ const TOOLS = [
           type: 'string',
           description:
             'Optional display alias applied to the new worktree once creation succeeds. Same semantics as set_worktree_alias — trimmed and clamped to 80 chars, empty string is ignored. Useful when the user gave the task a memorable label ("call this one auth-refactor") so the sidebar/window title show that instead of the branch name.'
+        },
+        forkConversation: {
+          type: 'boolean',
+          description:
+            'Copy YOUR current conversation into the new worktree, so its agent resumes holding everything said here instead of starting blank. Only works when you are a Harness Chat tab with existing history; otherwise the call is rejected and you should retry without it. Cannot be combined with prNumber.\n\nFORK when the new worktree continues THIS thread of work. Strongest signal: the user asks for continuity — "pick up where we left off", "they should already know what we discussed", "carry on from here". Take that at face value; it is a request to fork, and answering it with a hand-written briefing instead is the wrong call. Also fork when the work leans on things that only exist in this conversation: what you already read and ruled out, why the user rejected an earlier approach, a design the two of you converged on over several turns.\n\nDO NOT FORK for a task that merely sits next to this one ("also fix the flaky test", "do the same on the other service"), for a clean retry after an approach failed, or for reviewing someone else\'s code. There the history is noise the new agent must read past.\n\nDeciding: do not ask yourself whether you COULD write a sufficient briefing — you almost always can, so that question always answers "no fork" and is useless. Ask instead what the briefing would have to contain. If it needs to relay specific findings, discarded options, or user decisions from this conversation, fork: the transcript already holds those, faithfully, and your summary of them will be lossier than you expect. If it would just be a task description someone could have written before this conversation started, do not fork.\n\nCost of forking, so you can weigh it: the transcript is full of your earlier file edits, but the new branch is cut from the base ref, so it does NOT contain your uncommitted work and may not contain your commits. Harness prepends a note telling the new agent where it now is and which of those changes actually survived, and it will spend a little effort re-verifying before it builds.\n\nWhen you fork, still pass initialPrompt — it lands right after that note and is what actually directs the new agent. Write it as a continuation ("now build the page we just planned, here") and do not re-explain what the conversation already contains.'
         }
       }
     }
   },
   {
     name: 'list_worktrees',
-    description: 'List git worktrees currently managed by Harness.',
+    description:
+      "List git worktrees currently managed by Harness, with the same status Harness groups the sidebar by. Each entry carries `status` + `statusLabel`: 'merged' (Merged / Closed — the work landed, treat it as finished), 'needs-attention' (open PR of yours with failing checks, conflicts, or changes requested), 'active' (Open PRs — yours, healthy, awaiting review), 'reviewing' (someone else's PR you're reviewing), 'no-pr' (labelled Active — a branch with no PR yet, i.e. work still in progress), 'snoozed' (deliberately parked). Note 'active' means \"has an open PR\" and 'no-pr' is the one labelled Active — read statusLabel, not the key. `prunable: true` means the directory was deleted and only a stale git ref remains. Entries also carry `alias` when the user has named the worktree — that's the name to pass to send_message, and the name a message from it will show. This describes PR/review state, NOT whether an agent is currently running there; Harness does not report agent liveness.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -228,6 +241,27 @@ const TOOLS = [
             "Absolute path of the worktree whose alias to clear. Optional — defaults to the caller's current worktree."
         }
       }
+    }
+  },
+  {
+    name: 'send_message',
+    description:
+      "Send a message to the agent working in another Harness worktree. It arrives as a turn in that agent's chat, labelled with your worktree as the sender, and wakes the tab if it was asleep. Use it to hand off work (\"the API change landed, you can rebase now\"), ask a question, or report that something you were asked to do is finished.\n\nThere is no separate reply channel. If you want an answer, say so in the message and ask them to send_message back to you — name your own worktree so they know where to reply. Then end your turn: you'll be woken when their message arrives, so there is no need to poll or wait.\n\nDelivery is immediate or not at all — nothing is queued. If the target worktree has no agent chat tab the call fails and the message is lost, so report that to the user rather than assuming it landed. The recipient always sees which worktree you are; the sender name cannot be set by you.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        worktree: {
+          type: 'string',
+          description:
+            'Which worktree to message — its display alias, its branch name, or its absolute path. Call list_worktrees first if you are unsure what exists.'
+        },
+        message: {
+          type: 'string',
+          description:
+            'What to say. Write it for an agent who has none of your context: state what you did, what you need, and what you want them to do next.'
+        }
+      },
+      required: ['worktree', 'message']
     }
   },
   {
@@ -523,26 +557,58 @@ const FULL_CONTROL_BROWSER_TOOLS = new Set([
   'show_cursor'
 ])
 
-let cachedBrowserPerms = null
-async function getBrowserPerms() {
-  if (cachedBrowserPerms) return cachedBrowserPerms
+// One /scope fetch backs every capability gate below. Defaults on failure are
+// permissive for browser tools (pre-existing behaviour) but the fork and
+// messaging gates default off — both are opt-in, and a server that doesn't
+// report them would reject the call anyway, so advertising them would only
+// waste a turn.
+let cachedScope = null
+async function getScopeInfo() {
+  if (cachedScope) return cachedScope
   try {
-    const r = await callControl('GET', '/scope')
-    cachedBrowserPerms = (r && r.browser) || { enabled: true, mode: 'full' }
+    cachedScope = (await callControl('GET', '/scope')) || {}
   } catch {
-    cachedBrowserPerms = { enabled: true, mode: 'full' }
+    cachedScope = {}
   }
-  return cachedBrowserPerms
+  return cachedScope
+}
+
+async function getToolPerms() {
+  const s = await getScopeInfo()
+  return {
+    browser: s.browser || { enabled: true, mode: 'full' },
+    messaging: s.messaging || { enabled: false }
+  }
+}
+
+async function getConversationForkEnabled() {
+  const s = await getScopeInfo()
+  return s.conversationFork ? s.conversationFork.enabled === true : false
 }
 
 function filterToolsByPerms(tools, perms) {
   return tools.filter((t) => {
+    if (t.name === 'send_message') return perms.messaging.enabled
     const isView = VIEW_BROWSER_TOOLS.has(t.name)
     const isFull = FULL_CONTROL_BROWSER_TOOLS.has(t.name)
     if (!isView && !isFull) return true
-    if (!perms.enabled) return false
-    if (isFull && perms.mode !== 'full') return false
+    if (!perms.browser.enabled) return false
+    if (isFull && perms.browser.mode !== 'full') return false
     return true
+  })
+}
+
+// Strip every trace of forking from create_worktree when it's disabled, rather
+// than advertising a parameter whose only outcome is a rejection.
+function stripForkAffordance(tools) {
+  return tools.map((t) => {
+    if (t.name !== 'create_worktree') return t
+    const { forkConversation, ...rest } = t.inputSchema.properties
+    return {
+      ...t,
+      description: t.description.replace(FORK_DESCRIPTION_SENTENCE, ''),
+      inputSchema: { ...t.inputSchema, properties: rest }
+    }
   })
 }
 
@@ -574,14 +640,19 @@ async function handleToolCall(name, args) {
       initialPrompt: args.initialPrompt,
       agentKind: args.agentKind,
       model: args.model,
-      alias: args.alias
+      alias: args.alias,
+      forkConversation: args.forkConversation === true
     })
     const agentLabel = args.agentKind === 'codex' ? 'Codex' : 'Claude'
     const modelSuffix = args.model ? ` (model: ${args.model})` : ''
     const aliasSuffix = args.alias && args.alias.trim() ? ` (alias: "${args.alias.trim()}")` : ''
+    const forkSuffix =
+      args.forkConversation === true
+        ? ' It resumes a copy of this conversation, and has been told where it is and which of your earlier changes came along.'
+        : ''
     return prNumber
       ? `Created worktree ${r.path} on branch ${r.branch} for PR #${prNumber}${aliasSuffix}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
-      : `Created worktree ${r.path} on branch ${r.branch}${aliasSuffix}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
+      : `Created worktree ${r.path} on branch ${r.branch}${aliasSuffix}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.${forkSuffix}`
   }
   if (name === 'list_worktrees') {
     const q =
@@ -613,6 +684,26 @@ async function handleToolCall(name, args) {
       worktreePath: args && args.worktreePath
     })
     return 'Cleared alias for ' + r.worktreePath
+  }
+  if (name === 'send_message') {
+    if (!args || typeof args.worktree !== 'string' || !args.worktree.trim()) {
+      throw new Error('worktree is required')
+    }
+    if (typeof args.message !== 'string' || !args.message.trim()) {
+      throw new Error('message is required')
+    }
+    const r = await callControl('POST', '/messages', {
+      worktree: args.worktree,
+      message: args.message
+    })
+    return (
+      'Delivered to ' +
+      r.worktreePath +
+      ', sent as "' +
+      r.from +
+      '"' +
+      (r.woke ? ' (woke its sleeping chat tab)' : '')
+    )
   }
   if (name === 'list_browser_tabs') {
     const r = await callControl('GET', '/browser/tabs')
@@ -802,8 +893,10 @@ async function handle(msg) {
     }
     if (method === 'tools/list') {
       logErr('tools/list received')
-      const perms = await getBrowserPerms()
-      return { jsonrpc: '2.0', id, result: { tools: filterToolsByPerms(TOOLS, perms) } }
+      const perms = await getToolPerms()
+      let tools = filterToolsByPerms(TOOLS, perms)
+      if (!(await getConversationForkEnabled())) tools = stripForkAffordance(tools)
+      return { jsonrpc: '2.0', id, result: { tools } }
     }
     if (method === 'tools/call') {
       logErr('tools/call received name=' + (params && params.name))

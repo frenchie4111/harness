@@ -1,5 +1,6 @@
 import type { PendingTool } from './types'
 import { prettyToolName } from './components/json-mode-cards/tool-display'
+import { parseQuestions } from '../shared/ask-user-question'
 
 const MAX_SUMMARY = 60
 
@@ -48,6 +49,10 @@ export function formatPendingTool(tool: PendingTool): string {
     case 'Grep': {
       const pattern = str(input, 'pattern')
       return pattern ? `${tool.name} ${truncate(pattern)}` : tool.name
+    }
+    case 'AskUserQuestion': {
+      const [first] = parseQuestions(input)
+      return first ? truncate(first.question) : 'Question'
     }
     default:
       return prettyToolName(tool.name)

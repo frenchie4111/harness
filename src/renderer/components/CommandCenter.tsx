@@ -12,7 +12,7 @@ import type {
   ActivityRecord
 } from '../types'
 import { eventsToSegments, STATE_COLOR } from './Activity'
-import { groupWorktrees, type GroupKey } from '../worktree-sort'
+import { groupWorktrees, type GroupKey } from '../../shared/worktree-sort'
 import { isPRMerged } from '../../shared/state/prs'
 import { repoNameColor } from './RepoIcon'
 import { formatPendingTool } from '../pending-tool'

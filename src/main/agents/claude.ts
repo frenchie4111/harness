@@ -167,6 +167,15 @@ export function latestSessionId(cwd: string): string | null {
   }
 }
 
+// Claude takes our --session-id on first spawn, but `/clear` starts a fresh
+// session under an ID it picks itself. Re-reading the ID from every hook
+// payload is what keeps a cleared tab resumable at the session it's actually
+// on rather than the one it was born with.
+export function extractSessionId(payload: Record<string, unknown>): string | null {
+  const sid = payload.session_id
+  return typeof sid === 'string' && sid ? sid : null
+}
+
 export function buildSpawnArgs(opts: AgentSpawnOpts): string {
   const modelFlag = opts.model && !opts.command.includes('--model') ? ` --model ${shellQuote(opts.model)}` : ''
   const mcpFlag = opts.mcpConfigPath ? ` --mcp-config ${shellQuote(opts.mcpConfigPath)}` : ''
@@ -187,7 +196,8 @@ export function buildSpawnArgs(opts: AgentSpawnOpts): string {
   }
 
   const exists = sessionFileExists(opts.cwd, opts.sessionId)
-  if (exists) return `${cmd} --resume ${opts.sessionId}`
-  const base = `${cmd} --session-id ${opts.sessionId}`
+  const base = exists
+    ? `${cmd} --resume ${opts.sessionId}`
+    : `${cmd} --session-id ${opts.sessionId}`
   return opts.initialPrompt ? `${base} ${shellQuote(opts.initialPrompt)}` : base
 }

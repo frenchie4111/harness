@@ -44,14 +44,17 @@ function cacheDelete(cacheKey: string, path: string): void {
 export interface UseWatchedQueryOptions<T> {
   worktreePath: string | null
   cacheKey: string
-  fetcher: (path: string) => Promise<T>
+  /** `force` is set when the refresh is reacting to an invalidation, which
+   *  must not be served by an in-flight request that started before the
+   *  change. Fetchers that dedup should honour it. */
+  fetcher: (path: string, opts: { force: boolean }) => Promise<T>
   fallbackPollMs?: number
 }
 
 export interface UseWatchedQueryResult<T> {
   data: T | null
   loading: boolean
-  refresh: () => void
+  refresh: (opts?: { force?: boolean }) => void
 }
 
 export function useWatchedQuery<T>(
@@ -77,10 +80,10 @@ export function useWatchedQuery<T>(
     }
   }, [])
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback((opts: { force?: boolean } = {}) => {
     if (!worktreePath) return
     const path = worktreePath
-    fetcher(path)
+    fetcher(path, { force: opts.force ?? false })
       .then((result) => {
         cacheSet(cacheKey, path, result)
         if (!mountedRef.current) return
@@ -119,9 +122,9 @@ export function useWatchedQuery<T>(
     const offInvalidated = backend.onChangedFilesInvalidated((path) => {
       if (path !== worktreePath) return
       cacheDelete(cacheKey, worktreePath)
-      refresh()
+      refresh({ force: true })
     })
-    const interval = setInterval(refresh, fallbackPollMs)
+    const interval = setInterval(() => refresh(), fallbackPollMs)
     return () => {
       clearInterval(interval)
       offInvalidated()

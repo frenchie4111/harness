@@ -16,18 +16,29 @@ import { log } from './debug'
 import { perfLog } from './perf-log'
 import { resolveUserShell, loginShellCommandArgs } from './user-shell'
 import { detectInProgressOp } from './git-ops-state'
+import { cachedGitRead } from './git-poll-cache'
 import type { Worktree } from '../shared/state/worktrees'
 
 const execFileAsync = promisify(execFile)
 
 type ExecOpts = NonNullable<Parameters<typeof execFileAsync>[2]>
 
+/** `status` and `diff` opportunistically refresh *and write* the index, which
+ * takes .git/index.lock — so a background poll can make a rebase running in the
+ * same worktree's PTY fail with "Unable to create index.lock: File exists".
+ * GIT_OPTIONAL_LOCKS=0 skips the write-back; output is unchanged. Built per
+ * call rather than hoisted: path-fix.ts merges into process.env.PATH at boot,
+ * and a module-level snapshot could capture the pre-merge value. */
+function readOnlyGitEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, GIT_OPTIONAL_LOCKS: '0' }
+}
+
 async function tracedExec(
   args: string[],
   opts: ExecOpts
 ): Promise<{ stdout: string; execMs: number; outputBytes: number }> {
   const t0 = performance.now()
-  const { stdout } = await execFileAsync('git', args, opts)
+  const { stdout } = await execFileAsync('git', args, { env: readOnlyGitEnv(), ...opts })
   const execMs = performance.now() - t0
   const text = typeof stdout === 'string' ? stdout : stdout.toString()
   return { stdout: text, execMs, outputBytes: text.length }
@@ -356,7 +367,10 @@ export async function continueWorktree(
 /** Check if a worktree has uncommitted changes */
 export async function isWorktreeDirty(path: string): Promise<boolean> {
   try {
-    const { stdout } = await execFileAsync('git', ['status', '--porcelain'], { cwd: path })
+    const { stdout } = await execFileAsync('git', ['status', '--porcelain'], {
+      cwd: path,
+      env: readOnlyGitEnv()
+    })
     return stdout.trim().length > 0
   } catch {
     return false
@@ -376,8 +390,26 @@ export interface ChangedFile {
 
 export type ChangedFilesMode = 'working' | 'branch'
 
-/** Detect the repo's default base branch (e.g. "main" or "master"). */
+const BASE_REF_TTL_MS = 5 * 60 * 1000
+const baseRefCache = new Map<string, { ref: string; at: number }>()
+
+/** Detect the repo's default base branch (e.g. "main" or "master").
+ *
+ * Memoized because the polled panels call this twice per tick and it costs up
+ * to five git spawns (symbolic-ref, then a rev-parse per candidate) to answer
+ * a question whose answer effectively never changes. The 'HEAD' fallback is
+ * deliberately not cached — it means nothing resolved yet, which is the state
+ * a fresh worktree is in mid-setup, and it flips as soon as the remote lands. */
 export async function getDefaultBaseRef(worktreePath: string): Promise<string> {
+  const hit = baseRefCache.get(worktreePath)
+  if (hit && Date.now() - hit.at < BASE_REF_TTL_MS) return hit.ref
+
+  const ref = await resolveDefaultBaseRef(worktreePath)
+  if (ref !== 'HEAD') baseRefCache.set(worktreePath, { ref, at: Date.now() })
+  return ref
+}
+
+async function resolveDefaultBaseRef(worktreePath: string): Promise<string> {
   try {
     const { stdout } = await execFileAsync(
       'git',
@@ -464,6 +496,17 @@ async function getUnpushedHashes(worktreePath: string): Promise<Set<string> | nu
 
 /** Get commits unique to this branch (i.e. base..HEAD). */
 export async function getBranchCommits(worktreePath: string): Promise<BranchCommit[]> {
+  const { value } = await cachedGitRead<BranchCommit[]>({
+    key: `${worktreePath}\x00commits`,
+    worktreePath,
+    fingerprintable: true,
+    baseRef: await getDefaultBaseRef(worktreePath),
+    read: () => getBranchCommitsImpl(worktreePath)
+  })
+  return value
+}
+
+async function getBranchCommitsImpl(worktreePath: string): Promise<BranchCommit[]> {
   const t0 = performance.now()
   let walledExec = 0
   let cumExec = 0
@@ -549,12 +592,21 @@ function parseNumstatZ(stdout: string): Map<string, NumstatCounts> {
   return map
 }
 
+/** `command` exists because GIT_OPTIONAL_LOCKS=0 does not cover every form of
+ * `git diff`. It suppresses the index write-back for `status` and for
+ * `diff --cached`, but the unstaged worktree-vs-index `git diff` refreshes and
+ * writes the index anyway (git 2.50.1). That write lands in the gitdir
+ * WorktreeWatcher watches, and `index` is in CHANGED_FILES_RELEVANT — so the
+ * changed-files read retriggers its own invalidation, doubling the git work
+ * behind every edit. `diff-files` is the plumbing equivalent of that one form
+ * and does no opportunistic refresh, so the unstaged call uses it instead. */
 async function numstatExec(
   worktreePath: string,
-  args: string[]
+  args: string[],
+  command: 'diff' | 'diff-files' = 'diff'
 ): Promise<{ stdout: string; execMs: number; outputBytes: number }> {
   try {
-    return await tracedExec(['diff', '--numstat', '-z', ...args], {
+    return await tracedExec([command, '--numstat', '-z', ...args], {
       cwd: worktreePath,
       maxBuffer: 16 * 1024 * 1024
     })
@@ -562,6 +614,13 @@ async function numstatExec(
     return { stdout: '', execMs: 0, outputBytes: 0 }
   }
 }
+
+// These fire on every panel refresh for every worktree — thousands per minute
+// in a busy session. Tracing all of them made the log (and its writes) a
+// bigger cost than the thing being traced, so both are gated the same way
+// every other perf category is: only the slow ones are worth a line.
+const SLOW_GIT_OP_MS = 50
+const SLOW_CHANGED_FILES_MS = 50
 
 function logGitOp(
   name: string,
@@ -574,6 +633,7 @@ function logGitOp(
 ): void {
   const total = performance.now() - t0
   const postMs = Math.max(0, total - walledExec)
+  if (cumExec < SLOW_GIT_OP_MS && total < SLOW_GIT_OP_MS) return
   perfLog(
     'git-op',
     `${name} exec=${cumExec.toFixed(0)}ms post=${postMs.toFixed(0)}ms bytes=${outputBytes}`,
@@ -607,14 +667,22 @@ export async function getChangedFiles(
   mode: ChangedFilesMode = 'working'
 ): Promise<ChangedFile[]> {
   const t0 = performance.now()
-  const result = await getChangedFilesImpl(worktreePath, mode)
+  const { value, cached } = await cachedGitRead<ChangedFile[]>({
+    key: `${worktreePath}\x00changed:${mode}`,
+    worktreePath,
+    fingerprintable: mode === 'branch',
+    baseRef: mode === 'branch' ? await getDefaultBaseRef(worktreePath) : null,
+    read: () => getChangedFilesImpl(worktreePath, mode)
+  })
   const ms = performance.now() - t0
-  perfLog(
-    'changed-files',
-    `mode=${mode} path=${basename(worktreePath)} took=${ms.toFixed(0)}ms files=${result.length}`,
-    { worktreePath, mode, ms: +ms.toFixed(1), fileCount: result.length }
-  )
-  return result
+  if (ms >= SLOW_CHANGED_FILES_MS) {
+    perfLog(
+      'changed-files',
+      `mode=${mode} path=${basename(worktreePath)} took=${ms.toFixed(0)}ms files=${value.length}${cached ? ' cached' : ''}`,
+      { worktreePath, mode, ms: +ms.toFixed(1), fileCount: value.length, cached }
+    )
+  }
+  return value
 }
 
 async function getChangedFilesImpl(
@@ -668,7 +736,7 @@ async function getChangedFilesImpl(
       const [status, stagedNs, unstagedNs] = await Promise.all([
         tracedExec(['status', '--porcelain', '-uall'], { cwd: worktreePath }),
         numstatExec(worktreePath, ['--cached']),
-        numstatExec(worktreePath, [])
+        numstatExec(worktreePath, [], 'diff-files')
       ])
       walledExec += performance.now() - tA
       cumExec += status.execMs + stagedNs.execMs + unstagedNs.execMs
@@ -795,11 +863,13 @@ export async function getCommitChangedFiles(
   const t0 = performance.now()
   const result = await getCommitChangedFilesImpl(worktreePath, hash)
   const ms = performance.now() - t0
-  perfLog(
-    'changed-files',
-    `mode=commit path=${basename(worktreePath)} took=${ms.toFixed(0)}ms files=${result.length}`,
-    { worktreePath, mode: 'commit', hash, ms: +ms.toFixed(1), fileCount: result.length }
-  )
+  if (ms >= SLOW_CHANGED_FILES_MS) {
+    perfLog(
+      'changed-files',
+      `mode=commit path=${basename(worktreePath)} took=${ms.toFixed(0)}ms files=${result.length}`,
+      { worktreePath, mode: 'commit', hash, ms: +ms.toFixed(1), fileCount: result.length }
+    )
+  }
   return result
 }
 
@@ -893,11 +963,14 @@ export async function getCommitRangeChangedFiles(
   }
 
   logGitOp('getCommitRangeChangedFiles', { fromHash, toHash }, t0, walledExec, cumExec, outputBytes, execParts)
-  perfLog(
-    'changed-files',
-    `mode=range path=${basename(worktreePath)} took=${(performance.now() - t0).toFixed(0)}ms files=${result.length}`,
-    { worktreePath, mode: 'range', fromHash, toHash, ms: +(performance.now() - t0).toFixed(1), fileCount: result.length }
-  )
+  const rangeMs = performance.now() - t0
+  if (rangeMs >= SLOW_CHANGED_FILES_MS) {
+    perfLog(
+      'changed-files',
+      `mode=range path=${basename(worktreePath)} took=${rangeMs.toFixed(0)}ms files=${result.length}`,
+      { worktreePath, mode: 'range', fromHash, toHash, ms: +rangeMs.toFixed(1), fileCount: result.length }
+    )
+  }
   return result
 }
 

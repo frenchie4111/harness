@@ -45,6 +45,8 @@ type SubSectionId =
   | 'hotkeys-overlays'
   | 'hotkeys-external'
   | 'experimental-browser-control'
+  | 'experimental-conversation-fork'
+  | 'experimental-worktree-messaging'
   | 'experimental-auto-approve'
   | 'experimental-web-mobile'
 
@@ -92,6 +94,8 @@ const SECTIONS: Section[] = [
   { id: 'support', label: 'Support', icon: LifeBuoy },
   { id: 'experimental', label: 'Experimental', icon: FlaskConical, children: [
     { id: 'experimental-browser-control', label: 'Browser control' },
+    { id: 'experimental-conversation-fork', label: 'Conversation fork' },
+    { id: 'experimental-worktree-messaging', label: 'Worktree messaging' },
     { id: 'experimental-auto-approve', label: 'Auto-approve' },
     { id: 'experimental-web-mobile', label: 'Web & mobile' }
   ]}
@@ -181,6 +185,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     'hotkeys-overlays': null,
     'hotkeys-external': null,
     'experimental-browser-control': null,
+    'experimental-conversation-fork': null,
+    'experimental-worktree-messaging': null,
     'experimental-auto-approve': null,
     'experimental-web-mobile': null
   })
@@ -367,6 +373,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     claudeTuiFullscreen,
     browserToolsEnabled,
     browserToolsMode,
+    conversationForkEnabled,
+    worktreeMessagingEnabled,
     wsTransportEnabled,
     wsTransportPort,
     wsTransportHost,
@@ -380,6 +388,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     autoApprovePermissions,
     autoApproveSteerInstructions,
     snoozeDefaultDays,
+    notifyChatOnCiFailure,
     expandedDiagnosticLoggingEnabled,
     showAssignedPRs,
     preventSleepMode,
@@ -2870,6 +2879,25 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <span className="text-xs text-dim">days</span>
                   </div>
 
+                  <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Notify chat on CI failure</h3>
+                  <p className="text-xs text-dim mb-3">
+                    When a worktree's PR checks start failing, post a message
+                    naming the failing checks into its agent chat so the agent
+                    can start investigating. Fires once per failing commit, and
+                    only for worktrees with a live chat tab. Individual
+                    worktrees can opt in or out from the PR panel.
+                  </p>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notifyChatOnCiFailure}
+                      onChange={(e) => { void backend.setNotifyChatOnCiFailure(e.target.checked) }}
+                      className="accent-current icon-base cursor-pointer" />
+                    <span className="text-sm text-fg">
+                      Tell the agent when CI fails
+                    </span>
+                  </label>
+
                   <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Share Claude Code permissions</h3>
                   <p className="text-xs text-dim mb-3">
                     Symlink each worktree's{' '}
@@ -3465,6 +3493,80 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     </select>
                   </div>
                 </div>
+              </div>
+
+              {/* Conversation fork sub-card */}
+              <div
+                ref={(el) => { subSectionRefs.current['experimental-conversation-fork'] = el }}
+                id="experimental-conversation-fork"
+                className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-sm font-semibold text-fg-bright">Conversation fork</h3>
+                  <span className="text-xs font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                    Experimental
+                  </span>
+                </div>
+                <p className="text-xs text-dim mb-3">
+                  Lets a new worktree be seeded with a copy of an existing Chat
+                  conversation, so the new agent resumes it instead of reading a
+                  hand-written briefing. Claude Code only — no other agent can
+                  resume a forked transcript.
+                </p>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={conversationForkEnabled}
+                    onChange={(e) => { void backend.setConversationForkEnabled(e.target.checked) }}
+                    className="mt-0.5 cursor-pointer icon-base" />
+                  <div className="flex-1">
+                    <div className="text-sm text-fg-bright">Enable conversation fork</div>
+                    <div className="text-xs text-dim mt-0.5">
+                      Adds &quot;Fork into new worktree…&quot; to the Chat tab menu and a{' '}
+                      <code className="bg-panel px-1 rounded text-xs">forkConversation</code>{' '}
+                      option to the <code className="bg-panel px-1 rounded text-xs">create_worktree</code>{' '}
+                      MCP tool. Only takes effect on the next agent session.
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {/* Worktree messaging sub-card */}
+              <div
+                ref={(el) => { subSectionRefs.current['experimental-worktree-messaging'] = el }}
+                id="experimental-worktree-messaging"
+                className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-sm font-semibold text-fg-bright">Worktree messaging</h3>
+                  <span className="text-xs font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                    Experimental
+                  </span>
+                </div>
+                <p className="text-xs text-dim mb-3">
+                  Lets an agent send a message straight into another worktree&apos;s
+                  Chat tab — handing off work, or telling a waiting worktree that
+                  the thing it needed is done. Unlike the browser and shell tools,
+                  this deliberately crosses the worktree boundary. Messages arrive
+                  labelled with the sending worktree, and waking a sleeping Chat
+                  tab counts as activity. Only takes effect on the next agent
+                  session.
+                </p>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={worktreeMessagingEnabled}
+                    onChange={(e) => { void backend.setWorktreeMessagingEnabled(e.target.checked) }}
+                    className="mt-0.5 cursor-pointer icon-base" />
+                  <div className="flex-1">
+                    <div className="text-sm text-fg-bright">Enable worktree messaging</div>
+                    <div className="text-xs text-dim mt-0.5">
+                      Exposes the <code className="bg-panel px-1 rounded text-xs">send_message</code> MCP tool. Senders can&apos;t forge who a message came from — the name is taken from the calling worktree.
+                    </div>
+                  </div>
+                </label>
               </div>
 
               {/* Auto-approve safe tool calls sub-card */}

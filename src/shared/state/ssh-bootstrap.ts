@@ -22,6 +22,8 @@ export type BootstrapPhase =
   | 'connecting'  // SSH handshake
   | 'probing'     // checking if harness-server is installed on the remote
   | 'installing'  // running install-headless.sh over SSH
+  | 'upgrading'   // re-running the installer over an existing install
+  | 'restarting'  // killing the old server process before relaunching
   | 'starting'    // launching the server detached
   | 'tunneling'   // setting up SSH local port forwarding
   | 'connected'   // happy terminal state
@@ -64,10 +66,32 @@ export interface BootstrapProgress {
   error?: BootstrapError
 }
 
+/** What version of `harness-server` a remote is running, and whether it
+ *  matches the Harness that's driving it. Headless tarballs are released
+ *  on the same tag as the desktop build, so exact equality is the
+ *  correctness bar — a mismatch in either direction means the wire
+ *  protocol can drift.
+ *
+ *  Populated on every SSH probe (bootstrap, reconnect, boot pre-warm)
+ *  and keyed by connectionId, so it outlives the per-attempt
+ *  `byId` progress entries the modal clears. */
+export interface RemoteServerVersion {
+  connectionId: string
+  /** What `harness-server --version` printed on the remote. */
+  installed: string
+  /** The local Harness version we compared against. */
+  expected: string
+  upgradeAvailable: boolean
+  checkedAt: number
+}
+
 export interface SshBootstrapState {
   /** Active + recently-finished bootstrap attempts, keyed by bootstrapId.
    *  Cleared explicitly via `sshBootstrap/clear`. */
   byId: Record<string, BootstrapProgress>
+  /** Last known remote `harness-server` version per SSH backend. Drives
+   *  the chip strip's upgrade affordance. */
+  serverVersions: Record<string, RemoteServerVersion>
 }
 
 export type SshBootstrapEvent =
@@ -92,9 +116,12 @@ export type SshBootstrapEvent =
       payload: { bootstrapId: string; error: BootstrapError; now: number }
     }
   | { type: 'sshBootstrap/clear'; payload: { bootstrapId: string } }
+  | { type: 'sshBootstrap/serverVersionProbed'; payload: RemoteServerVersion }
+  | { type: 'sshBootstrap/serverVersionForgotten'; payload: { connectionId: string } }
 
 export const initialSshBootstrap: SshBootstrapState = {
-  byId: {}
+  byId: {},
+  serverVersions: {}
 }
 
 function patch(
@@ -158,6 +185,30 @@ export function sshBootstrapReducer(
       const next = { ...state.byId }
       delete next[event.payload.bootstrapId]
       return { ...state, byId: next }
+    }
+    case 'sshBootstrap/serverVersionProbed': {
+      const next = event.payload
+      const prev = state.serverVersions[next.connectionId]
+      // Re-probes on every reconnect would otherwise churn the map (and
+      // every chip subscribed to it) on a value that rarely moves.
+      if (
+        prev &&
+        prev.installed === next.installed &&
+        prev.expected === next.expected &&
+        prev.upgradeAvailable === next.upgradeAvailable
+      ) {
+        return state
+      }
+      return {
+        ...state,
+        serverVersions: { ...state.serverVersions, [next.connectionId]: next }
+      }
+    }
+    case 'sshBootstrap/serverVersionForgotten': {
+      if (!(event.payload.connectionId in state.serverVersions)) return state
+      const next = { ...state.serverVersions }
+      delete next[event.payload.connectionId]
+      return { ...state, serverVersions: next }
     }
     default: {
       const _exhaustive: never = event

@@ -150,12 +150,49 @@ describe('tailLog — boot-replay guard', () => {
     expect(events).toHaveLength(0)
   })
 
-  it('skips discovery for claude tabs (assignsSessionId)', () => {
+  it('adopts the session id for claude tabs too', () => {
     writeFileSync(logPath, record('SessionStart', { session_id: 'claude-sess-1' }))
     const store = storeWithAgentTab(terminalId, 'claude')
     const events = sessionIdEvents(store)
     tailLog(terminalId, store)
-    expect(events).toHaveLength(0)
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      payload: { terminalId, sessionId: 'claude-sess-1' }
+    })
+  })
+
+  it('re-dispatches when the session id changes mid-session', () => {
+    // Guards issue #233: `/clear` starts a new Claude session under a new
+    // ID. Missing it means the next restart resumes the pre-clear session.
+    writeFileSync(logPath, record('UserPromptSubmit', { session_id: 'before-clear' }))
+    const store = storeWithAgentTab(terminalId, 'claude')
+    const events = sessionIdEvents(store)
+    tailLog(terminalId, store)
+    expect(events).toHaveLength(1)
+
+    appendFileSync(logPath, record('UserPromptSubmit', { session_id: 'after-clear' }))
+    tailLog(terminalId, store)
+
+    expect(events).toHaveLength(2)
+    expect(events[1]).toMatchObject({
+      payload: { terminalId, sessionId: 'after-clear' }
+    })
+  })
+
+  it('dispatches once while the session id stays put', () => {
+    writeFileSync(logPath, record('UserPromptSubmit', { session_id: 'steady' }))
+    const store = storeWithAgentTab(terminalId, 'claude')
+    const events = sessionIdEvents(store)
+    tailLog(terminalId, store)
+
+    appendFileSync(
+      logPath,
+      record('PostToolUse', { session_id: 'steady' }) +
+        record('Stop', { session_id: 'steady' })
+    )
+    tailLog(terminalId, store)
+
+    expect(events).toHaveLength(1)
   })
 
   it('processes every newly-appended line on subsequent tails', () => {

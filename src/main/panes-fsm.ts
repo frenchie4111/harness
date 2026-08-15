@@ -16,7 +16,7 @@ import {
   removeLeaf
 } from '../shared/state/terminals'
 import type { PersistedPaneNode } from './persistence'
-import { agentDisplayName, getAgentInfo } from '../shared/agent-registry'
+import { agentDisplayName, getAgentInfo, supportsConversationFork } from '../shared/agent-registry'
 import { log } from './debug'
 
 interface PanesFSMOptions {
@@ -211,10 +211,18 @@ export class PanesFSM {
       teleportSessionId?: string
       agentKind?: AgentKind
       model?: string
+      /** A transcript has already been written to this worktree's project
+       *  dir under this id. Presetting it on the tab is all that's needed —
+       *  both spawn paths independently pick `--resume` over `--session-id`
+       *  when the session file exists. */
+      forkedSessionId?: string
     }
   ): PaneNode {
     const existing = this.getTree(wtPath)
-    if (existing && hasAnyTabs(existing)) return existing
+    if (existing && hasAnyTabs(existing)) {
+      this.deliverLateKickoff(wtPath, existing, opts?.initialPrompt)
+      return existing
+    }
 
     // Belt-and-suspenders for issue #185: a prunable worktree points at a
     // directory that no longer exists on disk. Spawning a default agent
@@ -236,10 +244,21 @@ export class PanesFSM {
     if (sleeping && hasAnyTabs(sleeping)) {
       this.sleepingPanes.delete(wtPath)
       this.commit(wtPath, sleeping)
+      this.deliverLateKickoff(wtPath, sleeping, opts?.initialPrompt)
       return sleeping
     }
 
-    const agentKind = opts?.agentKind ?? this.opts.getDefaultAgentKind?.() ?? 'claude'
+    let agentKind = opts?.agentKind ?? this.opts.getDefaultAgentKind?.() ?? 'claude'
+    if (opts?.forkedSessionId && !supportsConversationFork(agentKind)) {
+      // The transcript is already written to disk keyed by this id; handing it
+      // to an agent that assigns its own session id would strand it forever.
+      // Callers are supposed to pin Claude themselves — log loudly if one didn't.
+      log(
+        'panes-fsm',
+        `forkedSessionId supplied for ${agentKind}, which can't resume a fork — forcing claude wtPath=${wtPath}`
+      )
+      agentKind = 'claude'
+    }
     const agentInfo = getAgentInfo(agentKind)
     const model = opts?.model && opts.model.trim() ? opts.model.trim() : undefined
     const shellTabId = `shell-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
@@ -256,7 +275,7 @@ export class PanesFSM {
     let agentTab: TerminalTab
     let jsonClaudeKickoff: { sessionId: string; initialPrompt?: string; model?: string } | null = null
     if (wantsJson) {
-      const sessionId = crypto.randomUUID()
+      const sessionId = opts?.forkedSessionId ?? crypto.randomUUID()
       agentTab = {
         id: sessionId,
         type: 'json-claude',
@@ -273,7 +292,9 @@ export class PanesFSM {
         type: 'agent',
         agentKind,
         label: agentInfo.displayName,
-        sessionId: agentInfo.assignsSessionId ? crypto.randomUUID() : undefined,
+        sessionId: agentInfo.assignsSessionId
+          ? (opts?.forkedSessionId ?? crypto.randomUUID())
+          : undefined,
         initialPrompt: opts?.teleportSessionId ? undefined : opts?.initialPrompt,
         teleportSessionId: opts?.teleportSessionId,
         model
@@ -300,6 +321,30 @@ export class PanesFSM {
       )
     }
     return pane
+  }
+
+  /** A prompt-less ensureInitialized can beat the one carrying a new
+   *  worktree's kickoff prompt — main's `worktrees/listChanged`
+   *  subscriber inits every path it sees, and a concurrent creation's
+   *  refreshList can surface this worktree while its setup script is
+   *  still running. Rather than dropping the prompt on the floor, hand
+   *  it to the chat tab that already exists. `startJsonClaudeWithPrompt`
+   *  is idempotent on the spawn and sends the prompt either way. */
+  private deliverLateKickoff(wtPath: string, tree: PaneNode, initialPrompt?: string): void {
+    if (!initialPrompt) return
+    const chatTab = getLeaves(tree)
+      .flatMap((leaf) => leaf.tabs)
+      .find((t) => t.type === 'json-claude')
+    if (!chatTab) {
+      log('panes-fsm', `late kickoff dropped — no chat tab wtPath=${wtPath}`)
+      return
+    }
+    log('panes-fsm', `late kickoff → sessionId=${chatTab.sessionId ?? chatTab.id} wtPath=${wtPath}`)
+    this.opts.startJsonClaudeWithPrompt?.(
+      chatTab.sessionId ?? chatTab.id,
+      wtPath,
+      initialPrompt
+    )
   }
 
   addTab(wtPath: string, tab: TerminalTab, paneId?: string): void {

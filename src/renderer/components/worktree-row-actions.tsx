@@ -1,0 +1,130 @@
+import type { ComponentType, MouseEvent } from 'react'
+import { RotateCw, Moon, AlarmClock, Trash2, Tag, X } from 'lucide-react'
+import { isPRMerged } from '../../shared/state/prs'
+import { formatWakeAt } from '../../shared/state/snooze'
+import type { WorktreeRowModel } from '../worktree-list-model'
+
+/** One thing the user can do to a worktree row. Desktop renders these as
+ *  hover-revealed icon buttons; touch renders the same list as an action
+ *  sheet. Deriving them once keeps the two surfaces from offering different
+ *  action sets. */
+export interface WorktreeRowAction {
+  key: string
+  label: string
+  icon: ComponentType<{ className?: string }>
+  tone?: 'accent' | 'warning' | 'danger'
+  /** Extra text appended to the desktop tooltip only — usually a modifier
+   *  hint that means nothing on touch. */
+  tooltipExtra?: string
+  /** The event is only supplied by surfaces that have one to give — the
+   *  desktop icon buttons pass it so snooze can branch on altKey. Sheet and
+   *  context-menu callers invoke bare. */
+  onSelect: (e?: MouseEvent) => void
+}
+
+export interface WorktreeRowActionHandlers {
+  onContinue?: () => void
+  /** Receives the event so the desktop caller can branch on altKey to open
+   *  the date picker instead of snoozing for the default duration. */
+  onSnooze?: (e?: MouseEvent) => void
+  onUnsnooze?: () => void
+  onPrune?: () => void
+  onDelete?: () => void
+}
+
+export interface WorktreeAliasActionHandlers {
+  onEditAlias: () => void
+  onClearAlias: () => void
+}
+
+/** Continue / snooze / prune / delete, filtered to what actually applies to
+ *  this row. Mirrors the conditions the desktop sidebar used inline. */
+export function buildRowActions(
+  row: WorktreeRowModel,
+  handlers: WorktreeRowActionHandlers
+): WorktreeRowAction[] {
+  const actions: WorktreeRowAction[] = []
+  const { worktree } = row
+
+  if (handlers.onContinue && isPRMerged(row.prStatus)) {
+    actions.push({
+      key: 'continue',
+      label: 'Continue on a new branch off main',
+      icon: RotateCw,
+      tone: 'accent',
+      onSelect: () => handlers.onContinue!()
+    })
+  }
+
+  if ((handlers.onSnooze || handlers.onUnsnooze) && !worktree.isMain) {
+    if (row.isSnoozed) {
+      actions.push({
+        key: 'unsnooze',
+        label:
+          typeof row.snoozeWakeAt === 'number'
+            ? `Wakes ${formatWakeAt(row.snoozeWakeAt)} — tap to wake up`
+            : 'Wake up',
+        icon: AlarmClock,
+        tone: 'accent',
+        onSelect: () => handlers.onUnsnooze?.()
+      })
+    } else {
+      actions.push({
+        key: 'snooze',
+        label: 'Snooze',
+        icon: Moon,
+        tone: 'accent',
+        tooltipExtra: ' (⌥-click to pick a date)',
+        onSelect: (e) => handlers.onSnooze?.(e)
+      })
+    }
+  }
+
+  if (handlers.onPrune && worktree.prunable) {
+    actions.push({
+      key: 'prune',
+      label: 'Prune stale worktree (git worktree prune)',
+      icon: Trash2,
+      tone: 'warning',
+      onSelect: () => handlers.onPrune!()
+    })
+  }
+
+  if (handlers.onDelete && !worktree.prunable) {
+    actions.push({
+      key: 'delete',
+      label: 'Remove worktree',
+      icon: Trash2,
+      tone: 'danger',
+      onSelect: () => handlers.onDelete!()
+    })
+  }
+
+  return actions
+}
+
+/** Alias edit / clear. Desktop surfaces these through the right-click context
+ *  menu; touch folds them into the same action sheet as everything else. */
+export function buildAliasActions(
+  row: WorktreeRowModel,
+  handlers: WorktreeAliasActionHandlers
+): WorktreeRowAction[] {
+  const hasAlias = row.alias !== undefined
+  const actions: WorktreeRowAction[] = [
+    {
+      key: 'alias-edit',
+      label: hasAlias ? 'Rename Alias…' : 'Alias Worktree…',
+      icon: Tag,
+      onSelect: () => handlers.onEditAlias()
+    }
+  ]
+  if (hasAlias) {
+    actions.push({
+      key: 'alias-clear',
+      label: 'Clear Alias',
+      icon: X,
+      onSelect: () => handlers.onClearAlias()
+    })
+  }
+  return actions
+}

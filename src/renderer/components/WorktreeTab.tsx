@@ -1,148 +1,95 @@
-import { useEffect, useRef, useState } from 'react'
-import { GitPullRequest, RotateCw, Trash2, Loader2, Moon, TriangleAlert, AlarmClock, Ghost } from 'lucide-react'
-import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
-import { isPRMerged } from '../../shared/state/prs'
-import { formatWakeAt } from '../../shared/state/snooze'
+import { useEffect, useRef, useState, type ReactElement } from 'react'
+import { GitPullRequest, Loader2, TriangleAlert, Ghost, MoreHorizontal } from 'lucide-react'
+import type { SidebarDetailPrefs } from '../types'
 import { Tooltip } from './Tooltip'
 import { repoNameColor } from './RepoIcon'
 import { SubtitleDetail } from './WorktreeSubtitleDetail'
 import { formatPendingTool } from '../pending-tool'
 import { HotkeyBadge } from './HotkeyBadge'
-import { useMetaHeld } from '../hooks/useMetaHeld'
 import type { Action } from '../hotkeys'
-import { ContextMenu, type ContextMenuItem } from './ContextMenu'
-import { useAliasForPath, useAppState } from '../store'
+import { ContextMenu } from './ContextMenu'
 import { useBackend } from '../backend'
 import { displayLabel } from '../worktree-display'
 import { ALIAS_MAX_LEN } from '../../shared/state/aliases'
+import { STATUS_COLORS, STATUS_LABELS, detachedLikeTooltip, prIconStyle, prIconTitle } from '../worktree-row-style'
+import type { WorktreeRowModel } from '../worktree-list-model'
+import {
+  buildRowActions,
+  buildAliasActions,
+  type WorktreeRowAction,
+  type WorktreeRowActionHandlers
+} from './worktree-row-actions'
+import { WorktreeActionSheet } from './WorktreeActionSheet'
+
+export type WorktreeListVariant = 'desktop' | 'touch'
 
 interface WorktreeTabProps {
-  worktree: Worktree
+  row: WorktreeRowModel
+  variant: WorktreeListVariant
   isActive: boolean
-  status: PtyStatus
-  pendingTool?: PendingTool | null
-  shellActive?: boolean
-  prStatus?: PRStatus | null
-  isMerged?: boolean
-  /** When set, shows a small repo hint next to the branch name. Used in
-   *  unified-repo mode so two branches with the same name stay distinguishable. */
-  repoLabel?: string
-  /** 1-based position in the Cmd+1..9 switch order. Undefined if this
-   *  worktree isn't bound to a numeric switch hotkey. */
-  cmdOrdinal?: number
-  /** When true, the worktree is in the middle of being deleted — show an
-   * inert spinner + dim the row, hide action buttons. */
-  deleting?: boolean
-  isSnoozed?: boolean
-  /** Wake-up timestamp (ms). Only meaningful when isSnoozed is true; used
-   *  to render a "Wakes …" tooltip. */
-  snoozeWakeAt?: number
+  /** Hoisted to the list so we don't run N keyboard listeners. Always false
+   *  on touch. */
+  metaHeld: boolean
+  density: 'comfy' | 'compact'
+  detailPrefs: SidebarDetailPrefs
+  isEditingAlias: boolean
+  actions: WorktreeRowActionHandlers
   onClick: () => void
-  onDelete?: () => void
-  onContinue?: () => void
-  /** Plain click → snooze for default duration. Option-click → open calendar
-   *  popover at the row. The handler receives the original event so the
-   *  caller can decide based on altKey. */
-  onSnooze?: (e: React.MouseEvent) => void
-  onUnsnooze?: () => void
-  /** Only present when `worktree.prunable === true`. Invokes
-   *  `git worktree prune` at the repo root and refreshes the list. */
-  onPrune?: () => void
-  isEditingAlias?: boolean
-  onStartAliasEdit?: () => void
-  onEndAliasEdit?: () => void
+  onStartAliasEdit: () => void
+  onEndAliasEdit: () => void
 }
 
-const STATUS_COLORS: Record<PtyStatus | 'merged', string> = {
-  idle: 'bg-faint',
-  processing: 'bg-success animate-pulse',
-  waiting: 'bg-warning',
-  'needs-approval': 'bg-danger animate-pulse',
-  merged: 'bg-accent'
-}
-
-const STATUS_LABELS: Record<PtyStatus | 'merged', string> = {
-  idle: 'Idle',
-  processing: 'Working...',
-  waiting: 'Waiting for input',
-  'needs-approval': 'Needs approval',
-  merged: 'Merged'
-}
-
-const PR_ICON_COLOR: Record<string, string> = {
-  success: 'text-success',
-  failure: 'text-danger',
-  pending: 'text-warning',
-  none: 'text-dim'
-}
-
-const DETACHED_LIKE_PREFIXES = ['rebasing', 'bisecting', 'cherry-picking']
-
-function detachedLikeTooltip(branch: string): string | null {
-  if (branch === '(detached)') return 'Detached HEAD'
-  for (const prefix of DETACHED_LIKE_PREFIXES) {
-    if (branch === prefix || branch.startsWith(`${prefix} `) || branch.startsWith(`${prefix}(`)) {
-      return `In progress: ${branch}`
-    }
-  }
-  return null
-}
-
-const PR_STATE_COLOR: Record<string, string> = {
-  open: 'text-success',
-  draft: 'text-dim',
-  merged: 'text-accent',
-  closed: 'text-danger'
-}
-
-export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, isSnoozed, snoozeWakeAt, onClick, onDelete, onContinue, onSnooze, onUnsnooze, onPrune, isEditingAlias, onStartAliasEdit, onEndAliasEdit }: WorktreeTabProps): JSX.Element {
-  const metaHeld = useMetaHeld()
-  const density = useAppState((s) => s.settings.sidebarDensity)
-  const detailPrefs = useAppState((s) => s.settings.sidebarDetails[s.settings.sidebarDensity])
-  const currentAlias = useAliasForPath(worktree.path)
+export function WorktreeTab({
+  row,
+  variant,
+  isActive,
+  metaHeld,
+  density,
+  detailPrefs,
+  isEditingAlias,
+  actions,
+  onClick,
+  onStartAliasEdit,
+  onEndAliasEdit
+}: WorktreeTabProps): JSX.Element {
   const backend = useBackend()
-  const label = displayLabel(worktree, currentAlias, metaHeld)
+  const touch = variant === 'touch'
+  const { worktree, prStatus, displayStatus, pendingTool, shellActive, deleting, alias } = row
+  const label = displayLabel(worktree, alias, metaHeld)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
-  const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
+  const [sheetOpen, setSheetOpen] = useState(false)
   const showPendingTool = displayStatus === 'needs-approval' && pendingTool
-  const canContinue = !!onContinue && isPRMerged(prStatus)
-  // Priority: merged/closed state always wins, then merge conflict, then check
-  // status, then PR state
-  let iconColor = ''
-  let iconTitleSuffix = ''
-  if (prStatus) {
-    if (prStatus.state === 'merged') iconColor = PR_STATE_COLOR.merged
-    else if (prStatus.state === 'closed') iconColor = PR_STATE_COLOR.closed
-    else if (prStatus.hasConflict === true) {
-      iconColor = PR_ICON_COLOR.failure
-      iconTitleSuffix = ' \u2014 merge conflict'
-    }
-    else if (prStatus.checksOverall === 'failure') iconColor = PR_ICON_COLOR.failure
-    else if (prStatus.checksOverall === 'pending') iconColor = PR_ICON_COLOR.pending
-    else if (prStatus.checksOverall === 'success') iconColor = PR_ICON_COLOR.success
-    else iconColor = PR_STATE_COLOR[prStatus.state]
-  }
+  const { iconColor } = prIconStyle(prStatus)
+  // Touch rows keep 44px tap targets and the roomier two-line layout even
+  // when the user picked a compact desktop sidebar.
+  const effectiveDensity = touch ? 'comfy' : density
+
+  const aliasActions = buildAliasActions(row, {
+    onEditAlias: onStartAliasEdit,
+    onClearAlias: () => void backend.clearAlias(worktree.path)
+  })
+  const rowActions = buildRowActions(row, deleting ? {} : actions)
 
   return (
     <div
       onClick={onClick}
-      onContextMenu={(e) => {
-        if (deleting) return
-        e.preventDefault()
-        setMenu({ x: e.clientX, y: e.clientY })
-      }}
-      className={`group w-full text-left px-3 py-2 flex items-center gap-2 transition-colors cursor-pointer ${
-        deleting ? 'opacity-60 italic' : ''
-      } ${
-        isActive
-          ? 'bg-surface text-fg-bright'
-          : 'text-muted hover:bg-panel-raised hover:text-fg'
+      onContextMenu={
+        touch
+          ? undefined
+          : (e) => {
+              if (deleting) return
+              e.preventDefault()
+              setMenu({ x: e.clientX, y: e.clientY })
+            }
+      }
+      className={`group w-full text-left px-3 flex items-center gap-2 transition-colors cursor-pointer ${
+        touch ? 'min-h-11 py-3' : 'py-2'
+      } ${deleting ? 'opacity-60 italic' : ''} ${
+        isActive ? 'bg-surface text-fg-bright' : 'text-muted hover:bg-panel-raised hover:text-fg'
       }`}
     >
       {deleting ? (
-        <Loader2
-          className="icon-xs animate-spin text-danger shrink-0"
-          aria-label="Deleting worktree" />
+        <Loader2 className="icon-xs animate-spin text-danger shrink-0" aria-label="Deleting worktree" />
       ) : (
         <span
           className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[displayStatus]}`}
@@ -150,15 +97,10 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
         />
       )}
       {shellActive && (
-        <Loader2
-          className="icon-xs animate-spin text-fg-bright shrink-0"
-          aria-label="Shell activity" />
+        <Loader2 className="icon-xs animate-spin text-fg-bright shrink-0" aria-label="Shell activity" />
       )}
       {prStatus && (
-        <span
-          className="relative shrink-0"
-          title={`PR #${prStatus.number}${prStatus.checksOverall !== 'none' ? ` \u2014 checks ${prStatus.checksOverall}` : ''}${iconTitleSuffix}${prStatus.reviewDecision === 'approved' ? ' \u2014 approved' : prStatus.reviewDecision === 'changes_requested' ? ' \u2014 changes requested' : ''}`}
-        >
+        <span className="relative shrink-0" title={prIconTitle(prStatus)}>
           <GitPullRequest className={`icon-sm ${iconColor}`} />
           {prStatus.reviewDecision === 'approved' && (
             <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-success ring-1 ring-panel" />
@@ -171,33 +113,26 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
       <div className="min-w-0 flex-1">
         {isEditingAlias ? (
           <AliasEditor
-            initialValue={currentAlias ?? ''}
+            initialValue={alias ?? ''}
             onCommit={(value) => {
               void backend.setAlias(worktree.path, value)
-              onEndAliasEdit?.()
+              onEndAliasEdit()
             }}
-            onCancel={() => onEndAliasEdit?.()}
+            onCancel={onEndAliasEdit}
           />
         ) : (
-          <Tooltip
-            label={currentAlias ? `${currentAlias} · ${worktree.branch}` : worktree.branch}
-            side="right"
+          <RowTooltip
+            enabled={!touch}
+            label={alias ? `${alias} · ${worktree.branch}` : worktree.branch}
           >
             <div className="text-sm font-medium truncate flex items-center gap-1">
-              {(() => {
-                const tip = detachedLikeTooltip(worktree.branch)
-                return tip ? (
-                  <span className="shrink-0 inline-flex" title={tip} aria-label={tip}>
-                    <TriangleAlert className="icon-xs text-warning" />
-                  </span>
-                ) : null
-              })()}
+              <DetachedBadge branch={worktree.branch} />
               <span className={`truncate ${worktree.prunable ? 'line-through text-dim' : ''}`}>
                 {label}
               </span>
               {worktree.prunable && (
                 <span
-                  className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-warning/15 text-warning text-[10px] uppercase tracking-wide"
+                  className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-warning/15 text-warning text-xs uppercase tracking-wide"
                   title={worktree.prunableReason || 'On-disk directory missing — click the ghost icon to run `git worktree prune`.'}
                 >
                   <Ghost className="icon-2xs" />
@@ -205,7 +140,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
                 </span>
               )}
             </div>
-          </Tooltip>
+          </RowTooltip>
         )}
         {showPendingTool ? (
           <div className="text-xs text-danger truncate font-mono" title={formatPendingTool(pendingTool!)}>
@@ -213,9 +148,9 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
           </div>
         ) : worktree.prunable ? (
           <div className="text-xs text-faint truncate">
-            {repoLabel ? (
+            {row.repoLabel ? (
               <span className="inline-flex items-center gap-1">
-                <span className={repoNameColor(repoLabel)}>{repoLabel}</span>
+                <span className={repoNameColor(row.repoLabel)}>{row.repoLabel}</span>
                 <span className="text-dim">·</span>
                 {worktree.path.split('/').pop()}
               </span>
@@ -223,126 +158,139 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
               worktree.path.split('/').slice(-2).join('/')
             )}
           </div>
-        ) : density === 'comfy' ? (
+        ) : effectiveDensity === 'comfy' ? (
           <SubtitleDetail
             worktree={worktree}
-            repoLabel={repoLabel}
-            aliased={currentAlias !== undefined}
+            repoLabel={row.repoLabel}
+            aliased={alias !== undefined}
             prStatus={prStatus}
             prefs={detailPrefs}
           />
         ) : null}
       </div>
-      {density === 'compact' && !showPendingTool && !worktree.prunable && (
+      {effectiveDensity === 'compact' && !showPendingTool && !worktree.prunable && (
         <SubtitleDetail
           worktree={worktree}
-          repoLabel={repoLabel}
-          aliased={currentAlias !== undefined}
+          repoLabel={row.repoLabel}
+          aliased={alias !== undefined}
           prStatus={prStatus}
           prefs={detailPrefs}
           inline
         />
       )}
-      {canContinue && (
-        <Tooltip label="Continue on a new branch off main" side="left">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onContinue!()
-            }}
-            className="hidden group-hover:flex text-faint hover:text-accent transition-colors shrink-0 cursor-pointer"
-          >
-            <RotateCw className="icon-xs" />
-          </button>
-        </Tooltip>
-      )}
-      {(onSnooze || onUnsnooze) && !worktree.isMain && (
-        <Tooltip
-          label={
-            isSnoozed
-              ? typeof snoozeWakeAt === 'number'
-                ? `Wakes ${formatWakeAt(snoozeWakeAt)} — click to wake up`
-                : 'Wake up'
-              : 'Snooze (⌥-click to pick a date)'
-          }
-          side="left"
-        >
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              if (isSnoozed) {
-                onUnsnooze?.()
-              } else {
-                onSnooze?.(e)
-              }
-            }}
-            className="hidden group-hover:flex text-faint hover:text-accent transition-colors shrink-0 cursor-pointer"
-          >
-            {isSnoozed ? <AlarmClock className="icon-xs" /> : <Moon className="icon-xs" />}
-          </button>
-        </Tooltip>
-      )}
-      {onPrune && worktree.prunable && (
-        <Tooltip label="Prune stale worktree (git worktree prune)" side="left">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onPrune()
-            }}
-            className="hidden group-hover:flex text-warning hover:text-fg-bright transition-colors shrink-0 cursor-pointer"
-          >
-            <Trash2 className="icon-xs" />
-          </button>
-        </Tooltip>
-      )}
-      {onDelete && !worktree.prunable && (
-        <Tooltip label="Remove worktree" side="left">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete()
-            }}
-            className="hidden group-hover:flex text-faint hover:text-danger transition-colors shrink-0 cursor-pointer"
-          >
-            <Trash2 className="icon-xs" />
-          </button>
-        </Tooltip>
-      )}
-      {metaHeld && cmdOrdinal !== undefined && (
-        <HotkeyBadge
-          action={`worktree${cmdOrdinal}` as Action}
-          variant="strong"
-          className="shrink-0"
+      {touch ? (
+        <TouchRowActions
+          disabled={deleting || (rowActions.length === 0 && aliasActions.length === 0)}
+          onOpen={() => setSheetOpen(true)}
         />
+      ) : (
+        <DesktopRowActions actions={rowActions} />
+      )}
+      {metaHeld && row.cmdOrdinal !== undefined && (
+        <HotkeyBadge action={`worktree${row.cmdOrdinal}` as Action} variant="strong" className="shrink-0" />
       )}
       {menu && (
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          items={buildAliasMenuItems({
-            hasAlias: currentAlias !== undefined,
-            onEdit: () => onStartAliasEdit?.(),
-            onClear: () => void backend.clearAlias(worktree.path)
-          })}
+          items={aliasActions.map((a) => ({ label: a.label, onClick: () => a.onSelect() }))}
           onClose={() => setMenu(null)}
+        />
+      )}
+      {sheetOpen && (
+        <WorktreeActionSheet
+          title={alias ?? worktree.branch}
+          subtitle={alias ? worktree.branch : undefined}
+          actions={[...aliasActions, ...rowActions]}
+          onClose={() => setSheetOpen(false)}
         />
       )}
     </div>
   )
 }
 
-function buildAliasMenuItems(args: {
-  hasAlias: boolean
-  onEdit: () => void
-  onClear: () => void
-}): ContextMenuItem[] {
-  const items: ContextMenuItem[] = [
-    { label: args.hasAlias ? 'Rename Alias…' : 'Alias Worktree…', onClick: args.onEdit }
-  ]
-  if (args.hasAlias) {
-    items.push({ label: 'Clear Alias', onClick: args.onClear })
-  }
-  return items
+/** Hover-revealed icon buttons. Desktop only — there is no hover on touch. */
+function DesktopRowActions({ actions }: { actions: WorktreeRowAction[] }): JSX.Element | null {
+  if (actions.length === 0) return null
+  return (
+    <>
+      {actions.map((action) => {
+        const Icon = action.icon
+        const hoverClass =
+          action.tone === 'warning'
+            ? 'text-warning hover:text-fg-bright'
+            : action.tone === 'danger'
+              ? 'text-faint hover:text-danger'
+              : 'text-faint hover:text-accent'
+        return (
+          <Tooltip key={action.key} label={`${action.label}${action.tooltipExtra ?? ''}`} side="left">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                action.onSelect(e)
+              }}
+              className={`hidden group-hover:flex transition-colors shrink-0 cursor-pointer ${hoverClass}`}
+            >
+              <Icon className="icon-xs" />
+            </button>
+          </Tooltip>
+        )
+      })}
+    </>
+  )
+}
+
+/** Persistent overflow affordance. Opens the action sheet holding everything
+ *  the desktop row hides behind hover + right-click. */
+function TouchRowActions({
+  disabled,
+  onOpen
+}: {
+  disabled: boolean
+  onOpen: () => void
+}): JSX.Element | null {
+  if (disabled) return null
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation()
+        onOpen()
+      }}
+      aria-label="Worktree actions"
+      className="shrink-0 inline-flex items-center justify-center w-11 h-11 -mr-2 rounded text-dim active:bg-surface"
+    >
+      <MoreHorizontal className="icon-base" />
+    </button>
+  )
+}
+
+function DetachedBadge({ branch }: { branch: string }): JSX.Element | null {
+  const tip = detachedLikeTooltip(branch)
+  if (!tip) return null
+  return (
+    <span className="shrink-0 inline-flex" title={tip} aria-label={tip}>
+      <TriangleAlert className="icon-xs text-warning" />
+    </span>
+  )
+}
+
+/** Tooltips are a pointer affordance — tap-and-hold tooltips on touch are
+ *  worse than no tooltip, so the touch variant renders the child bare. */
+function RowTooltip({
+  enabled,
+  label,
+  children
+}: {
+  enabled: boolean
+  label: string
+  children: ReactElement
+}): ReactElement {
+  if (!enabled) return children
+  return (
+    <Tooltip label={label} side="right">
+      {children}
+    </Tooltip>
+  )
 }
 
 interface AliasEditorProps {

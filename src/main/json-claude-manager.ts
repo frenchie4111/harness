@@ -18,7 +18,7 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { randomUUID } from 'crypto'
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { createRequire } from 'module'
 import { homedir } from 'os'
 import { dirname, join, sep } from 'path'
@@ -30,6 +30,7 @@ import type {
   JsonClaudePermissionMode,
   JsonClaudeSessionState
 } from '../shared/state/json-claude'
+import { parseAutomatedMessage } from '../shared/state/json-claude'
 import type { ClaudeLaunchSettings } from './claude-launch'
 import { log } from './debug'
 import { shellQuote } from './shell-quote'
@@ -40,8 +41,6 @@ interface JsonClaudeInstance {
   sessionId: string
   worktreePath: string
   buf: string
-  /** Monotonically increasing counter used to build stable chat entry ids. */
-  entryCounter: number
   /** In-flight assistant message tracked for --include-partial-messages.
    *  Cleared when the consolidated `assistant` event arrives (or the
    *  proc exits). One assistant turn at a time — claude doesn't
@@ -191,6 +190,15 @@ function transcriptPathFor(sessionId: string, worktreePath: string): string {
   )
 }
 
+/** Whether this session has a transcript on disk that `forkTranscript`
+ *  could copy. False for terminal-tab ids (which aren't session ids at all)
+ *  and for chat tabs that haven't produced a turn yet — lets the MCP path
+ *  reject a fork request up front instead of returning success and handing
+ *  the caller an empty chat. */
+export function hasForkableTranscript(sessionId: string, worktreePath: string): boolean {
+  return existsSync(transcriptPathFor(sessionId, worktreePath))
+}
+
 export interface RewindOutcome {
   ok: boolean
   reason?: string
@@ -200,6 +208,124 @@ export interface ForkOutcome {
   ok: boolean
   newSessionId?: string
   reason?: string
+}
+
+export interface ForkTranscriptParams {
+  sourceSessionId: string
+  sourceWorktreePath: string
+  /** Where the forked transcript should live. Pass the same value as
+   *  `sourceWorktreePath` for an in-place fork. */
+  destWorktreePath: string
+  /** Cut the copy after the LAST jsonl line whose inner `message.id`
+   *  matches. Omit to copy the whole transcript. */
+  throughApiMessageId?: string
+}
+
+/** Copy a session's transcript into a new jsonl under a fresh session id,
+ *  optionally truncating at an assistant message and optionally landing it
+ *  in a different worktree's project dir. The source is untouched — no
+ *  kill, no truncation, no slice mutation. Callers wire up the new tab;
+ *  the CLI's `--resume` path (which keys off the file existing at
+ *  `<destWorktreePath>`'s encoded project dir) does the rest.
+ *
+ *  Why we rewrite the `sessionId` field on each kept line: the CLI
+ *  reads/writes `~/.claude/projects/<dir>/<sessionId>.jsonl` keyed by
+ *  the filename, but every jsonl line ALSO carries its own `sessionId`
+ *  field. On --resume the CLI appends further lines stamped with the
+ *  filename's session id, so if the copied prefix keeps the source id,
+ *  the resulting file is a hybrid where the first N lines disagree with
+ *  the last M — some tooling (and the CLI's own auto-memory subsystem)
+ *  key off the inner id. Rewriting keeps filename and record consistent.
+ *
+ *  The per-line `cwd` / `gitBranch` fields are deliberately NOT rewritten
+ *  on a cross-worktree fork. The CLI binds cwd from the spawned process,
+ *  not from the transcript, so they're historical metadata — and leaving
+ *  them accurate keeps the record of where each turn actually happened.
+ *  The resumed agent is told about the move via a relocation preamble
+ *  prepended to its kickoff prompt (see fork-relocation.ts).
+ *
+ *  Same jsonl-scan shape as truncateTranscriptAfterMessage: one assistant
+ *  API turn can span several jsonl lines (thinking, tool_use, text) all
+ *  sharing the message.id, so we cut after the LAST line carrying it. */
+export function forkTranscript(params: ForkTranscriptParams): ForkOutcome {
+  const { sourceSessionId, sourceWorktreePath, destWorktreePath, throughApiMessageId } = params
+  const newSessionId = randomUUID()
+  const sourcePath = transcriptPathFor(sourceSessionId, sourceWorktreePath)
+  if (!existsSync(sourcePath)) {
+    return { ok: false, reason: 'source transcript missing' }
+  }
+
+  let raw: string
+  try {
+    raw = readFileSync(sourcePath, 'utf8')
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    log('json-claude', `fork read failed sessionId=${sourceSessionId}`, reason)
+    return { ok: false, reason }
+  }
+
+  const lines = raw.split('\n')
+  let lastKeptIdx = lines.length - 1
+  if (throughApiMessageId) {
+    let lastMatchIdx = -1
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim()
+      if (!line) continue
+      let parsed: Record<string, unknown>
+      try {
+        parsed = JSON.parse(line)
+      } catch {
+        continue
+      }
+      if (parsed['type'] !== 'assistant') continue
+      const inner = parsed['message'] as { id?: unknown } | undefined
+      if (typeof inner?.id === 'string' && inner.id === throughApiMessageId) {
+        lastMatchIdx = i
+      }
+    }
+    if (lastMatchIdx === -1) {
+      log(
+        'json-claude',
+        `fork: no jsonl line matched apiMessageId=${throughApiMessageId} sessionId=${sourceSessionId}`
+      )
+      return { ok: false, reason: 'no matching jsonl record' }
+    }
+    lastKeptIdx = lastMatchIdx
+  }
+
+  const rewritten: string[] = []
+  for (let i = 0; i <= lastKeptIdx; i++) {
+    const trimmed = lines[i].trim()
+    if (!trimmed) continue
+    let parsed: Record<string, unknown>
+    try {
+      parsed = JSON.parse(trimmed)
+    } catch {
+      continue
+    }
+    if ('sessionId' in parsed) parsed['sessionId'] = newSessionId
+    rewritten.push(JSON.stringify(parsed))
+  }
+  const body = rewritten.length > 0 ? rewritten.join('\n') + '\n' : ''
+
+  const destPath = transcriptPathFor(newSessionId, destWorktreePath)
+  const tmpPath = `${destPath}.fork-${Date.now()}.tmp`
+  try {
+    // A brand-new worktree has no project dir yet — the in-place fork
+    // never had to create one because the source dir always existed.
+    mkdirSync(dirname(destPath), { recursive: true })
+    writeFileSync(tmpPath, body, 'utf8')
+    renameSync(tmpPath, destPath)
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    log('json-claude', `fork write failed sessionId=${newSessionId}`, reason)
+    return { ok: false, reason }
+  }
+  log(
+    'json-claude',
+    `fork wrote sessionId=${newSessionId} from=${sourceSessionId} keptLines=${rewritten.length} dest=${destWorktreePath}`
+  )
+  return { ok: true, newSessionId }
 }
 
 export class JsonClaudeManager {
@@ -214,6 +340,12 @@ export class JsonClaudeManager {
   private slashCommandsByCwd = new Map<string, string[]>()
   /** Inflight probes per cwd so concurrent create() calls share one. */
   private probeInflightByCwd = new Map<string, Promise<string[]>>()
+  /** Per-session chat-entry sequence. Keyed by sessionId rather than held
+   *  on the instance because a sleep/wake kills the instance while the
+   *  slice keeps its entries — restarting at 0 would mint an entryId that
+   *  already exists, and React drops the duplicate-keyed row, so the first
+   *  message after a wake would silently never render. */
+  private entrySeqBySession = new Map<string, number>()
 
   constructor(store: Store, opts: JsonClaudeManagerOptions) {
     this.store = store
@@ -222,6 +354,16 @@ export class JsonClaudeManager {
 
   hasSession(sessionId: string): boolean {
     return this.instances.has(sessionId)
+  }
+
+  /** Mint the next chat entry id for a session. `kind` distinguishes the
+   *  producers (user / queued user / assistant / control) but the sequence
+   *  is shared, so ids are unique across an entire session lifetime
+   *  including respawns. */
+  private nextEntryId(sessionId: string, kind: 'u' | 'uq' | 'a' | 'c'): string {
+    const n = (this.entrySeqBySession.get(sessionId) ?? 0) + 1
+    this.entrySeqBySession.set(sessionId, n)
+    return `${sessionId}-${kind}-${n}`
   }
 
   /** Replay the on-disk session jsonl into the slice as chat entries.
@@ -311,11 +453,14 @@ export class JsonClaudeManager {
           ) {
             continue
           }
+          const automated = parseAutomatedMessage(content)
           seededEntries.push({
             kind: 'user',
-            text: content,
+            text: automated ? automated.body : content,
             timestamp: Date.now(),
             entryId: `${sessionId}-seed-u-${counter++}`,
+            ...(automated ? { automation: automated.source } : {}),
+            ...(automated?.from ? { automationFrom: automated.from } : {}),
             ...(transcriptUuid ? { transcriptUuid } : {})
           })
         } else if (Array.isArray(content)) {
@@ -573,7 +718,6 @@ export class JsonClaudeManager {
       sessionId,
       worktreePath,
       buf: '',
-      entryCounter: 0,
       partial: null,
       lastRateLimitWarning: { overThreshold: false }
     }
@@ -701,7 +845,7 @@ export class JsonClaudeManager {
       this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
     if (session?.busy) {
       this.appendUserEntry(inst, text, images, {
-        entryId: `${sessionId}-uq-${inst.entryCounter++}`,
+        entryId: this.nextEntryId(sessionId, 'uq'),
         isQueued: true
       })
       this.writeUserStdin(inst, text, images)
@@ -720,7 +864,7 @@ export class JsonClaudeManager {
     images?: Array<{ mediaType: string; data: string; path: string }>
   ): void {
     this.appendUserEntry(inst, text, images, {
-      entryId: `${inst.sessionId}-u-${inst.entryCounter++}`
+      entryId: this.nextEntryId(inst.sessionId, 'u')
     })
     this.dispatchBusy(inst.sessionId, true)
     this.writeUserStdin(inst, text, images)
@@ -738,11 +882,16 @@ export class JsonClaudeManager {
     extra: { entryId: string; isQueued?: boolean }
   ): void {
     const hasImages = !!images && images.length > 0
+    // The sentinel is for claude's benefit on the wire; the slice keeps the
+    // stripped body plus a flag so the renderer can style the bubble.
+    const automated = parseAutomatedMessage(text)
     this.appendEntry(inst, {
       kind: 'user',
-      text,
+      text: automated ? automated.body : text,
       timestamp: Date.now(),
       entryId: extra.entryId,
+      ...(automated ? { automation: automated.source } : {}),
+      ...(automated?.from ? { automationFrom: automated.from } : {}),
       ...(extra.isQueued ? { isQueued: true } : {}),
       ...(hasImages
         ? {
@@ -969,26 +1118,9 @@ export class JsonClaudeManager {
     return { ok: true }
   }
 
-  /** Copy the source session's transcript up to and including the
-   *  clicked assistant message into a new jsonl under a fresh session
-   *  id. Source session is untouched — no kill, no truncation, no slice
-   *  mutation. Caller wires up the new tab + spawns the resumed
-   *  subprocess; the normal --resume path seeds the new slice entry.
-   *
-   *  Why we rewrite the `sessionId` field on each kept line: the CLI
-   *  reads/writes `~/.claude/projects/<dir>/<sessionId>.jsonl` keyed by
-   *  the filename, but every jsonl line ALSO carries its own
-   *  `sessionId` field. On --resume the CLI appends further lines
-   *  stamped with the filename's session id, so if the copied prefix
-   *  keeps the source id, the resulting file is a hybrid where the
-   *  first N lines disagree with the last M — some tooling (and the
-   *  CLI's own auto-memory subsystem) key off the inner id. Rewriting
-   *  keeps filename and record consistent.
-   *
-   *  Same jsonl-scan shape as truncateTranscriptAfterMessage: one
-   *  assistant API turn can span several jsonl lines (thinking, tool_use,
-   *  text) all sharing the message.id, so we cut after the LAST line
-   *  carrying the target id. */
+  /** Fork the source session in place, keeping history up to and
+   *  including the clicked assistant message. Resolves the clicked
+   *  entry to its API message id and delegates to `forkTranscript`. */
   forkAt(sourceSessionId: string, fromEntryId: string): ForkOutcome {
     const source =
       this.store.getSnapshot().state.jsonClaude.sessions[sourceSessionId]
@@ -1004,77 +1136,12 @@ export class JsonClaudeManager {
       return { ok: false, reason: 'message lacks an API id' }
     }
 
-    const newSessionId = randomUUID()
-    const sourcePath = transcriptPathFor(sourceSessionId, source.worktreePath)
-    if (!existsSync(sourcePath)) {
-      return { ok: false, reason: 'source transcript missing' }
-    }
-
-    let raw: string
-    try {
-      raw = readFileSync(sourcePath, 'utf8')
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err)
-      log('json-claude', `fork read failed sessionId=${sourceSessionId}`, reason)
-      return { ok: false, reason }
-    }
-
-    const lines = raw.split('\n')
-    let lastMatchIdx = -1
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim()
-      if (!line) continue
-      let parsed: Record<string, unknown>
-      try {
-        parsed = JSON.parse(line)
-      } catch {
-        continue
-      }
-      if (parsed['type'] !== 'assistant') continue
-      const inner = parsed['message'] as { id?: unknown } | undefined
-      if (typeof inner?.id === 'string' && inner.id === target.apiMessageId) {
-        lastMatchIdx = i
-      }
-    }
-    if (lastMatchIdx === -1) {
-      log(
-        'json-claude',
-        `fork: no jsonl line matched apiMessageId=${target.apiMessageId} sessionId=${sourceSessionId}`
-      )
-      return { ok: false, reason: 'no matching jsonl record' }
-    }
-
-    const rewritten: string[] = []
-    for (let i = 0; i <= lastMatchIdx; i++) {
-      const line = lines[i]
-      const trimmed = line.trim()
-      if (!trimmed) continue
-      let parsed: Record<string, unknown>
-      try {
-        parsed = JSON.parse(trimmed)
-      } catch {
-        continue
-      }
-      if ('sessionId' in parsed) parsed['sessionId'] = newSessionId
-      rewritten.push(JSON.stringify(parsed))
-    }
-    const body = rewritten.length > 0 ? rewritten.join('\n') + '\n' : ''
-
-    const destPath = transcriptPathFor(newSessionId, source.worktreePath)
-    const tmpPath = `${destPath}.fork-${Date.now()}.tmp`
-    try {
-      writeFileSync(tmpPath, body, 'utf8')
-      renameSync(tmpPath, destPath)
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err)
-      log('json-claude', `fork write failed sessionId=${newSessionId}`, reason)
-      return { ok: false, reason }
-    }
-    log(
-      'json-claude',
-      `fork wrote sessionId=${newSessionId} from=${sourceSessionId} keptLines=${rewritten.length}`
-    )
-    return { ok: true, newSessionId }
+    return forkTranscript({
+      sourceSessionId,
+      sourceWorktreePath: source.worktreePath,
+      destWorktreePath: source.worktreePath,
+      throughApiMessageId: target.apiMessageId
+    })
   }
 
   /** Truncate the jsonl so it ends with the LAST line carrying
@@ -1413,7 +1480,7 @@ export class JsonClaudeManager {
           sessionId: instance.sessionId,
           entryId: uuid
             ? `${instance.sessionId}-c-${uuid}`
-            : `${instance.sessionId}-c-${instance.entryCounter++}`,
+            : this.nextEntryId(instance.sessionId, 'c'),
           trigger,
           preTokens,
           postTokens,
@@ -1575,7 +1642,7 @@ export class JsonClaudeManager {
         kind: 'assistant',
         blocks,
         timestamp: Date.now(),
-        entryId: `${instance.sessionId}-a-${instance.entryCounter++}`,
+        entryId: this.nextEntryId(instance.sessionId, 'a'),
         ...(messageId ? { apiMessageId: messageId } : {}),
         ...(parentToolUseId ? { parentToolUseId } : {})
       })

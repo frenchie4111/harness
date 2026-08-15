@@ -1,6 +1,7 @@
-import type { Worktree, PRStatus } from './types'
-import { isPRMerged } from '../shared/state/prs'
-import type { AssignedPR } from '../shared/state/assigned-prs'
+import type { Worktree } from './state/worktrees'
+import type { PRStatus } from './state/prs'
+import { isPRMerged } from './state/prs'
+import type { AssignedPR } from './state/assigned-prs'
 
 export type GroupKey = 'needs-attention' | 'reviewing' | 'active' | 'no-pr' | 'snoozed' | 'merged'
 

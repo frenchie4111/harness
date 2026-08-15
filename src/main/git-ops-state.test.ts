@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, unlinkSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { detectInProgressOp, isOnRealBranch } from './git-ops-state'
+import { detectInProgressOp, isGitBusy, isOnRealBranch } from './git-ops-state'
 
 function git(cwd: string, args: string[]): string {
   return execFileSync('git', args, {
@@ -169,4 +169,47 @@ describe('isOnRealBranch', () => {
     expect(isOnRealBranch('cherry-picking 2/7')).toBe(false)
     expect(isOnRealBranch('cherry-picking')).toBe(false)
   })
+})
+
+describe('isGitBusy', () => {
+  // isGitBusy is existsSync over a marker list, so it needs a directory rather
+  // than a real repo. That the markers are the names git actually writes is
+  // covered by the detectInProgressOp tests above, which drive real rebases,
+  // cherry-picks and bisects.
+  let gitDir: string
+
+  beforeEach(() => {
+    gitDir = mkdtempSync(join(tmpdir(), 'harness-gitbusy-'))
+  })
+
+  afterEach(() => {
+    rmSync(gitDir, { recursive: true, force: true })
+  })
+
+  it('is false on an idle gitdir', () => {
+    expect(isGitBusy(gitDir)).toBe(false)
+  })
+
+  it.each([
+    'MERGE_HEAD',
+    'CHERRY_PICK_HEAD',
+    'REVERT_HEAD',
+    'BISECT_LOG',
+    'index.lock'
+  ])('is true while %s exists', (marker) => {
+    writeFileSync(join(gitDir, marker), '')
+    expect(isGitBusy(gitDir)).toBe(true)
+    unlinkSync(join(gitDir, marker))
+    expect(isGitBusy(gitDir)).toBe(false)
+  })
+
+  it.each(['rebase-merge', 'rebase-apply', 'sequencer'])(
+    'is true while the %s directory exists',
+    (marker) => {
+      mkdirSync(join(gitDir, marker))
+      expect(isGitBusy(gitDir)).toBe(true)
+      rmSync(join(gitDir, marker), { recursive: true })
+      expect(isGitBusy(gitDir)).toBe(false)
+    }
+  )
 })
