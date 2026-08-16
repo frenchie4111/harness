@@ -332,12 +332,18 @@ What gets written to `perf.log` (and where the threshold lives):
   500 ms interval) ≥ `LAG_SPIKE_THRESHOLD_MS` (100 ms;
   `src/main/perf-monitor.ts`).
 - `[snapshot]` — one summary line every `SNAPSHOT_INTERVAL_MS` (30 s)
-  with current rates, lag, RSS, active PTYs, and top event types. Cheap
-  continuous trace for "what was happening at <timestamp>".
-- `[render-slow]` — React commits ≥ `SLOW_COMMIT_MS` (16 ms = one frame
-  at 60 fps; `src/renderer/main.tsx`). Forwarded from the renderer over
-  the `perf:logSlowRender` fire-and-forget signal — telemetry must not
-  block the render.
+  with current rates, lag, active PTYs, and top event types. Cheap
+  continuous trace for "what was happening at <timestamp>". Memory keys
+  are explicitly prefixed (`mainRssMB` / `mainHeapUsedMB` vs
+  `rendererHeapUsedMB`), because an unqualified `memoryHeapUsedMB` here
+  used to mean main-only — it read 30MB while the renderer sat at 900MB,
+  which is worse than reporting no memory at all.
+- `[renderer-slow]` / `[renderer-snapshot]` — one aggregated 1 s bucket
+  per renderer (`src/renderer/renderer-perf.ts`), delivered over the
+  `perf:reportRendererSample` fire-and-forget signal. `-slow` when a
+  threshold tripped, `-snapshot` for the 30 s heartbeat. Carries long
+  tasks + blocking time, renderer heap and GC churn, input latency, and
+  React commits/time. See "Why the renderer needs its own telemetry".
 - `[changed-files]` — `getChangedFiles` / `getCommitChangedFiles` /
   `getCommitRangeChangedFiles` calls taking ≥ `SLOW_CHANGED_FILES_MS`
   (50 ms; `src/main/worktree.ts`).
@@ -353,14 +359,54 @@ Don't un-gate them for a "complete" trace; if you need one for a
 specific repro, lower the constant temporarily instead.
 
 The HUD at **Cmd+Opt+P** shows live aggregates (rates, history sparkline,
-React commits per second, top event types). `perf.log` captures the
-per-event detail the HUD can't display. They're complementary —
-`PerfMonitor` aggregates for the HUD, `perfLog` writes discrete
-slow-event lines.
+React commits per second, long tasks / blocked ms, renderer heap and GC
+churn, top event types). `perf.log` captures the per-event detail the HUD
+can't display. They're complementary — `PerfMonitor` aggregates for the
+HUD, `perfLog` writes discrete slow-event lines.
 
 For AI agents debugging perf: ask the user to `npm run log:perf:clear`,
 reproduce, then tail `perf.log` and look for the slow-* lines around the
 reported timestamp.
+
+### Why the renderer needs its own telemetry
+
+Everything above except the `[renderer-*]` lines measures the **main
+process**. That gap once cost two days: a report of "the whole UI stutters
+whenever a worktree is calling a tool" was chased through three rounds of
+main-process optimization while `perf.log` showed `store=0-3/s`,
+`ipc=0-3/s`, `lag=0-2ms`, no `[cascade]` lines, and zero slow-render lines
+— with the renderer at 155% CPU and 966MB RSS. The bug was
+`rehype-highlight` rebuilding 37 highlight.js grammars on every markdown
+render, per streamed token.
+
+Three structural reasons the old instrumentation couldn't see it, and what
+replaced them:
+
+1. **A per-commit frame-budget gate misses death by a thousand cuts.**
+   `[render-slow]` only fired on commits ≥16 ms; the pathology was hundreds
+   of individually-fine commits. `renderer-perf.ts` aggregates instead, so
+   `reactTotalMs` per second is what's compared against a threshold. It
+   also removes an IPC from the commit hot path.
+2. **Nothing measured renderer GC or heap.** A GC pause happens *between*
+   tasks, in a different process from the one `perf-monitor.ts` samples, so
+   it is invisible to both React profiler callbacks and main-process
+   event-loop lag. The `longtask` PerformanceObserver catches those pauses
+   (plus layout thrash and any non-React work), and per-second heap deltas
+   expose the allocate-and-collect sawtooth as `heapReclaimedMB`.
+3. **`[snapshot]` memory was main-only but unlabelled.** Now prefixed, per
+   above.
+
+The hard constraint when extending this: **the telemetry must not become
+the bottleneck.** `longtask` can fire continuously under load, so buckets
+are aggregated in memory and emitted at most once a second, only when a
+threshold trips (idle cost: one signal per 30 s). Never log or send per
+event, and keep renderer→main telemetry on a fire-and-forget signal so it
+can't block a render.
+
+These counters are deliberately **not slice state**: two clients viewing
+the same workspace have their own renderers with their own heaps and frame
+budgets, so there's no shared truth to mirror — and it's high-frequency,
+which keeps it out of the reducer regardless.
 
 ## How GitHub integration works
 

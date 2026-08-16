@@ -5,22 +5,22 @@ import App from './App'
 import { initStore } from './store'
 import { getBackend } from './backend'
 import { defineHarnessTheme } from './monaco-setup'
-import { renderMetrics } from './render-metrics'
+import { rendererPerf } from './renderer-perf'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { LinuxWindowControls } from './components/LinuxWindowControls'
 
-const SLOW_COMMIT_MS = 16
-
-const onRender: ProfilerOnRenderCallback = (id, phase, actualDuration) => {
-  renderMetrics.record(actualDuration)
-  if (actualDuration >= SLOW_COMMIT_MS) {
-    getBackend().perfLogSlowRender(id, actualDuration, phase)
-  }
+// Counter bump only. The previous version compared every commit against a
+// 16ms budget and fired an IPC when it lost — which both put telemetry in the
+// commit hot path and missed the failure mode where hundreds of individually
+// cheap commits ruin a second. rendererPerf aggregates instead.
+const onRender: ProfilerOnRenderCallback = (_id, _phase, actualDuration) => {
+  rendererPerf.recordCommit(actualDuration)
 }
 
 initStore()
   .then(() => {
     defineHarnessTheme()
+    rendererPerf.start((sample) => getBackend().perfReportRendererSample(sample))
     createRoot(document.getElementById('root')!).render(
       <ErrorBoundary label="app:root" showReload>
         <Profiler id="app" onRender={onRender}>

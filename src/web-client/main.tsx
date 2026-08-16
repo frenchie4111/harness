@@ -92,15 +92,19 @@ async function boot(): Promise<void> {
       import('../renderer/App'),
       import('../renderer/store'),
       import('../renderer/monaco-setup'),
-      import('../renderer/render-metrics'),
+      import('../renderer/renderer-perf'),
       import('../renderer/components/ErrorBoundary')
     ])
 
   await storeMod.initStore()
   monacoMod.defineHarnessTheme()
 
+  const { rendererPerf } = metricsMod
+  const backendMod = await import('../renderer/backend')
+  rendererPerf.start((sample) => backendMod.getBackend().perfReportRendererSample(sample))
+
   const onRender: ProfilerOnRenderCallback = (_id, _phase, actualDuration) => {
-    metricsMod.renderMetrics.record(actualDuration)
+    rendererPerf.recordCommit(actualDuration)
   }
 
   const App = appMod.default

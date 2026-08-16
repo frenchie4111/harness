@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { PerfMetrics, PerfSample } from '../types'
-import { renderMetrics, type RenderSample } from '../render-metrics'
+import { rendererPerf, type RendererPerfSample } from '../renderer-perf'
 import { useBackend } from '../backend'
 
 const COLOR_NEUTRAL = '#9ca3af'
@@ -16,6 +16,8 @@ const LINE_COLORS = {
   memory: '#f472b6',
   reactCommits: '#22d3ee',
   reactRenderMs: '#fb923c',
+  blockingMs: '#ef4444',
+  rendererHeap: '#38bdf8',
 } as const
 
 type MetricKey = keyof typeof LINE_COLORS
@@ -25,6 +27,8 @@ interface CombinedSample extends PerfSample {
   reactCommits: number
   reactRenderMs: number
   reactMaxMs: number
+  blockingMs: number
+  rendererHeap: number
 }
 
 function statusClass(value: number, green: number, amber: number): string {
@@ -60,7 +64,7 @@ function formatPerSec(v: number): string {
 
 function zipHistories(
   main: PerfSample[],
-  render: RenderSample[]
+  render: RendererPerfSample[]
 ): CombinedSample[] {
   const n = Math.min(main.length, render.length)
   if (n === 0) return []
@@ -72,9 +76,11 @@ function zipHistories(
     const r = render[rStart + i]
     out.push({
       ...m,
-      reactCommits: r.commits,
-      reactRenderMs: r.totalDurationMs,
-      reactMaxMs: r.maxDurationMs,
+      reactCommits: r.reactCommits,
+      reactRenderMs: r.reactTotalMs,
+      reactMaxMs: r.reactMaxMs,
+      blockingMs: r.blockingMs,
+      rendererHeap: r.heapUsedMB,
     })
   }
   return out
@@ -98,8 +104,12 @@ function downsample(samples: CombinedSample[], bucketSize: number): CombinedSamp
       hts = 0,
       rc = 0,
       rm = 0,
-      rx = 0
+      rx = 0,
+      bm = 0,
+      rh = 0
     for (const s of bucket) {
+      bm += s.blockingMs
+      rh += s.rendererHeap
       ss += s.storeEventsPerSec
       is += s.ipcMessagesPerSec
       ga += s.githubApiCallsPerSec
@@ -131,6 +141,8 @@ function downsample(samples: CombinedSample[], bucketSize: number): CombinedSamp
       reactCommits: rc / n,
       reactRenderMs: rm / n,
       reactMaxMs: rx,
+      blockingMs: bm / n,
+      rendererHeap: rh / n,
     })
   }
   return out
@@ -208,6 +220,8 @@ function Chart({
     memory: samples.map((s) => s.memoryRssMB),
     reactCommits: samples.map((s) => s.reactCommits),
     reactRenderMs: samples.map((s) => s.reactRenderMs),
+    blockingMs: samples.map((s) => s.blockingMs),
+    rendererHeap: samples.map((s) => s.rendererHeap),
   }
 
   // Event type stacked bars: order types by total descending so the biggest
@@ -305,12 +319,11 @@ const HUD_WIDTH = 580
 export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
   const backend = useBackend()
   const [metrics, setMetrics] = useState<PerfMetrics | null>(null)
-  const [renderHistory, setRenderHistory] = useState<RenderSample[]>([])
-  const [renderLatest, setRenderLatest] = useState<RenderSample>(() =>
-    renderMetrics.getLatest()
+  const [renderHistory, setRenderHistory] = useState<RendererPerfSample[]>([])
+  const [renderLatest, setRenderLatest] = useState<RendererPerfSample>(() =>
+    rendererPerf.getLatest()
   )
   const [fps, setFps] = useState(60)
-  const [rendererMemoryMB, setRendererMemoryMB] = useState(0)
   const [windowMode, setWindowMode] = useState<WindowMode>('1s')
   const [enabledMetrics, setEnabledMetrics] = useState<Set<MetricKey>>(
     () =>
@@ -323,6 +336,8 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
         'memory',
         'reactCommits',
         'reactRenderMs',
+        'blockingMs',
+        'rendererHeap',
       ])
   )
   const frameCountRef = useRef(0)
@@ -358,8 +373,8 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
         const m = await backend.getPerfMetrics()
         if (active) {
           setMetrics(m)
-          setRenderHistory(renderMetrics.getHistory())
-          setRenderLatest(renderMetrics.getLatest())
+          setRenderHistory(rendererPerf.getHistory())
+          setRenderLatest(rendererPerf.getLatest())
         }
       } catch {
         // ignore
@@ -371,18 +386,6 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
       active = false
       clearInterval(timer)
     }
-  }, [])
-
-  useEffect(() => {
-    const update = (): void => {
-      const perf = performance as { memory?: { usedJSHeapSize: number } }
-      if (perf.memory) {
-        setRendererMemoryMB(Math.round(perf.memory.usedJSHeapSize / 1024 / 1024))
-      }
-    }
-    update()
-    const timer = setInterval(update, 1000)
-    return () => clearInterval(timer)
   }, [])
 
   const handleClose = useCallback(
@@ -459,14 +462,26 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
         {
           key: 'reactCommits',
           label: 'React commits',
-          value: `${renderLatest.commits}/s`,
-          valueClassName: statusClass(renderLatest.commits, 20, 60),
+          value: `${renderLatest.reactCommits}/s`,
+          valueClassName: statusClass(renderLatest.reactCommits, 20, 60),
         },
         {
           key: 'reactRenderMs',
           label: 'React time',
-          value: `${renderLatest.totalDurationMs.toFixed(1)}ms/s`,
-          valueClassName: statusClass(renderLatest.totalDurationMs, 16, 100),
+          value: `${renderLatest.reactTotalMs.toFixed(1)}ms/s`,
+          valueClassName: statusClass(renderLatest.reactTotalMs, 16, 50),
+        },
+        {
+          key: 'blockingMs',
+          label: 'Blocked (render)',
+          value: `${renderLatest.blockingMs.toFixed(0)}ms/s`,
+          valueClassName: statusClass(renderLatest.blockingMs, 10, 50),
+        },
+        {
+          key: 'rendererHeap',
+          label: 'Heap (render)',
+          value: `${renderLatest.heapUsedMB.toFixed(0)} MB`,
+          valueClassName: statusClass(renderLatest.heapUsedMB, 300, 700),
         },
       ]
     : []
@@ -517,14 +532,31 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
           value={metrics ? `${metrics.memoryMB.heapUsed} MB` : '—'}
         />
         <Scalar
-          label="Memory (render)"
-          value={`${rendererMemoryMB} MB`}
-          className={statusClass(rendererMemoryMB, 200, 500)}
+          label="Long tasks"
+          value={`${renderLatest.longTasks}/s`}
+          className={statusClass(renderLatest.longTasks, 1, 4)}
+        />
+        <Scalar
+          label="Max task"
+          value={`${renderLatest.longTaskMaxMs.toFixed(0)}ms`}
+          className={statusClass(renderLatest.longTaskMaxMs, 50, 100)}
         />
         <Scalar
           label="Max commit"
-          value={`${renderLatest.maxDurationMs.toFixed(1)}ms`}
-          className={statusClass(renderLatest.maxDurationMs, 8, 16)}
+          value={`${renderLatest.reactMaxMs.toFixed(1)}ms`}
+          className={statusClass(renderLatest.reactMaxMs, 8, 16)}
+        />
+        <Scalar
+          label="GC churn"
+          value={`-${renderLatest.heapReclaimedMB.toFixed(0)}/+${renderLatest.heapGrowthMB.toFixed(0)} MB`}
+          className={statusClass(renderLatest.heapReclaimedMB, 20, 50)}
+        />
+        <Scalar
+          label="Input lag"
+          value={
+            renderLatest.slowEvents > 0 ? `${renderLatest.slowEventMaxMs.toFixed(0)}ms` : '—'
+          }
+          className={statusClass(renderLatest.slowEventMaxMs, 50, 100)}
         />
         <Scalar
           label="GH (1h)"

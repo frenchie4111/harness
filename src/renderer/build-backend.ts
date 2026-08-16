@@ -39,6 +39,7 @@ import type {
   StateEventListener
 } from '../shared/transport/transport'
 import type { ElectronAPI, AgentKind } from './types'
+import type { RendererPerfSample } from '../shared/perf-types'
 import type { ForkSource } from '../shared/state/worktrees'
 import type { JsonClaudePermissionMode } from '../shared/state/json-claude'
 import type {
@@ -462,8 +463,8 @@ export function buildBackend(
       electronHelpers ? electronHelpers.getFilePath(file) : electronOnly('getFilePath', ''),
 
     getPerfMetrics: () => req('perf:getMetrics'),
-    perfLogSlowRender: (id: string, ms: number, phase: string) =>
-      sig('perf:logSlowRender', id, ms, phase),
+    perfReportRendererSample: (sample: RendererPerfSample) =>
+      sig('perf:reportRendererSample', sample),
 
     getGitHubApiLog: () => req('debug:getGitHubApiLog'),
     clearGitHubApiLog: () => req('debug:clearGitHubApiLog'),

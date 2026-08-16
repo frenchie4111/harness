@@ -1,8 +1,30 @@
 import type { Store } from './store'
-import type { PerfMetrics, PerfSample } from '../shared/perf-types'
+import type { PerfMetrics, PerfSample, RendererPerfSample } from '../shared/perf-types'
 import { perfLog } from './perf-log'
 
 export type { PerfMetrics, PerfSample }
+
+/** Renderer samples arrive at most once a second, so this only ever formats
+ *  lines that are already being written. */
+export function formatRendererSample(s: RendererPerfSample): string {
+  const parts = [
+    `heap=${s.heapUsedMB}/${s.heapTotalMB}MB`,
+    `churn=+${s.heapGrowthMB}/-${s.heapReclaimedMB}MB`,
+    `longtasks=${s.longTasks}`,
+    `blocked=${s.blockingMs}ms`,
+    `maxtask=${s.longTaskMaxMs}ms`,
+    `react=${s.reactCommits}c/${s.reactTotalMs}ms`
+  ]
+  if (s.slowEvents > 0) {
+    parts.push(`input=${s.slowEventMaxMs}ms(${s.slowEventName ?? '?'})`)
+  }
+  // Only worth printing when the window wasn't the nominal second — it means
+  // the window was hidden and timers were throttled, so the totals above cover
+  // far more than a second of wall time.
+  if (s.elapsedMs > 1500) parts.push(`window=${(s.elapsedMs / 1000).toFixed(1)}s`)
+  if (s.flags.length > 0) parts.push(`flags=${s.flags.join(',')}`)
+  return parts.join(' ')
+}
 
 const HISTORY_SIZE = 120
 const LAG_CHECK_INTERVAL_MS = 500
@@ -53,6 +75,12 @@ export class PerfMonitor {
 
   private activePtyCountFn: (() => number) | null = null
   private unsubscribe: (() => void) | null = null
+
+  // Latest bucket reported by a renderer, kept only so the periodic snapshot
+  // can name both heaps. Before this, `[snapshot]` reported the main heap
+  // under a bare `memoryHeapUsedMB` — it read 30MB while the renderer sat at
+  // 900MB, which is worse than not reporting memory at all.
+  private lastRendererSample: RendererPerfSample | null = null
 
   start(store: Store, getActivePtyCount: () => number): void {
     this.activePtyCountFn = getActivePtyCount
@@ -143,21 +171,34 @@ export class PerfMonitor {
     const top: Array<[string, number]> = Object.entries(this.eventTypeCountsCurrent)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
+    const r = this.lastRendererSample
+    const rendererPart = r
+      ? ` rendererHeap=${r.heapUsedMB}MB rendererBlocked=${r.blockingMs}ms/s`
+      : ' rendererHeap=n/a'
     perfLog(
       'snapshot',
-      `store=${this.storeEventsPerSec}/s ipc=${this.ipcMessagesPerSec}/s gh=${this.githubApiCallsPerSec}/s term=${formatBytes(this.totalTerminalBytesPerSec)}/s lag=${this.eventLoopLagMs}ms rss=${rssMB}MB ptys=${ptys}`,
+      `store=${this.storeEventsPerSec}/s ipc=${this.ipcMessagesPerSec}/s gh=${this.githubApiCallsPerSec}/s term=${formatBytes(this.totalTerminalBytesPerSec)}/s lag=${this.eventLoopLagMs}ms mainRss=${rssMB}MB${rendererPart} ptys=${ptys}`,
       {
         storeEventsPerSec: this.storeEventsPerSec,
         ipcMessagesPerSec: this.ipcMessagesPerSec,
         githubApiCallsPerSec: this.githubApiCallsPerSec,
         totalTerminalBytesPerSec: this.totalTerminalBytesPerSec,
         eventLoopLagMs: this.eventLoopLagMs,
-        memoryRssMB: rssMB,
-        memoryHeapUsedMB: heapMB,
+        mainRssMB: rssMB,
+        mainHeapUsedMB: heapMB,
+        rendererHeapUsedMB: r?.heapUsedMB ?? null,
+        rendererHeapTotalMB: r?.heapTotalMB ?? null,
+        rendererBlockingMsPerSec: r?.blockingMs ?? null,
+        rendererLongTasksPerSec: r?.longTasks ?? null,
+        rendererSampleAgeMs: r ? Date.now() - r.t : null,
         activePtyCount: ptys,
         topEventTypes: Object.fromEntries(top)
       }
     )
+  }
+
+  recordRendererSample(sample: RendererPerfSample): void {
+    this.lastRendererSample = sample
   }
 
   recordIpcMessage(): void {
