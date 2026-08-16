@@ -816,8 +816,8 @@ interface PRStatusPanelProps {
   loading?: boolean
   onRefresh?: () => void | Promise<void>
   onConnectGithub?: () => void
-  /** Opens the PR itself. Omitted on mobile, where there's no pane layout
-   *  to host an in-app browser tab, so the URL goes straight to the OS. */
+  /** Opens the PR itself. Omitted on mobile, which can't render browser
+   *  tabs, so the URL goes straight to the OS there. */
   onOpenPR?: (url: string) => void
 }
 
