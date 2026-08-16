@@ -12,6 +12,7 @@ import {
 import { ArgsBlock } from './json-mode-cards/ArgsDisplay'
 import { useJsonClaudeSession, useSettings } from '../store'
 import { useBackend } from '../backend'
+import { useViewport } from '../hooks/useViewport'
 import {
   suggestPermissionPatterns,
   isFileToolCrossCwd,
@@ -30,14 +31,10 @@ interface JsonClaudeApprovalCardProps {
   }) => void
 }
 
-// Sized for a thumb: the old px-2.5 py-1 came out ~24px tall, well under a
-// comfortable touch target. Desktop gets the bigger click target too rather
-// than branching the styles on viewport.
-const BTN = 'px-3.5 py-2.5 text-xs rounded transition-colors cursor-pointer'
-const BTN_ALLOW = `${BTN} bg-success/20 hover:bg-success/30 text-success`
-const BTN_ALLOW_STRONG = `${BTN} font-semibold bg-success/30 hover:bg-success/40 text-success border border-success/50`
-const BTN_NEUTRAL = `${BTN} bg-surface hover:bg-surface/60 text-fg`
-const BTN_DENY = `${BTN} bg-danger/20 hover:bg-danger/30 text-danger`
+// px-2.5 py-1 lands ~24px tall — fine under a mouse, too small for a thumb.
+// Mobile gets the taller target; desktop keeps the denser original.
+const BTN_PAD_MOUSE = 'px-2.5 py-1'
+const BTN_PAD_TOUCH = 'px-3.5 py-2.5'
 const BTN_DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed'
 
 function scopeChipClasses(scope: PermissionPatternSuggestion['scope']): string {
@@ -60,6 +57,12 @@ export function JsonClaudeApprovalCard({
 }: JsonClaudeApprovalCardProps): JSX.Element {
   const backend = useBackend()
   const settings = useSettings()
+  const { isMobile } = useViewport()
+  const BTN = `${isMobile ? BTN_PAD_TOUCH : BTN_PAD_MOUSE} text-xs rounded transition-colors cursor-pointer`
+  const BTN_ALLOW = `${BTN} bg-success/20 hover:bg-success/30 text-success`
+  const BTN_ALLOW_STRONG = `${BTN} font-semibold bg-success/30 hover:bg-success/40 text-success border border-success/50`
+  const BTN_NEUTRAL = `${BTN} bg-surface hover:bg-surface/60 text-fg`
+  const BTN_DENY = `${BTN} bg-danger/20 hover:bg-danger/30 text-danger`
   const savedGuidance = settings.autoApproveSteerInstructions
   const resolvedHotkeys = useMemo(
     () => resolveHotkeys(settings.hotkeys ?? undefined),
