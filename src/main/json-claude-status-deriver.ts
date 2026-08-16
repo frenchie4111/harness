@@ -7,7 +7,8 @@
 //
 // Mapping:
 //   exited            → terminals/removed
-//   pending approval  → needs-approval (with PendingTool)
+//   pending approval  → needs-approval (with PendingTool), unless the
+//                       auto-reviewer is still deciding
 //   busy              → processing
 //   otherwise         → waiting
 //
@@ -99,8 +100,12 @@ export class JsonClaudeStatusDeriver {
     let status: PtyStatus
     let pendingTool: PendingTool | null = null
     let fingerprint: string
+    // An approval whose auto-reviewer is still deciding isn't a human's
+    // problem yet — the reviewer resolves most of them within seconds.
+    // Treating it as needs-approval flashes the worktree red and then
+    // clears it, so hold the pre-approval status until the reviewer asks.
     const approval = Object.values(jc.pendingApprovals).find(
-      (a) => a.sessionId === sessionId
+      (a) => a.sessionId === sessionId && a.autoReview?.state !== 'pending'
     )
     if (approval) {
       status = 'needs-approval'
