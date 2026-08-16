@@ -3,6 +3,7 @@ import type { AddRepoResult, Worktree, PendingWorktree, PRStatus, TerminalTab, A
 import { markTerminalClosing } from '../components/XTerminal'
 import { useActiveBackend } from '../store'
 import { useBackend } from '../backend'
+import { randomUUID } from '../uuid'
 
 interface UseWorktreeHandlersArgs {
   worktrees: Worktree[]
@@ -187,7 +188,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       baseRef?: string,
       forkSource?: ForkSource
     ) => {
-      const id = `pending:${crypto.randomUUID()}`
+      const id = `pending:${randomUUID()}`
 
       // Keep the New worktree modal open while creation runs (the submit button
       // shows a "Creating…" state). We don't focus the pending id — on success
@@ -230,7 +231,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       agentKind?: AgentKind,
       model?: string
     ) => {
-      const id = `pending:${crypto.randomUUID()}`
+      const id = `pending:${randomUUID()}`
 
       // Same flow as handleSubmitNewWorktree: hold the modal open, switch to the
       // real worktree once it's in the list (success) or to the pending entry's

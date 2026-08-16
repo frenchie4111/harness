@@ -12,6 +12,7 @@ import {
 import { ArgsBlock } from './json-mode-cards/ArgsDisplay'
 import { useJsonClaudeSession, useSettings } from '../store'
 import { useBackend } from '../backend'
+import { useViewport } from '../hooks/useViewport'
 import {
   suggestPermissionPatterns,
   isFileToolCrossCwd,
@@ -29,6 +30,12 @@ interface JsonClaudeApprovalCardProps {
     interrupt?: boolean
   }) => void
 }
+
+// px-2.5 py-1 lands ~24px tall — fine under a mouse, too small for a thumb.
+// Mobile gets the taller target; desktop keeps the denser original.
+const BTN_PAD_MOUSE = 'px-2.5 py-1'
+const BTN_PAD_TOUCH = 'px-3.5 py-2.5'
+const BTN_DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed'
 
 function scopeChipClasses(scope: PermissionPatternSuggestion['scope']): string {
   if (scope === 'narrow') return 'bg-success/20 text-success border-success/40'
@@ -50,6 +57,12 @@ export function JsonClaudeApprovalCard({
 }: JsonClaudeApprovalCardProps): JSX.Element {
   const backend = useBackend()
   const settings = useSettings()
+  const { isMobile } = useViewport()
+  const BTN = `${isMobile ? BTN_PAD_TOUCH : BTN_PAD_MOUSE} text-xs rounded transition-colors cursor-pointer`
+  const BTN_ALLOW = `${BTN} bg-success/20 hover:bg-success/30 text-success`
+  const BTN_ALLOW_STRONG = `${BTN} font-semibold bg-success/30 hover:bg-success/40 text-success border border-success/50`
+  const BTN_NEUTRAL = `${BTN} bg-surface hover:bg-surface/60 text-fg`
+  const BTN_DENY = `${BTN} bg-danger/20 hover:bg-danger/30 text-danger`
   const savedGuidance = settings.autoApproveSteerInstructions
   const resolvedHotkeys = useMemo(
     () => resolveHotkeys(settings.hotkeys ?? undefined),
@@ -283,7 +296,7 @@ export function JsonClaudeApprovalCard({
               onClick={() => {
                 void saveGuidanceAndRerun()
               }}
-              className="px-2.5 py-1 text-xs rounded bg-success/20 hover:bg-success/30 text-success transition-colors cursor-pointer"
+              className={BTN_ALLOW}
             >
               Save &amp; re-review
             </button>
@@ -292,13 +305,13 @@ export function JsonClaudeApprovalCard({
                 void saveGuidance()
               }}
               disabled={guidanceDraft === savedGuidance}
-              className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className={`${BTN_NEUTRAL} ${BTN_DISABLED}`}
             >
               Save only
             </button>
             <button
               onClick={() => setMode('summary')}
-              className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer"
+              className={BTN_NEUTRAL}
             >
               Cancel
             </button>
@@ -334,7 +347,7 @@ export function JsonClaudeApprovalCard({
             <button
               onClick={allow}
               title={`Allow once (${bindingToString(resolvedHotkeys.approveToolUse)})`}
-              className="px-2.5 py-1 text-xs rounded bg-success/20 hover:bg-success/30 text-success transition-colors cursor-pointer"
+              className={BTN_ALLOW}
             >
               Allow once
               <span className="opacity-60 ml-1">{approveHotkeyLabel}</span>
@@ -345,28 +358,28 @@ export function JsonClaudeApprovalCard({
                   void allowThisSession()
                 }}
                 title="Allow this tool for the rest of the session — future calls of this tool skip the prompt. Cleared when the app quits."
-                className="px-3 py-1 text-xs font-semibold rounded bg-success/30 hover:bg-success/40 text-success border border-success/50 transition-colors cursor-pointer"
+                className={BTN_ALLOW_STRONG}
               >
                 {sessionGrantLabel}
               </button>
             )}
             <button
               onClick={() => setMode('edit')}
-              className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer"
+              className={BTN_NEUTRAL}
             >
               Allow with edits
             </button>
             <button
               onClick={() => setMode('always')}
               title="Persist a rule to .claude/settings.local.json so future matching tool calls in this worktree skip the prompt — across sessions and app restarts."
-              className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer"
+              className={BTN_NEUTRAL}
             >
               Always allow…
             </button>
             <button
               onClick={() => setMode('deny')}
               title={`Deny (${bindingToString(resolvedHotkeys.denyToolUse)})`}
-              className="px-2.5 py-1 text-xs rounded bg-danger/20 hover:bg-danger/30 text-danger transition-colors cursor-pointer"
+              className={BTN_DENY}
             >
               Deny
               <span className="opacity-60 ml-1">{denyHotkeyLabel}</span>
@@ -421,13 +434,13 @@ export function JsonClaudeApprovalCard({
             <button
               onClick={alwaysAllow}
               disabled={!selectedSuggestion}
-              className="px-2.5 py-1 text-xs rounded bg-success/20 hover:bg-success/30 text-success transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className={`${BTN_ALLOW} ${BTN_DISABLED}`}
             >
               Always allow this pattern
             </button>
             <button
               onClick={() => setMode('summary')}
-              className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer"
+              className={BTN_NEUTRAL}
             >
               Cancel
             </button>
@@ -456,13 +469,13 @@ export function JsonClaudeApprovalCard({
           <div className="flex items-center gap-1.5">
             <button
               onClick={allowWithEdits}
-              className="px-2.5 py-1 text-xs rounded bg-success/20 hover:bg-success/30 text-success transition-colors cursor-pointer"
+              className={BTN_ALLOW}
             >
               Allow edited
             </button>
             <button
               onClick={() => setMode('summary')}
-              className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer"
+              className={BTN_NEUTRAL}
             >
               Cancel
             </button>
@@ -488,13 +501,13 @@ export function JsonClaudeApprovalCard({
           <div className="flex items-center gap-1.5">
             <button
               onClick={deny}
-              className="px-2.5 py-1 text-xs rounded bg-danger/20 hover:bg-danger/30 text-danger transition-colors cursor-pointer"
+              className={BTN_DENY}
             >
               Deny
             </button>
             <button
               onClick={() => setMode('summary')}
-              className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer"
+              className={BTN_NEUTRAL}
             >
               Cancel
             </button>

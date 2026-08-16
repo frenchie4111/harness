@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose, Layers, Rows3 } from 'lucide-react'
+import { ChevronDown, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose, Layers, Rows3, Sparkles, Plus } from 'lucide-react'
 import { useWorktrees, usePanes, useTerminals, usePrs, useSettings, useAliases } from '../store'
 import { useBackend } from '../backend'
 import { getLeaves } from '../../shared/state/terminals'
-import type { PtyStatus, TerminalTab, Worktree } from '../types'
+import type { AgentKind, PtyStatus, TerminalTab, Worktree } from '../types'
+import type { ForkSource } from '../../shared/state/worktrees'
 import { WorktreeList } from './WorktreeList'
+import { NewWorktreeScreen } from './NewWorktreeScreen'
 import { useWorktreeCollapse } from '../hooks/useWorktreeCollapse'
 import { useWorktreeListModel } from '../hooks/useWorktreeListModel'
 import { MobileTerminal } from './MobileTerminal'
 import { MobileRightPanel } from './MobileRightPanel'
 import { JsonModeChat } from './JsonModeChat'
 import { AgentIcon } from './AgentIcon'
+import { randomUUID } from '../uuid'
 import { HotkeysProvider } from './Tooltip'
 import { resolveHotkeys } from '../hotkeys'
 
@@ -42,6 +45,22 @@ function pickInitialTab(tabs: TerminalTab[]): string | null {
   )
 }
 
+/** Mobile has no CreatingWorktreeScreen to drop onto, so a failed creation is
+ *  surfaced as a thrown error that NewWorktreeScreen renders in its inline
+ *  error box. The picker can dismiss the leftover pending entry, but reading
+ *  the setup log or retrying still needs the desktop. */
+function describeCreateFailure(
+  result:
+    | { outcome: 'setup-failed'; createdPath: string }
+    | { outcome: 'error'; error: string }
+): string {
+  if (result.outcome === 'setup-failed') {
+    const name = result.createdPath.split('/').pop() || result.createdPath
+    return `Created ${name}, but its setup script failed. Open this repo in the desktop app to read the setup log and continue anyway.`
+  }
+  return `${result.error} — open the desktop app to retry or dismiss it.`
+}
+
 export function MobileApp(): JSX.Element {
   const backend = useBackend()
   const wtState = useWorktrees()
@@ -61,12 +80,27 @@ export function MobileApp(): JSX.Element {
   // branch commits, cost). Per-client UI focus → renderer-local state, not
   // a slice (see CLAUDE.md workflow #5).
   const [rightPanelOpen, setRightPanelOpen] = useState(false)
+  const [newWorktreeRepo, setNewWorktreeRepo] = useState<string | undefined>(undefined)
+  const [showNewWorktree, setShowNewWorktree] = useState(false)
+  const [newWorktreeFocusPath, setNewWorktreeFocusPath] = useState<string | null>(null)
 
   useEffect(() => {
     if (!activeWorktreeId) return
     if (worktrees.some((w) => w.path === activeWorktreeId)) return
     setActiveWorktreeId(worktrees[0]?.path ?? null)
   }, [activeWorktreeId, worktrees])
+
+  // Focus a freshly-created worktree only once it actually lands in the list.
+  // State events reach the renderer before the create IPC resolves, so
+  // switching straight off the await lets the reroute effect above bounce
+  // focus to worktrees[0] (issue #164). Same deal as useWorktreeHandlers.
+  useEffect(() => {
+    if (!newWorktreeFocusPath) return
+    if (!worktrees.some((w) => w.path === newWorktreeFocusPath)) return
+    setActiveWorktreeId(newWorktreeFocusPath)
+    setShowNewWorktree(false)
+    setNewWorktreeFocusPath(null)
+  }, [newWorktreeFocusPath, worktrees])
 
   useEffect(() => {
     if (!activeWorktreeId) return
@@ -111,8 +145,29 @@ export function MobileApp(): JSX.Element {
     (tabId: string) => {
       if (!activeWorktree) return
       setSelectedTabByWorktree((prev) => ({ ...prev, [activeWorktree.path]: tabId }))
+      setPickerOpen(false)
     },
     [activeWorktree]
+  )
+
+  const handleAddTab = useCallback(
+    (type: 'json-claude' | 'shell') => {
+      if (!activeWorktree) return
+      const wtPath = activeWorktree.path
+      const tree = panes[wtPath]
+      const paneId = tree ? getLeaves(tree)[0]?.id : undefined
+      // Chat tabs reuse one UUID as both tab id and session id so the
+      // session jsonl survives a reload — same as useTabHandlers.
+      const sessionId = randomUUID()
+      const tab: TerminalTab =
+        type === 'json-claude'
+          ? { id: sessionId, type: 'json-claude', label: 'Chat', sessionId }
+          : { id: `shell-${Date.now()}`, type: 'shell', label: 'Shell' }
+      void backend.panesAddTab(wtPath, tab, paneId)
+      setSelectedTabByWorktree((prev) => ({ ...prev, [wtPath]: tab.id }))
+      setPickerOpen(false)
+    },
+    [activeWorktree, panes]
   )
 
   const handleConvertTabType = useCallback(
@@ -121,6 +176,69 @@ export function MobileApp(): JSX.Element {
       void backend.panesConvertTabType(activeWorktree.path, tabId, newType)
     },
     [activeWorktree]
+  )
+
+  const handleOpenNewWorktree = useCallback((repoRoot?: string) => {
+    setNewWorktreeRepo(repoRoot)
+    setShowNewWorktree(true)
+    setPickerOpen(false)
+  }, [])
+
+  const handleDismissPendingWorktree = useCallback((id: string) => {
+    void backend.dismissPendingWorktree(id)
+    setActiveWorktreeId((prev) => (prev === id ? null : prev))
+  }, [])
+
+  const handleSubmitNewWorktree = useCallback(
+    async (
+      repoRoot: string,
+      branchName: string,
+      initialPrompt: string,
+      teleportSessionId?: string,
+      agentKind?: AgentKind,
+      model?: string,
+      checkoutExisting?: boolean,
+      baseRef?: string,
+      forkSource?: ForkSource
+    ) => {
+      const result = await backend.runPendingWorktree({
+        id: `pending:${randomUUID()}`,
+        repoRoot,
+        branchName,
+        initialPrompt: initialPrompt || undefined,
+        teleportSessionId,
+        agentKind,
+        model,
+        forkSource,
+        checkoutExisting,
+        baseRef
+      })
+      if (result.outcome !== 'success') throw new Error(describeCreateFailure(result))
+      setNewWorktreeFocusPath(result.createdPath)
+    },
+    []
+  )
+
+  const handleSubmitNewPRWorktree = useCallback(
+    async (
+      repoRoot: string,
+      prNumber: number,
+      initialPrompt: string,
+      agentKind?: AgentKind,
+      model?: string
+    ) => {
+      const result = await backend.runPendingPRWorktree({
+        id: `pending:${randomUUID()}`,
+        repoRoot,
+        prNumber,
+        initialPrompt: initialPrompt || undefined,
+        agentKind,
+        model
+      })
+      if (result.outcome !== 'success') throw new Error(describeCreateFailure(result))
+      setNewWorktreeFocusPath(result.createdPath)
+    },
+    []
   )
 
   // HotkeysProvider here is only for its embedded Radix TooltipProvider —
@@ -150,6 +268,7 @@ export function MobileApp(): JSX.Element {
         pickerOpen={pickerOpen}
         onTogglePicker={() => setPickerOpen((v) => !v)}
         onSelectTab={handleSelectTab}
+        onAddTab={handleAddTab}
         onConvertTabType={handleConvertTabType}
         rightPanelOpen={rightPanelOpen}
         onToggleRightPanel={activeWorktree ? () => setRightPanelOpen((v) => !v) : undefined}
@@ -177,7 +296,10 @@ export function MobileApp(): JSX.Element {
           <EmptyScreen message="This worktree has no tabs yet. Open it on desktop to spawn one." />
         )}
         {!activeWorktree && worktrees.length === 0 && (
-          <EmptyScreen message="No worktrees yet. Create one from the desktop app to get started." />
+          <EmptyScreen
+            message="No worktrees yet."
+            action={{ label: 'New worktree', onClick: () => handleOpenNewWorktree() }}
+          />
         )}
         {!activeWorktree && worktrees.length > 0 && (
           <EmptyScreen message="Pick a worktree above to open it." />
@@ -190,7 +312,21 @@ export function MobileApp(): JSX.Element {
             onSelect={handleSelectWorktree}
             onClose={() => setPickerOpen(false)}
             onRefresh={() => void backend.refreshPRsAll()}
+            onNewWorktree={handleOpenNewWorktree}
+            onDismissPendingWorktree={handleDismissPendingWorktree}
           />
+        )}
+
+        {showNewWorktree && (
+          <div className="absolute inset-0 z-50 flex flex-col bg-app">
+            <NewWorktreeScreen
+              onSubmit={handleSubmitNewWorktree}
+              onPRSubmit={handleSubmitNewPRWorktree}
+              onCancel={() => setShowNewWorktree(false)}
+              repoRoots={wtState.repoRoots}
+              defaultRepoRoot={newWorktreeRepo ?? activeWorktree?.repoRoot}
+            />
+          </div>
         )}
 
         {rightPanelOpen && (
@@ -220,13 +356,14 @@ interface HeaderProps {
   pickerOpen: boolean
   onTogglePicker: () => void
   onSelectTab: (tabId: string) => void
+  onAddTab: (type: 'json-claude' | 'shell') => void
   /** Tap the active tab to open a Terminal/Chat swap menu. */
   onConvertTabType?: (tabId: string, newType: 'agent' | 'json-claude') => void
   rightPanelOpen: boolean
   onToggleRightPanel?: () => void
 }
 
-function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, pickerOpen, onTogglePicker, onSelectTab, onConvertTabType, rightPanelOpen, onToggleRightPanel }: HeaderProps): JSX.Element {
+function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, pickerOpen, onTogglePicker, onSelectTab, onAddTab, onConvertTabType, rightPanelOpen, onToggleRightPanel }: HeaderProps): JSX.Element {
   const aliases = useAliases()
   const repoLabel = worktree ? worktree.repoRoot.split('/').pop() || worktree.repoRoot : null
   return (
@@ -270,13 +407,36 @@ function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, picker
               shellActivity={shellActivity[tab.id]}
               onSelect={() => onSelectTab(tab.id)}
               onConvertTabType={
-                convertible
+                // With the picker open, a tap on the active tab means
+                // "dismiss the picker" — withholding the convert handler
+                // makes TabChip fall through to plain select.
+                convertible && !pickerOpen
                   ? (newType) => onConvertTabType!(tab.id, newType)
                   : undefined
               }
             />
           )
         })}
+        {worktree && (
+          <div className="shrink-0 flex items-stretch">
+            <button
+              onClick={() => onAddTab('json-claude')}
+              aria-label="New chat"
+              className="shrink-0 inline-flex items-center gap-0.5 px-3 h-full text-dim hover:text-fg hover:bg-panel-raised"
+            >
+              <AgentIcon kind="claude" className="icon-xs" />
+              <Plus className="icon-2xs" />
+            </button>
+            <button
+              onClick={() => onAddTab('shell')}
+              aria-label="New shell"
+              className="shrink-0 inline-flex items-center gap-0.5 px-3 h-full text-dim hover:text-fg hover:bg-panel-raised"
+            >
+              <SquareTerminal className="icon-xs" />
+              <Plus className="icon-2xs" />
+            </button>
+          </div>
+        )}
       </div>
       {onToggleRightPanel && (
         <button
@@ -420,6 +580,8 @@ interface WorktreePickerSheetProps {
   onSelect: (path: string) => void
   onClose: () => void
   onRefresh: () => void
+  onNewWorktree: (repoRoot?: string) => void
+  onDismissPendingWorktree: (id: string) => void
 }
 
 function WorktreePickerSheet({
@@ -427,7 +589,9 @@ function WorktreePickerSheet({
   activeWorktreeId,
   onSelect,
   onClose,
-  onRefresh
+  onRefresh,
+  onNewWorktree,
+  onDismissPendingWorktree
 }: WorktreePickerSheetProps): JSX.Element {
   const collapse = useWorktreeCollapse()
   // Touch doesn't bind Cmd+N, so the model skips ordinal assignment and no
@@ -479,6 +643,8 @@ function WorktreePickerSheet({
           onSelectWorktree={onSelect}
           onToggleGroup={collapse.toggleGroup}
           onToggleRepo={collapse.toggleRepo}
+          onNewWorktree={onNewWorktree}
+          onDismissPendingWorktree={onDismissPendingWorktree}
         />
       </div>
     </div>
@@ -516,10 +682,25 @@ function NonRunnableTabPlaceholder({ tab }: { tab: TerminalTab }): JSX.Element {
   )
 }
 
-function EmptyScreen({ message }: { message: string }): JSX.Element {
+function EmptyScreen({
+  message,
+  action
+}: {
+  message: string
+  action?: { label: string; onClick: () => void }
+}): JSX.Element {
   return (
-    <div className="h-full flex items-center justify-center px-6 text-center text-dim text-sm">
+    <div className="h-full flex flex-col items-center justify-center gap-4 px-6 text-center text-dim text-sm">
       {message}
+      {action && (
+        <button
+          onClick={action.onClick}
+          className="brand-gradient-bg text-white font-semibold text-sm px-5 min-h-11 rounded-lg inline-flex items-center gap-2 shadow-lg"
+        >
+          <Sparkles className="icon-sm" />
+          {action.label}
+        </button>
+      )}
     </div>
   )
 }
