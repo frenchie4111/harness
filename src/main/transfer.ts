@@ -38,6 +38,12 @@ import {
 
 const execFileAsync = promisify(execFile)
 
+// BSD tar archives xattrs as separate AppleDouble `._name` members, which
+// GNU tar on the destination restores as literal junk files sitting next to
+// every transferred file. COPYFILE_DISABLE suppresses them; it's inert on
+// GNU tar, so this is unconditional rather than platform-gated.
+const TAR_ENV = { env: { ...process.env, COPYFILE_DISABLE: '1' } }
+
 /** Ref namespace for the `git stash create` commit. Lives under refs/
  *  rather than in a branch so it can ride the bundle without looking
  *  like something the user should see, and is deleted on both sides
@@ -197,15 +203,19 @@ export async function exportWorktree(params: { worktreePath: string }): Promise<
     if (hasUntracked) {
       const listFile = join(dir, 'untracked.list')
       await writeFile(listFile, untracked)
-      await execFileAsync('tar', [
-        'czf',
-        join(stage, 'untracked.tar.gz'),
-        '-C',
-        worktreePath,
-        '--null',
-        '-T',
-        listFile
-      ])
+      await execFileAsync(
+        'tar',
+        [
+          'czf',
+          join(stage, 'untracked.tar.gz'),
+          '-C',
+          worktreePath,
+          '--null',
+          '-T',
+          listFile
+        ],
+        TAR_ENV
+      )
     }
 
     let sessions: TransferSessionSummary[] = []
@@ -248,7 +258,7 @@ export async function exportWorktree(params: { worktreePath: string }): Promise<
     await writeFile(join(stage, 'meta.json'), JSON.stringify(meta, null, 2))
 
     const payloadPath = join(dir, 'payload.tar.gz')
-    await execFileAsync('tar', ['czf', payloadPath, '-C', stage, '.'])
+    await execFileAsync('tar', ['czf', payloadPath, '-C', stage, '.'], TAR_ENV)
 
     const { size } = await stat(payloadPath)
     const handle = randomUUID()
