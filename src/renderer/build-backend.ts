@@ -303,6 +303,7 @@ export function buildBackend(
       req('config:setPreventSleepUntil', value),
     setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
     setWarnBeforeQuitting: (enabled: boolean) => req('config:setWarnBeforeQuitting', enabled),
+    setOpenPrInBrowserTab: (enabled: boolean) => req('config:setOpenPrInBrowserTab', enabled),
     setExpandedDiagnosticLoggingEnabled: (enabled: boolean) =>
       req('config:setExpandedDiagnosticLoggingEnabled', enabled),
     setShowAssignedPRs: (enabled: boolean) => req('config:setShowAssignedPRs', enabled),

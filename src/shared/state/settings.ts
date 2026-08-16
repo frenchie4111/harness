@@ -237,6 +237,9 @@ export interface SettingsState {
    *  "Warn Before Quitting"); a tap shows a toast and does nothing. When
    *  false, ⌘Q quits immediately. */
   warnBeforeQuitting: boolean
+  /** When true, the Open PR action (⌘⇧G) opens the PR in a Harness browser
+   *  tab instead of handing the URL to the system browser. */
+  openPrInBrowserTab: boolean
   harnessSystemPromptEnabled: boolean
   harnessSystemPrompt: string
   harnessSystemPromptMain: string
@@ -395,6 +398,7 @@ export type SettingsEvent =
   | { type: 'settings/cursorModelChanged'; payload: string | null }
   | { type: 'settings/autoUpdateEnabledChanged'; payload: boolean }
   | { type: 'settings/warnBeforeQuittingChanged'; payload: boolean }
+  | { type: 'settings/openPrInBrowserTabChanged'; payload: boolean }
   | { type: 'settings/harnessSystemPromptEnabledChanged'; payload: boolean }
   | { type: 'settings/harnessSystemPromptChanged'; payload: string }
   | { type: 'settings/harnessSystemPromptMainChanged'; payload: string }
@@ -467,6 +471,7 @@ export const initialSettings: SettingsState = {
   harnessStarred: null,
   autoUpdateEnabled: true,
   warnBeforeQuitting: true,
+  openPrInBrowserTab: false,
   harnessSystemPromptEnabled: true,
   harnessSystemPrompt: '',
   harnessSystemPromptMain: '',
@@ -588,6 +593,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, autoUpdateEnabled: event.payload }
     case 'settings/warnBeforeQuittingChanged':
       return { ...state, warnBeforeQuitting: event.payload }
+    case 'settings/openPrInBrowserTabChanged':
+      return { ...state, openPrInBrowserTab: event.payload }
     case 'settings/harnessSystemPromptEnabledChanged':
       return { ...state, harnessSystemPromptEnabled: event.payload }
     case 'settings/harnessSystemPromptChanged':

@@ -2231,6 +2231,17 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setOpenPrInBrowserTab', (_ctx, enabled: boolean) => {
+    if (enabled) {
+      config.openPrInBrowserTab = true
+    } else {
+      delete config.openPrInBrowserTab
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/openPrInBrowserTabChanged', payload: enabled })
+    return true
+  })
+
   transport.onRequest('config:setExpandedDiagnosticLoggingEnabled', (_ctx, enabled: boolean) => {
     if (enabled) {
       config.expandedDiagnosticLoggingEnabled = true

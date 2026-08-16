@@ -832,6 +832,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     setShowQuakeTerminal,
     quakeTerminalAllowed: workspaceVisible,
     handleAddTerminalTab,
+    handleAddBrowserTab,
     handleCloseTab: requestCloseTab,
     handleSelectTab,
     handleSplitPane,

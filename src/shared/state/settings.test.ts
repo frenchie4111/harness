@@ -134,6 +134,17 @@ describe('settingsReducer', () => {
     expect(on.warnBeforeQuitting).toBe(true)
   })
 
+  it('openPrInBrowserTabChanged toggles the in-app PR browser flag', () => {
+    expect(initialSettings.openPrInBrowserTab).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/openPrInBrowserTabChanged',
+      payload: true
+    })
+    expect(on.openPrInBrowserTab).toBe(true)
+    const off = apply(on, { type: 'settings/openPrInBrowserTabChanged', payload: false })
+    expect(off.openPrInBrowserTab).toBe(false)
+  })
+
   it('shareClaudeSettingsChanged toggles the share flag', () => {
     expect(initialSettings.shareClaudeSettings).toBe(true)
     const off = apply(initialSettings, {
