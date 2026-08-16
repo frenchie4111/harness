@@ -6,9 +6,11 @@ import {
   useActiveBackend,
   useBackendStatus,
   useRemoteServerVersion,
+  useSshBootstrapForConnection,
   getBackendsRegistry,
   reconnectBackend
 } from '../store'
+import { isInFlightPhase } from '../../shared/state/ssh-bootstrap'
 import { Tooltip } from './Tooltip'
 import type { BackendConnection } from '../types'
 
@@ -97,15 +99,35 @@ function BackendChip({ connection, isActive, onSelect, onRemove }: BackendChipPr
   const status = useBackendStatus(connection.id)
   const backend = useBackend()
   const serverVersion = useRemoteServerVersion(connection.id)
+  const bootstrap = useSshBootstrapForConnection(connection.id)
   const [upgrading, setUpgrading] = useState(false)
-  const disconnected = status.state === 'disconnected'
   const isRemote = connection.kind === 'remote'
   const canUpgrade = Boolean(connection.ssh) && serverVersion?.upgradeAvailable === true
-  const tooltip = disconnected
-    ? `${connection.label} — disconnected${status.reason ? ': ' + status.reason : ''}`
-    : serverVersion
-      ? `${connection.label} — harness-server ${serverVersion.installed}`
-      : connection.label
+
+  // Two independent signals feed the chip: the WS transport's own
+  // connected/disconnected flag, and (for SSH backends) the tunnel
+  // bootstrap phase from main. The tunnel is the layer underneath, so
+  // while it's rebuilding we show "reconnecting" even though the socket
+  // above it is, strictly speaking, just down.
+  const reconnecting = !!bootstrap && isInFlightPhase(bootstrap.phase)
+  const tunnelDown =
+    !!bootstrap && (bootstrap.phase === 'disconnected' || bootstrap.phase === 'error')
+  const disconnected = !reconnecting && (status.state === 'disconnected' || tunnelDown)
+
+  const lastLine = bootstrap?.lines[bootstrap.lines.length - 1]
+  const tooltip = reconnecting
+    ? `${connection.label} — reconnecting…${lastLine ? '\n' + lastLine : ''}`
+    : disconnected
+      ? `${connection.label} — disconnected${
+          bootstrap?.error?.message
+            ? ': ' + bootstrap.error.message
+            : status.reason
+              ? ': ' + status.reason
+              : ''
+        }${lastLine && !bootstrap?.error ? '\n' + lastLine : ''}`
+      : serverVersion
+        ? `${connection.label} — harness-server ${serverVersion.installed}`
+        : connection.label
 
   const handleUpgrade = useCallback(async () => {
     if (!serverVersion || upgrading) return
@@ -132,6 +154,7 @@ function BackendChip({ connection, isActive, onSelect, onRemove }: BackendChipPr
       setUpgrading(false)
     }
   }, [backend, connection.id, connection.label, serverVersion, upgrading])
+
   // Outer wrapper is a div, not a button, so the inner remove `<button>`
   // doesn't nest button elements (invalid HTML). The chip body is a
   // button; the remove X is a separate button positioned over the
@@ -145,11 +168,13 @@ function BackendChip({ connection, isActive, onSelect, onRemove }: BackendChipPr
           className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-colors cursor-pointer min-w-0 ${
             disconnected
               ? 'bg-panel/40 border-border text-faint hover:text-dim'
-              : isActive
-                ? 'bg-surface text-fg-bright border-fg'
-                : 'bg-panel border-border text-dim hover:text-fg hover:border-border-strong'
+              : reconnecting
+                ? 'bg-panel/60 border-warning/50 text-dim hover:text-fg'
+                : isActive
+                  ? 'bg-surface text-fg-bright border-fg'
+                  : 'bg-panel border-border text-dim hover:text-fg hover:border-border-strong'
           }`}
-          style={{ maxWidth: 120, opacity: disconnected ? 0.55 : 1 }}
+          style={{ maxWidth: 120, opacity: disconnected ? 0.55 : reconnecting ? 0.8 : 1 }}
         >
           <span
             className={`shrink-0 w-7 h-7 rounded flex items-center justify-center relative ${
@@ -167,6 +192,12 @@ function BackendChip({ connection, isActive, onSelect, onRemove }: BackendChipPr
             {disconnected && (
               <span
                 className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-danger ring-2 ring-panel"
+                aria-hidden="true"
+              />
+            )}
+            {reconnecting && !upgrading && (
+              <Loader2
+                className="icon-2xs absolute -bottom-1 -right-1 animate-spin text-warning"
                 aria-hidden="true"
               />
             )}

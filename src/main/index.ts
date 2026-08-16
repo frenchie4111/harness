@@ -117,6 +117,7 @@ import { getClaudeAuthStatus } from './claude-auth'
 import { listDir as fsListDir, resolveHome as fsResolveHome } from './fs-listing'
 import { listConfiguredHosts } from './ssh-config'
 import { SshTunnelManager } from './ssh-tunnel-manager'
+import { SshReconnectSupervisor } from './ssh-reconnect-supervisor'
 import { startControlServer } from './control-server'
 import {
   deliverToWorktreeChat,
@@ -420,7 +421,56 @@ setGitHubApiLoggingEnabled(config.expandedDiagnosticLoggingEnabled === true)
 // connections:remove and on app quit. The remote `harness-server` is
 // intentionally NOT killed on unregister — it stays alive for future
 // reconnects + other Harnesses. See plans/remote-main.md §4.
-const sshTunnelManager = new SshTunnelManager()
+//
+// The manager reports dropped links; the supervisor below owns the
+// retry policy. They're declared in this order because the manager's
+// onDropped closes over the supervisor, which in turn closes over
+// runSshReconnect — all resolved lazily at call time, so the cycle is
+// fine, but don't collapse them into eager references.
+const sshTunnelManager = new SshTunnelManager({
+  onDropped: (backendId) => {
+    log('ssh-bootstrap', `tunnel dropped for ${backendId}; scheduling reconnect`)
+    sshReconnectSupervisor.notifyDropped(backendId)
+  }
+})
+
+const sshReconnectSupervisor = new SshReconnectSupervisor({
+  connectionExists: (backendId) =>
+    (config.connections ?? []).some((c) => c.id === backendId && !!c.ssh),
+  reconnect: async (backendId) => {
+    await runSshReconnect({ bootstrapId: `reconnect-${backendId}`, connectionId: backendId })
+  },
+  onAttemptState: (backendId, { phase, attempt, delayMs }) => {
+    const conn = (config.connections ?? []).find((c) => c.id === backendId)
+    if (!conn?.ssh) return
+    const bootstrapId = `reconnect-${backendId}`
+    const now = Date.now()
+    // The slice entry may not exist yet (first drop) — `started` is a
+    // create, the rest are patches that no-op on a missing id.
+    if (!store.getSnapshot().state.sshBootstrap.byId[bootstrapId]) {
+      store.dispatch({
+        type: 'sshBootstrap/started',
+        payload: { bootstrapId, label: conn.label, target: conn.ssh.target, now }
+      })
+      store.dispatch({
+        type: 'sshBootstrap/connectionLinked',
+        payload: { bootstrapId, connectionId: backendId }
+      })
+    }
+    store.dispatch({ type: 'sshBootstrap/phaseChanged', payload: { bootstrapId, phase, now } })
+    store.dispatch({
+      type: 'sshBootstrap/lineLogged',
+      payload: {
+        bootstrapId,
+        line:
+          phase === 'reconnecting'
+            ? `reconnect attempt ${attempt + 1}…`
+            : `connection lost — retrying in ${Math.round((delayMs ?? 0) / 1000)}s`,
+        now
+      }
+    })
+  }
+})
 
 // In Electron mode createDesktopShell applies the dev-mode userData
 // override (must run before anything reads paths) and constructs the
@@ -1365,6 +1415,11 @@ function recordRemoteServerVersion(connectionId: string, installed: string | nul
  *  pre-warm loop in runBoot(). Idempotent: if a tunnel for this
  *  backend is already live, returns its URL+token without re-running
  *  the SSH handshake. */
+const sshReconnectsInFlight = new Map<
+  string,
+  Promise<{ url: string; token: string; localPort: number }>
+>()
+
 async function runSshReconnect(input: {
   bootstrapId: string
   connectionId: string
@@ -1375,14 +1430,45 @@ async function runSshReconnect(input: {
   if (typeof input.bootstrapId !== 'string' || !input.bootstrapId) {
     throw new Error('bootstrapId is required')
   }
+  // The boot pre-warm and the renderer's hydrate fire for the same
+  // backend at almost the same moment. The liveness check below can't
+  // separate them — neither has registered a tunnel yet — so both would
+  // run a full bootstrap and leave two tunnels (and two harness-servers)
+  // behind. Whoever asks second joins the first attempt instead.
+  const existingAttempt = sshReconnectsInFlight.get(input.connectionId)
+  if (existingAttempt) return existingAttempt
+  const attempt = runSshReconnectUncoalesced(input)
+  sshReconnectsInFlight.set(input.connectionId, attempt)
+  try {
+    return await attempt
+  } finally {
+    sshReconnectsInFlight.delete(input.connectionId)
+  }
+}
+
+async function runSshReconnectUncoalesced(input: {
+  bootstrapId: string
+  connectionId: string
+}): Promise<{ url: string; token: string; localPort: number }> {
   const conn = (config.connections ?? []).find((c) => c.id === input.connectionId)
   if (!conn) throw new Error(`unknown backend ${input.connectionId}`)
   if (!conn.ssh) throw new Error(`backend ${input.connectionId} is not an SSH backend`)
 
+  // Only short-circuit on a tunnel that's actually alive. The local
+  // net.Server keeps listening after the SSH link dies, so a dead entry
+  // looks identical to a live one from the outside — handing its URL
+  // back was why "reconnect" couldn't recover and remove/re-add was the
+  // only fix. Dispose the corpse first: openTunnel wants to rebind the
+  // same local port, and it silently falls back to a random one if the
+  // old listener is still holding it.
   const existing = sshTunnelManager.get(input.connectionId)
   if (existing) {
-    const url = sshTunnelManager.buildLocalUrl(input.connectionId)!
-    return { url, token: existing.token, localPort: existing.localPort }
+    if (sshTunnelManager.isAlive(input.connectionId)) {
+      const url = sshTunnelManager.buildLocalUrl(input.connectionId)!
+      return { url, token: existing.token, localPort: existing.localPort }
+    }
+    log('ssh-bootstrap', `discarding dead tunnel for ${input.connectionId} before reconnect`)
+    sshTunnelManager.unregister(input.connectionId)
   }
 
   const { parseSshTarget, bootstrapRemote } = await import('./ssh-bootstrap')
@@ -1448,6 +1534,10 @@ async function runSshReconnect(input: {
       setSecret(`backend-token:${conn.id}`, result.token)
       saveConfig(config)
     }
+    store.dispatch({
+      type: 'sshBootstrap/tunnelReady',
+      payload: { bootstrapId: input.bootstrapId, localPort: result.localPort, now: Date.now() }
+    })
     store.dispatch({
       type: 'sshBootstrap/phaseChanged',
       payload: { bootstrapId: input.bootstrapId, phase: 'connected', now: Date.now() }
@@ -3943,6 +4033,10 @@ function registerIpcHandlers(): void {
     config.connections = next
     if (config.activeBackendId === id) config.activeBackendId = LOCAL_BACKEND_ID
     deleteSecret(`backend-token:${id}`)
+    // Stand the retry loop down before disposing, so the teardown's own
+    // close event can't re-arm a reconnect for a backend the user just
+    // deleted.
+    sshReconnectSupervisor.cancel(id)
     // Tear the local tunnel down for this backend. The remote
     // harness-server is intentionally left running — see
     // plans/remote-main.md §4 "Things to NOT do".
@@ -4891,6 +4985,7 @@ if (desktopShellMod && desktopEarly) {
       approvalBridge.stopAll()
       // Close local tunnel ends — the remote `harness-server` is left
       // running (intentional; see plans/remote-main.md §4).
+      sshReconnectSupervisor.cancelAll()
       sshTunnelManager.closeAll()
       worktreeWatcher.shutdown()
       flushPerfLogSync()
@@ -4916,6 +5011,7 @@ if (desktopShellMod && desktopEarly) {
     approvalBridge.stopAll()
     worktreeWatcher.shutdown()
     browserManager.destroyAll()
+    sshReconnectSupervisor.cancelAll()
     sshTunnelManager.closeAll()
     sealAllActive()
     saveConfigSync(config)

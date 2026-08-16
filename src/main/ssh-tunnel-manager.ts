@@ -9,6 +9,10 @@
 //
 // At app quit, `closeAll()` tears every tunnel + SSH connection down so
 // the OS doesn't accumulate orphaned sockets across restarts.
+//
+// This stays a dumb registry on purpose. It detects that a link died and
+// says so via `onDropped`; deciding what to do about it (backoff, retry,
+// give up) belongs to SshReconnectSupervisor.
 
 import type { NodeSSH } from 'node-ssh'
 import type { Server as NetServer } from 'net'
@@ -29,15 +33,60 @@ export interface TunnelEntry {
   tunnelServer: NetServer
 }
 
+export interface SshTunnelManagerOptions {
+  /** Fired when a registered tunnel's SSH link dies on its own (as
+   *  opposed to being torn down by unregister/closeAll). Fires at most
+   *  once per registration. */
+  onDropped?: (backendId: string) => void
+}
+
+/** Minimal slice of ssh2's Client that we attach drop listeners to.
+ *  node-ssh exposes it as `.connection` and nulls it out on close. */
+interface DropEmitter {
+  on(event: string, cb: () => void): unknown
+  off?(event: string, cb: () => void): unknown
+  removeListener?(event: string, cb: () => void): unknown
+}
+
+interface Registration {
+  entry: TunnelEntry
+  /** Detaches the drop listeners from the ssh2 client. */
+  detach: () => void
+  /** Set when WE tore this entry down, so the teardown's own `close`
+   *  event isn't mistaken for an unexpected drop. */
+  disposedByUs: boolean
+}
+
 export class SshTunnelManager {
-  private byBackendId = new Map<string, TunnelEntry>()
+  private byBackendId = new Map<string, Registration>()
+  private onDropped?: (backendId: string) => void
+
+  constructor(options: SshTunnelManagerOptions = {}) {
+    this.onDropped = options.onDropped
+  }
 
   has(backendId: string): boolean {
     return this.byBackendId.has(backendId)
   }
 
   get(backendId: string): TunnelEntry | undefined {
-    return this.byBackendId.get(backendId)
+    return this.byBackendId.get(backendId)?.entry
+  }
+
+  /** Whether the SSH link behind this backend is still up. node-ssh
+   *  nulls its `connection` on close, so `isConnected()` is an honest
+   *  liveness read — the local `net.Server` keeps listening either way,
+   *  which is exactly why a dead tunnel used to look alive. */
+  isAlive(backendId: string): boolean {
+    const reg = this.byBackendId.get(backendId)
+    if (!reg) return false
+    const ssh = reg.entry.ssh as Partial<NodeSSH>
+    if (typeof ssh.isConnected !== 'function') return true
+    try {
+      return ssh.isConnected()
+    } catch {
+      return false
+    }
   }
 
   /** Register a freshly-bootstrapped tunnel. If `backendId` already has
@@ -47,9 +96,11 @@ export class SshTunnelManager {
   register(entry: TunnelEntry): void {
     const existing = this.byBackendId.get(entry.backendId)
     if (existing) {
-      this.disposeEntry(existing)
+      this.disposeRegistration(existing)
     }
-    this.byBackendId.set(entry.backendId, entry)
+    const reg: Registration = { entry, detach: () => {}, disposedByUs: false }
+    this.byBackendId.set(entry.backendId, reg)
+    reg.detach = this.watchForDrop(reg)
   }
 
   /** Tear down the local tunnel + SSH connection for `backendId`.
@@ -59,18 +110,18 @@ export class SshTunnelManager {
    *  process keeps running on the remote so a future reconnect can
    *  reuse it. See the v2 carve-out in plans/remote-main.md §4. */
   unregister(backendId: string): boolean {
-    const entry = this.byBackendId.get(backendId)
-    if (!entry) return false
+    const reg = this.byBackendId.get(backendId)
+    if (!reg) return false
     this.byBackendId.delete(backendId)
-    this.disposeEntry(entry)
+    this.disposeRegistration(reg)
     return true
   }
 
   /** Close every tunnel + SSH connection. Called from the app's
    *  before-quit hook so we don't leak file descriptors. */
   closeAll(): void {
-    for (const entry of this.byBackendId.values()) {
-      this.disposeEntry(entry)
+    for (const reg of this.byBackendId.values()) {
+      this.disposeRegistration(reg)
     }
     this.byBackendId.clear()
   }
@@ -82,19 +133,57 @@ export class SshTunnelManager {
    *  pasted via the URL tab go through `parseConnectionUrl` which
    *  normalizes http→ws too. */
   buildLocalUrl(backendId: string): string | null {
-    const entry = this.byBackendId.get(backendId)
-    if (!entry) return null
-    return `ws://127.0.0.1:${entry.localPort}/?token=${entry.token}`
+    const reg = this.byBackendId.get(backendId)
+    if (!reg) return null
+    return `ws://127.0.0.1:${reg.entry.localPort}/?token=${reg.entry.token}`
   }
 
-  private disposeEntry(entry: TunnelEntry): void {
+  /** Attach drop listeners to the underlying ssh2 client.
+   *
+   *  The `error` listener isn't optional: node-ssh removes its own
+   *  handshake-time `error` handler once the connection is ready, so a
+   *  post-ready error on the ssh2 Client would be an 'error' event with
+   *  zero listeners — which Node re-throws as an uncaught exception. We
+   *  swallow it here and let the `close` that follows drive reconnect. */
+  private watchForDrop(reg: Registration): () => void {
+    const conn = (reg.entry.ssh as { connection?: DropEmitter | null }).connection
+    if (!conn || typeof conn.on !== 'function') return () => {}
+    let notified = false
+    const fire = (): void => {
+      if (notified || reg.disposedByUs) return
+      // A stale registration that's already been replaced shouldn't
+      // trigger a reconnect for whatever took its place.
+      if (this.byBackendId.get(reg.entry.backendId) !== reg) return
+      notified = true
+      this.onDropped?.(reg.entry.backendId)
+    }
+    const onSwallow = (): void => {}
+    conn.on('close', fire)
+    conn.on('end', fire)
+    conn.on('error', onSwallow)
+    return () => {
+      const off = conn.off ?? conn.removeListener
+      if (typeof off !== 'function') return
+      off.call(conn, 'close', fire)
+      off.call(conn, 'end', fire)
+      off.call(conn, 'error', onSwallow)
+    }
+  }
+
+  private disposeRegistration(reg: Registration): void {
+    reg.disposedByUs = true
     try {
-      entry.tunnelServer.close()
+      reg.detach()
+    } catch {
+      // Listener already gone — ignore.
+    }
+    try {
+      reg.entry.tunnelServer.close()
     } catch {
       // Server already closed — ignore.
     }
     try {
-      entry.ssh.dispose()
+      reg.entry.ssh.dispose()
     } catch {
       // Connection already torn down — ignore.
     }

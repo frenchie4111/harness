@@ -35,6 +35,7 @@ import {
 } from '../shared/state'
 import type { RemoteServerVersion } from '../shared/state/ssh-bootstrap'
 import type { LocalTransportHandle, BackendConnection } from './types'
+import type { BootstrapProgress, SshBootstrapState } from '../shared/state/ssh-bootstrap'
 import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
 import { initBackend, getBackend } from './backend'
 
@@ -457,6 +458,107 @@ export async function initStore(): Promise<void> {
     // eslint-disable-next-line no-console
     console.warn('[harness] failed to hydrate remote backends', err)
   }
+
+  const local = registry.getStore(LOCAL_BACKEND_ID)
+  if (local) {
+    watchForTunnelPortChanges({
+      subscribe: (cb) => local.subscribe(cb),
+      getById: () => local.getState().sshBootstrap.byId,
+      hasConnection: (id) => !!registry.getConnection(id),
+      getLivePort: (id) => {
+        const conn = registry.getConnection(id)
+        if (!conn) return null
+        try {
+          return Number(new URL(conn.url).port) || null
+        } catch {
+          return null
+        }
+      },
+      resync: resyncRemoteBackend
+    })
+  }
+}
+
+/** Rebuild a remote's WS transport when its tunnel comes back on a
+ *  *different* loopback port.
+ *
+ *  Reconnects normally reacquire the previous port precisely so this
+ *  never has to fire — the persisted ws:// URL stays valid and the
+ *  transport's own retry loop reconnects on its own. But if something
+ *  else grabbed the port in the meantime, main persists the new URL and
+ *  the live transport is left retrying an address that will never
+ *  answer. Watching the sshBootstrap slice (which main dispatches into,
+ *  and which carries the bound port) is how the renderer finds out. */
+export interface TunnelPortWatchDeps {
+  subscribe: (cb: () => void) => () => void
+  getById: () => SshBootstrapState['byId']
+  /** False for connections the registry doesn't know about — nothing to
+   *  rebuild, so they're skipped rather than resynced. */
+  hasConnection: (connectionId: string) => boolean
+  /** Port the persisted ws:// URL points at, or null if unparseable. */
+  getLivePort: (connectionId: string) => number | null
+  resync: (connectionId: string) => Promise<void>
+}
+
+export function watchForTunnelPortChanges(deps: TunnelPortWatchDeps): void {
+  const { subscribe, getById, hasConnection, getLivePort, resync } = deps
+  const reconciled = new Map<string, number>()
+  const inFlight = new Set<string>()
+  let lastById: SshBootstrapState['byId'] | null = null
+  subscribe(() => {
+    // This fires on EVERY local-store event, so bail on the common case
+    // before touching anything. The reducer preserves `byId`'s identity
+    // when nothing in the slice changed.
+    const byId = getById()
+    if (byId === lastById) return
+    lastById = byId
+    // One connection accumulates several attempts over its lifetime
+    // (`boot-`, `hydrate-`, `reconnect-`), each pinned to whatever port
+    // it bound. Only the newest describes reality — comparing all of
+    // them against one per-connection guard let two stale entries
+    // invalidate each other and resync on a loop.
+    const newest = new Map<string, BootstrapProgress>()
+    for (const entry of Object.values(byId)) {
+      const id = entry.connectionId
+      if (!id || entry.phase !== 'connected' || !entry.localPort) continue
+      const prev = newest.get(id)
+      if (!prev || entry.updatedAt > prev.updatedAt) newest.set(id, entry)
+    }
+    for (const [id, entry] of newest) {
+      if (inFlight.has(id) || reconciled.get(id) === entry.localPort) continue
+      if (!hasConnection(id)) continue
+      reconciled.set(id, entry.localPort!)
+      if (getLivePort(id) === entry.localPort) continue
+      // A rebuild dispatches into this very slice, so without the guard
+      // the resync re-enters through its own state events.
+      inFlight.add(id)
+      void resync(id).finally(() => inFlight.delete(id))
+    }
+  })
+}
+
+/** Tear down and re-create a remote's transport against its current
+ *  persisted URL. */
+async function resyncRemoteBackend(connectionId: string): Promise<void> {
+  try {
+    const backend = getBackend()
+    const fresh = (await backend.connectionsList()).find((c) => c.id === connectionId)
+    if (!fresh) return
+    // `remove` falls active back to Local; restore it afterwards so a
+    // background port change doesn't yank the user out of the backend
+    // they're looking at.
+    const wasActive = registry.getActiveId() === connectionId
+    try {
+      registry.remove(connectionId)
+    } catch {
+      /* not registered — hydrate below still does the right thing */
+    }
+    await hydrateRemoteBackend(fresh, { registry, backend })
+    if (wasActive && registry.has(connectionId)) registry.setActive(connectionId)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(`[harness] failed to resync backend ${connectionId}`, err)
+  }
 }
 
 /** Construct a WS transport for a saved remote, fetch its token from
@@ -702,6 +804,26 @@ function getLocalState(): AppState {
  *  `upgradeAvailable` drives the chip strip's upgrade affordance. */
 export function useRemoteServerVersion(connectionId: string): RemoteServerVersion | null {
   return useLocalAppState((s) => s.sshBootstrap.serverVersions[connectionId] ?? null)
+}
+
+/** Latest bootstrap attempt linked to a given backend connection, or
+ *  null if none. A single backend can have several entries over its
+ *  lifetime (`boot-<id>` from the main pre-warm, `hydrate-<id>` from the
+ *  renderer, `reconnect-<id>` from the supervisor), so we take the most
+ *  recently updated one — that's the attempt whose phase reflects
+ *  reality right now.
+ *
+ *  Returns the slice's own object reference (never a fresh literal) so
+ *  useSyncExternalStore doesn't see a "change" on every read. */
+export function useSshBootstrapForConnection(connectionId: string) {
+  return useLocalAppState((s) => {
+    let best: BootstrapProgress | null = null
+    for (const entry of Object.values(s.sshBootstrap.byId)) {
+      if (entry.connectionId !== connectionId) continue
+      if (!best || entry.updatedAt > best.updatedAt) best = entry
+    }
+    return best
+  })
 }
 
 export function useAliases() {
