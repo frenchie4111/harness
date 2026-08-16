@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose, Layers, Rows3, Sparkles } from 'lucide-react'
+import { ChevronDown, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose, Layers, Rows3, Sparkles, Plus } from 'lucide-react'
 import { useWorktrees, usePanes, useTerminals, usePrs, useSettings, useAliases } from '../store'
 import { useBackend } from '../backend'
 import { getLeaves } from '../../shared/state/terminals'
@@ -13,6 +13,7 @@ import { MobileTerminal } from './MobileTerminal'
 import { MobileRightPanel } from './MobileRightPanel'
 import { JsonModeChat } from './JsonModeChat'
 import { AgentIcon } from './AgentIcon'
+import { randomUUID } from '../uuid'
 import { HotkeysProvider } from './Tooltip'
 import { resolveHotkeys } from '../hotkeys'
 
@@ -144,8 +145,29 @@ export function MobileApp(): JSX.Element {
     (tabId: string) => {
       if (!activeWorktree) return
       setSelectedTabByWorktree((prev) => ({ ...prev, [activeWorktree.path]: tabId }))
+      setPickerOpen(false)
     },
     [activeWorktree]
+  )
+
+  const handleAddTab = useCallback(
+    (type: 'json-claude' | 'shell') => {
+      if (!activeWorktree) return
+      const wtPath = activeWorktree.path
+      const tree = panes[wtPath]
+      const paneId = tree ? getLeaves(tree)[0]?.id : undefined
+      // Chat tabs reuse one UUID as both tab id and session id so the
+      // session jsonl survives a reload — same as useTabHandlers.
+      const sessionId = randomUUID()
+      const tab: TerminalTab =
+        type === 'json-claude'
+          ? { id: sessionId, type: 'json-claude', label: 'Chat', sessionId }
+          : { id: `shell-${Date.now()}`, type: 'shell', label: 'Shell' }
+      void backend.panesAddTab(wtPath, tab, paneId)
+      setSelectedTabByWorktree((prev) => ({ ...prev, [wtPath]: tab.id }))
+      setPickerOpen(false)
+    },
+    [activeWorktree, panes]
   )
 
   const handleConvertTabType = useCallback(
@@ -180,7 +202,7 @@ export function MobileApp(): JSX.Element {
       forkSource?: ForkSource
     ) => {
       const result = await backend.runPendingWorktree({
-        id: `pending:${crypto.randomUUID()}`,
+        id: `pending:${randomUUID()}`,
         repoRoot,
         branchName,
         initialPrompt: initialPrompt || undefined,
@@ -206,7 +228,7 @@ export function MobileApp(): JSX.Element {
       model?: string
     ) => {
       const result = await backend.runPendingPRWorktree({
-        id: `pending:${crypto.randomUUID()}`,
+        id: `pending:${randomUUID()}`,
         repoRoot,
         prNumber,
         initialPrompt: initialPrompt || undefined,
@@ -246,6 +268,7 @@ export function MobileApp(): JSX.Element {
         pickerOpen={pickerOpen}
         onTogglePicker={() => setPickerOpen((v) => !v)}
         onSelectTab={handleSelectTab}
+        onAddTab={handleAddTab}
         onConvertTabType={handleConvertTabType}
         rightPanelOpen={rightPanelOpen}
         onToggleRightPanel={activeWorktree ? () => setRightPanelOpen((v) => !v) : undefined}
@@ -333,13 +356,14 @@ interface HeaderProps {
   pickerOpen: boolean
   onTogglePicker: () => void
   onSelectTab: (tabId: string) => void
+  onAddTab: (type: 'json-claude' | 'shell') => void
   /** Tap the active tab to open a Terminal/Chat swap menu. */
   onConvertTabType?: (tabId: string, newType: 'agent' | 'json-claude') => void
   rightPanelOpen: boolean
   onToggleRightPanel?: () => void
 }
 
-function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, pickerOpen, onTogglePicker, onSelectTab, onConvertTabType, rightPanelOpen, onToggleRightPanel }: HeaderProps): JSX.Element {
+function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, pickerOpen, onTogglePicker, onSelectTab, onAddTab, onConvertTabType, rightPanelOpen, onToggleRightPanel }: HeaderProps): JSX.Element {
   const aliases = useAliases()
   const repoLabel = worktree ? worktree.repoRoot.split('/').pop() || worktree.repoRoot : null
   return (
@@ -383,13 +407,36 @@ function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, picker
               shellActivity={shellActivity[tab.id]}
               onSelect={() => onSelectTab(tab.id)}
               onConvertTabType={
-                convertible
+                // With the picker open, a tap on the active tab means
+                // "dismiss the picker" — withholding the convert handler
+                // makes TabChip fall through to plain select.
+                convertible && !pickerOpen
                   ? (newType) => onConvertTabType!(tab.id, newType)
                   : undefined
               }
             />
           )
         })}
+        {worktree && (
+          <div className="shrink-0 flex items-stretch">
+            <button
+              onClick={() => onAddTab('json-claude')}
+              aria-label="New chat"
+              className="shrink-0 inline-flex items-center gap-0.5 px-3 h-full text-dim hover:text-fg hover:bg-panel-raised"
+            >
+              <AgentIcon kind="claude" className="icon-xs" />
+              <Plus className="icon-2xs" />
+            </button>
+            <button
+              onClick={() => onAddTab('shell')}
+              aria-label="New shell"
+              className="shrink-0 inline-flex items-center gap-0.5 px-3 h-full text-dim hover:text-fg hover:bg-panel-raised"
+            >
+              <SquareTerminal className="icon-xs" />
+              <Plus className="icon-2xs" />
+            </button>
+          </div>
+        )}
       </div>
       {onToggleRightPanel && (
         <button
