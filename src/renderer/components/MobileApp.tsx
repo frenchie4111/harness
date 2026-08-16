@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose, Layers, Rows3, Sparkles, Plus } from 'lucide-react'
 import { useWorktrees, usePanes, useTerminals, usePrs, useSettings, useAliases } from '../store'
 import { useBackend } from '../backend'
@@ -135,6 +135,24 @@ export function MobileApp(): JSX.Element {
     () => tabs.find((t) => t.id === selectedTabId) ?? null,
     [tabs, selectedTabId]
   )
+
+  // Rising-edge wake, mirroring the equivalent effect in WorkspaceView.
+  // PanesFSM hydrates every persisted json-claude/shell tab as 'asleep',
+  // and JsonModeChat skips both the subprocess spawn and the history
+  // fetch while slept — so without this a chat that hasn't been focused
+  // on desktop since launch renders permanently blank on mobile. Only
+  // fires when the selection changes, so a tab slept from another client
+  // stays slept.
+  const prevSelectedTabRef = useRef<string | null>(null)
+  useEffect(() => {
+    const prev = prevSelectedTabRef.current
+    prevSelectedTabRef.current = selectedTabId
+    if (prev === selectedTabId) return
+    if (!activeWorktree || !selectedTab) return
+    if (selectedTab.type !== 'json-claude' && selectedTab.type !== 'shell') return
+    if ((selectedTab.mode ?? 'awake') !== 'asleep') return
+    void backend.panesWakeTab(activeWorktree.path, selectedTab.id)
+  }, [activeWorktree, selectedTab, selectedTabId])
 
   const handleSelectWorktree = useCallback((wtPath: string) => {
     setActiveWorktreeId(wtPath)
