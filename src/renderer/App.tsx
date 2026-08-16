@@ -715,6 +715,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleRestartAgentTab,
     handleSelectTab,
     handleSleepTab,
+    handleOpenPR,
     handleReorderTabs,
     handleMoveTabToPane,
     handleSplitPane,
@@ -832,7 +833,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     setShowQuakeTerminal,
     quakeTerminalAllowed: workspaceVisible,
     handleAddTerminalTab,
-    handleAddBrowserTab,
+    handleOpenPR,
     handleCloseTab: requestCloseTab,
     handleSelectTab,
     handleSplitPane,
@@ -1777,6 +1778,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenDiff={handleOpenDiff}
             onOpenFile={handleOpenFile}
             onSendToAgent={handleSendToAgent}
+            onOpenPR={(url) => {
+              if (activeWorktreeId) handleOpenPR(activeWorktreeId, url)
+            }}
             onOpenReview={() => {
               if (activeWorktreeId) void backend.panesOpenReview(activeWorktreeId)
             }}
@@ -1787,6 +1791,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
           <div className="shrink-0 flex flex-col"><div className="h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><CollapsedRightPanel
             worktreePath={activeWorktreeId}
             onExpand={() => setRightColumnHidden(false)}
+            onOpenPR={(url) => {
+              if (activeWorktreeId) handleOpenPR(activeWorktreeId, url)
+            }}
             onReview={() => {
               if (activeWorktreeId) void backend.panesOpenReview(activeWorktreeId)
             }}

@@ -41,6 +41,7 @@ interface ChangedFilesData {
 interface CollapsedRightPanelProps {
   worktreePath: string | null
   onExpand: () => void
+  onOpenPR: (url: string) => void
   onReview: () => void
   /** Opens the fuzzy file-open palette (same overlay as the Cmd+P
    *  fileQuickOpen hotkey). */
@@ -67,6 +68,7 @@ const METHOD_LABEL: Record<GitHubMergeMethod, string> = {
 export function CollapsedRightPanel({
   worktreePath,
   onExpand,
+  onOpenPR,
   onReview,
   onFileQuickOpen
 }: CollapsedRightPanelProps): JSX.Element {
@@ -327,7 +329,7 @@ export function CollapsedRightPanel({
           side="left"
         >
           <button
-            onClick={() => prUrl && backend.openExternal(prUrl)}
+            onClick={() => prUrl && onOpenPR(prUrl)}
             disabled={!hasPR}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-dim"
             aria-label="Open PR in browser"

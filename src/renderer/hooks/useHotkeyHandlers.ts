@@ -52,7 +52,7 @@ interface UseHotkeyHandlersArgs {
   // Imperative hooks into other handlers — passed in to avoid this hook
   // depending on useTabHandlers + useWorktreeHandlers directly.
   handleAddTerminalTab: (worktreePath: string, paneId?: string) => void
-  handleAddBrowserTab: (worktreePath: string, paneId?: string, initialUrl?: string) => void
+  handleOpenPR: (worktreePath: string, url: string) => void
   handleCloseTab: (worktreePath: string, tabId: string) => void
   handleSelectTab: (worktreePath: string, paneId: string, tabId: string) => void
   handleSplitPane: (worktreePath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') => void
@@ -98,7 +98,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     setShowQuakeTerminal,
     quakeTerminalAllowed,
     handleAddTerminalTab,
-    handleAddBrowserTab,
+    handleOpenPR,
     handleCloseTab,
     handleSelectTab,
     handleSplitPane,
@@ -113,7 +113,6 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
   const viewerLogin = allSettings.viewerLogin
   const uiScale = allSettings.uiScale
   const preventSleepMode = allSettings.preventSleepMode
-  const openPrInBrowserTab = allSettings.openPrInBrowserTab
   const preventSleepUntil = allSettings.preventSleepUntil
   const snoozeByPath = useSnooze().byPath
   const snoozedPaths = useMemo(() => {
@@ -328,20 +327,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       openPR: () => {
         if (!activeWorktreeId) return
         const pr = prStatuses[activeWorktreeId]
-        if (!pr?.url) return
-        if (!openPrInBrowserTab) {
-          backend.openExternal(pr.url)
-          return
-        }
-        const tree = panes[activeWorktreeId]
-        for (const leaf of tree ? getLeaves(tree) : []) {
-          const existing = leaf.tabs.find((t) => t.type === 'browser' && t.url === pr.url)
-          if (existing) {
-            handleSelectTab(activeWorktreeId, leaf.id, existing.id)
-            return
-          }
-        }
-        handleAddBrowserTab(activeWorktreeId, undefined, pr.url)
+        if (pr?.url) handleOpenPR(activeWorktreeId, pr.url)
       },
       openInEditor: () => {
         if (!activeWorktreeId) return
@@ -455,11 +441,9 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       terminalTabs,
       activeTabId,
       handleAddTerminalTab,
-      handleAddBrowserTab,
-      handleSelectTab,
+      handleOpenPR,
       handleCloseTab,
       handleRefreshWorktrees,
-      openPrInBrowserTab,
       prStatuses,
       panes,
       activePaneId,

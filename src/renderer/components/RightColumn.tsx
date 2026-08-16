@@ -38,6 +38,7 @@ interface RightColumnProps {
   onOpenDiff: ChangedFilesPanelProps['onOpenDiff']
   onOpenFile: AllFilesPanelProps['onOpenFile']
   onSendToAgent: (worktreePath: string, text: string) => void
+  onOpenPR: (url: string) => void
   onOpenReview: () => void
   onCollapse: () => void
 }
@@ -59,6 +60,7 @@ export function RightColumn({
   onOpenDiff,
   onOpenFile,
   onSendToAgent,
+  onOpenPR,
   onOpenReview,
   onCollapse
 }: RightColumnProps): JSX.Element {
@@ -108,6 +110,7 @@ export function RightColumn({
             loading={prLoading}
             onRefresh={onRefreshPRs}
             onConnectGithub={onOpenGithubSettings}
+            onOpenPR={onOpenPR}
           />
         )
       case 'todos':

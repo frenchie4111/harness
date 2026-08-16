@@ -3170,9 +3170,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 <div className="flex-1">
                   <div className="text-sm text-fg-bright">Open PRs in a Harness browser tab</div>
                   <div className="text-xs text-dim mt-0.5">
-                    The Open PR shortcut (⌘⇧G) opens the review in a browser tab
-                    beside your terminals instead of handing it to your system
-                    browser. Pressing it again focuses the tab it already opened.
+                    ⌘⇧G and the PR panel&apos;s number, title, and pull-request
+                    button open the review in a browser tab beside your terminals
+                    instead of handing it to your system browser. Opening the same
+                    PR again focuses the tab it already opened.
                   </div>
                 </div>
               </label>
