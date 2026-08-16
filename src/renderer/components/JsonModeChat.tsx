@@ -10,7 +10,7 @@ import {
   type ReactNode
 } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
-import rehypeHighlight from 'rehype-highlight'
+import { rehypeHighlightShared } from '../rehype-highlight-shared'
 import remarkGfm from 'remark-gfm'
 import { remarkInsight } from '../remark-insight'
 import { InsightCard } from './InsightCard'
@@ -57,7 +57,7 @@ import {
 } from './JsonModeChatFind'
 
 const REMARK_PLUGINS = [remarkGfm, remarkInsight]
-const REHYPE_PLUGINS = [rehypeHighlight, rehypeColorHex]
+const REHYPE_PLUGINS = [rehypeHighlightShared, rehypeColorHex]
 
 // react-markdown v10's Components type only lists known HTML tag names,
 // but the runtime accepts any string tag; cast to register our custom
@@ -152,7 +152,7 @@ function MarkdownWithFind({ children }: { children: string }): JSX.Element {
   const { query } = useFind()
   const rehypePlugins = useMemo(() => {
     if (!query) return REHYPE_PLUGINS
-    return [rehypeHighlight, createFindRehypePlugin(query)]
+    return [rehypeHighlightShared, createFindRehypePlugin(query)]
   }, [query])
   return (
     <ReactMarkdown

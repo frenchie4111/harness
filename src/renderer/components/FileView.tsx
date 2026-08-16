@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRightFromLine, AtSign, Code2, Eye, Save, WrapText } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
-import rehypeHighlight from 'rehype-highlight'
+import { rehypeHighlightShared } from '../rehype-highlight-shared'
 import remarkGfm from 'remark-gfm'
 import type { FileBinaryReadResult, FileReadResult } from '../types'
 import { Tooltip } from './Tooltip'
@@ -25,7 +25,7 @@ const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', '
 const PDF_EXTS = new Set(['pdf'])
 
 const REMARK_PLUGINS = [remarkGfm]
-const REHYPE_PLUGINS = [rehypeHighlight]
+const REHYPE_PLUGINS = [rehypeHighlightShared]
 
 function detectViewerMode(filePath: string): ViewerMode {
   const ext = (filePath.split('.').pop() || '').toLowerCase()
