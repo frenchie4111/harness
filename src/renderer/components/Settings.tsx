@@ -391,6 +391,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     notifyChatOnCiFailure,
     expandedDiagnosticLoggingEnabled,
     showAssignedPRs,
+    openPrInBrowserTab,
     preventSleepMode,
     preventSleepUntil
   } = settings
@@ -847,6 +848,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
   const handleToggleShowAssignedPRs = useCallback(async (enabled: boolean) => {
     await backend.setShowAssignedPRs(enabled)
+  }, [])
+
+  const handleToggleOpenPrInBrowserTab = useCallback(async (enabled: boolean) => {
+    await backend.setOpenPrInBrowserTab(enabled)
   }, [])
 
   const handleToggleWsTransport = useCallback(async (enabled: boolean) => {
@@ -3149,6 +3154,26 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     added to Harness) as phantom entries in the sidebar&apos;s
                     Reviewing group. Click one to open the &ldquo;new worktree from PR&rdquo;
                     screen with that PR pre-selected.
+                  </div>
+                </div>
+              </label>
+
+              <label
+                className="mt-6 flex items-start gap-2 cursor-pointer"
+                data-search-title="Open PRs in a Harness browser tab"
+              >
+                <input
+                  type="checkbox"
+                  checked={openPrInBrowserTab}
+                  onChange={(e) => handleToggleOpenPrInBrowserTab(e.target.checked)}
+                  className="mt-0.5 cursor-pointer icon-base" />
+                <div className="flex-1">
+                  <div className="text-sm text-fg-bright">Open PRs in a Harness browser tab</div>
+                  <div className="text-xs text-dim mt-0.5">
+                    ⌘⇧G and the PR panel&apos;s number, title, and pull-request
+                    button open the review in a browser tab beside your terminals
+                    instead of handing it to your system browser. Opening the same
+                    PR again focuses the tab it already opened.
                   </div>
                 </div>
               </label>

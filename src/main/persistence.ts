@@ -210,6 +210,9 @@ export interface Config {
   // When false, ⌘Q quits immediately. When true/undefined (default), ⌘Q
   // must be held briefly to quit (Chrome-style "Warn Before Quitting").
   warnBeforeQuitting?: boolean
+  // When true, the Open PR action opens the PR in a Harness browser tab
+  // instead of the system browser. Default is off (undefined/false).
+  openPrInBrowserTab?: boolean
   // When false, new worktrees don't symlink their .claude/settings.local.json
   // to the main worktree's copy, and the boot migration doesn't convert
   // existing regular files. Default is enabled (undefined/true).

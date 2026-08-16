@@ -52,6 +52,7 @@ interface UseHotkeyHandlersArgs {
   // Imperative hooks into other handlers — passed in to avoid this hook
   // depending on useTabHandlers + useWorktreeHandlers directly.
   handleAddTerminalTab: (worktreePath: string, paneId?: string) => void
+  handleOpenPR: (worktreePath: string, url: string) => void
   handleCloseTab: (worktreePath: string, tabId: string) => void
   handleSelectTab: (worktreePath: string, paneId: string, tabId: string) => void
   handleSplitPane: (worktreePath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') => void
@@ -97,6 +98,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     setShowQuakeTerminal,
     quakeTerminalAllowed,
     handleAddTerminalTab,
+    handleOpenPR,
     handleCloseTab,
     handleSelectTab,
     handleSplitPane,
@@ -325,7 +327,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       openPR: () => {
         if (!activeWorktreeId) return
         const pr = prStatuses[activeWorktreeId]
-        if (pr?.url) backend.openExternal(pr.url)
+        if (pr?.url) handleOpenPR(activeWorktreeId, pr.url)
       },
       openInEditor: () => {
         if (!activeWorktreeId) return
@@ -439,6 +441,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       terminalTabs,
       activeTabId,
       handleAddTerminalTab,
+      handleOpenPR,
       handleCloseTab,
       handleRefreshWorktrees,
       prStatuses,

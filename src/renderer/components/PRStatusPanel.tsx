@@ -816,6 +816,9 @@ interface PRStatusPanelProps {
   loading?: boolean
   onRefresh?: () => void | Promise<void>
   onConnectGithub?: () => void
+  /** Opens the PR itself. Omitted on mobile, which can't render browser
+   *  tabs, so the URL goes straight to the OS there. */
+  onOpenPR?: (url: string) => void
 }
 
 export function PRStatusPanel({
@@ -824,9 +827,12 @@ export function PRStatusPanel({
   hasGithubToken,
   loading,
   onRefresh,
-  onConnectGithub
+  onConnectGithub,
+  onOpenPR
 }: PRStatusPanelProps): JSX.Element {
   const backend = useBackend()
+  const openPr = (url: string): void =>
+    onOpenPR ? onOpenPR(url) : void backend.openExternal(url)
   const [expanded, setExpanded] = useState(false)
 
   // Auto-expand the check list whenever checks are failing so the user sees
@@ -909,7 +915,7 @@ export function PRStatusPanel({
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                backend.openExternal(pr.url)
+                openPr(pr.url)
               }}
               className={`px-1.5 py-0.5 rounded border text-xs font-medium transition-colors cursor-pointer shrink-0 ${
                 pr.queuePosition
@@ -924,7 +930,7 @@ export function PRStatusPanel({
             <Tooltip label="Open PR in browser" action="openPR">
               <a
                 className="flex-1 text-xs text-fg hover:text-fg-bright truncate cursor-pointer"
-                onClick={() => backend.openExternal(pr.url)}
+                onClick={() => openPr(pr.url)}
                 draggable
                 onDragStart={(e) => {
                   e.dataTransfer.setData('text/plain', pr.url)

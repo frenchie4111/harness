@@ -5,6 +5,7 @@ import { agentDisplayName, getAgentInfo } from '../../shared/agent-registry'
 import { focusTerminalById, markTerminalClosing } from '../components/XTerminal'
 import { useBackend } from '../backend'
 import { randomUUID } from '../uuid'
+import { useSettings } from '../store'
 
 function makeTerminalId(prefix: string, worktreePath: string): string {
   const safe = worktreePath.replace(/[/\\]/g, '-').replace(/^-+/, '').replace(/-+/g, '-')
@@ -30,6 +31,7 @@ export function useTabHandlers({
   setActiveWorktreeId
 }: UseTabHandlersArgs) {
   const backend = useBackend()
+  const openPrInBrowserTab = useSettings().openPrInBrowserTab
   const appendTabToPane = useCallback(
     (worktreePath: string, tab: TerminalTab, paneId?: string) => {
       const tree = panes[worktreePath]
@@ -198,6 +200,28 @@ export function useTabHandlers({
     [setActivePaneId]
   )
 
+  // Every "open the PR" affordance — ⌘⇧G, the #number pill, the PR title,
+  // the collapsed panel's PR button — routes through here so the
+  // openPrInBrowserTab setting can't apply to some of them and not others.
+  const handleOpenPR = useCallback(
+    (worktreePath: string, url: string) => {
+      if (!openPrInBrowserTab) {
+        backend.openExternal(url)
+        return
+      }
+      const tree = panes[worktreePath]
+      for (const leaf of tree ? getLeaves(tree) : []) {
+        const existing = leaf.tabs.find((t) => t.type === 'browser' && t.url === url)
+        if (existing) {
+          handleSelectTab(worktreePath, leaf.id, existing.id)
+          return
+        }
+      }
+      handleAddBrowserTab(worktreePath, undefined, url)
+    },
+    [openPrInBrowserTab, panes, handleSelectTab, handleAddBrowserTab]
+  )
+
   const handleSleepTab = useCallback(
     (worktreePath: string, tabId: string) => {
       void backend.panesSleepTab(worktreePath, tabId)
@@ -362,6 +386,7 @@ export function useTabHandlers({
     handleRestartAllAgentTabs,
     handleSelectTab,
     handleSleepTab,
+    handleOpenPR,
     handleOpenCommit,
     handleReorderTabs,
     handleMoveTabToPane,
