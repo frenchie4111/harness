@@ -7,6 +7,7 @@ import {
 import { WebSocketClientTransport } from '../../shared/transport/transport-websocket'
 import { getBackendsRegistry, hydrateRemoteBackend } from '../store'
 import { useBackend } from '../backend'
+import { randomUUID } from '../uuid'
 import { useSshBootstrap } from '../store'
 import type { StateSnapshot } from '../../shared/state'
 import type { BackendConnection, ConfiguredHost } from '../types'
@@ -325,7 +326,7 @@ function SshTab({ onClose }: { onClose: () => void }): JSX.Element {
       setSubmitError('Pick or type an SSH host first.')
       return
     }
-    const id = crypto.randomUUID()
+    const id = randomUUID()
     setBootstrapId(id)
     setBusy(true)
     try {

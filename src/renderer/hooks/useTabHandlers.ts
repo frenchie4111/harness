@@ -4,6 +4,7 @@ import { getLeaves, findLeaf, findLeafByTabId } from '../../shared/state/termina
 import { agentDisplayName, getAgentInfo } from '../../shared/agent-registry'
 import { focusTerminalById, markTerminalClosing } from '../components/XTerminal'
 import { useBackend } from '../backend'
+import { randomUUID } from '../uuid'
 
 function makeTerminalId(prefix: string, worktreePath: string): string {
   const safe = worktreePath.replace(/[/\\]/g, '-').replace(/^-+/, '').replace(/-+/g, '-')
@@ -57,7 +58,7 @@ export function useTabHandlers({
       const id = `${makeTerminalId('agent', worktreePath)}-${Date.now()}`
       appendTabToPane(
         worktreePath,
-        { id, type: 'agent', agentKind, label, sessionId: info.assignsSessionId ? crypto.randomUUID() : undefined },
+        { id, type: 'agent', agentKind, label, sessionId: info.assignsSessionId ? randomUUID() : undefined },
         paneId
       )
     },
@@ -86,7 +87,7 @@ export function useTabHandlers({
       // Chat (json-claude) tabs use a UUID for both tab id and session id
       // — the manager passes it to `claude --session-id` directly so the
       // session jsonl reuses the same identifier and survives a reload.
-      const sessionId = crypto.randomUUID()
+      const sessionId = randomUUID()
       appendTabToPane(
         worktreePath,
         {
