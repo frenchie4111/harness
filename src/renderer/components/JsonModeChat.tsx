@@ -3,6 +3,7 @@ import {
   useDeferredValue,
   useEffect,
   useLayoutEffect,
+  memo,
   useMemo,
   useRef,
   useState,
@@ -147,8 +148,19 @@ function rehypeColorHex() {
 /** ReactMarkdown wrapper that dynamically injects the find-highlight
  *  rehype plugin when Cmd+F has an active query. Kept as a small
  *  component so the plugins array is memoized per-query rather than
- *  rebuilt on every parent render. */
-function MarkdownWithFind({ children }: { children: string }): JSX.Element {
+ *  rebuilt on every parent render.
+ *
+ *  memo() matters here because renderEntries builds fresh elements for
+ *  every row on every render, so without it each streamed token
+ *  re-parsed the markdown of every message in the scrollback, not just
+ *  the one that grew. The find context value is itself useMemo'd on
+ *  [query, currentHitBlockId, forceOpenTick] — none of which move while
+ *  a message streams — so the memo actually gets to bail. */
+const MarkdownWithFind = memo(function MarkdownWithFind({
+  children
+}: {
+  children: string
+}): JSX.Element {
   const { query } = useFind()
   const rehypePlugins = useMemo(() => {
     if (!query) return REHYPE_PLUGINS
@@ -163,7 +175,7 @@ function MarkdownWithFind({ children }: { children: string }): JSX.Element {
       {children}
     </ReactMarkdown>
   )
-}
+})
 
 // Worktree file list cache. Same TTL/shape as CommandPalette uses — the
 // list rarely changes during a typing session, and listAllFiles shells
