@@ -127,7 +127,12 @@ export function JsonClaudeApprovalCard({
   // adding to the per-tool allow set — claude is killed+respawned with
   // --permission-mode acceptEdits and edits stop hitting the bridge
   // entirely. For everything else we still use the session allow set.
-  const alreadyGranted = isEditTool
+  // Exception: in 'auto' the CLI is already filtering which calls are
+  // worth asking about, so flipping to acceptEdits would silently
+  // downgrade the whole session to get one edit through.
+  const grantViaPermissionMode =
+    isEditTool && session?.permissionMode !== 'auto'
+  const alreadyGranted = grantViaPermissionMode
     ? session?.permissionMode === 'acceptEdits'
     : !!session && session.sessionToolApprovals.includes(approval.toolName)
 
@@ -147,15 +152,16 @@ export function JsonClaudeApprovalCard({
       behavior: 'allow',
       updatedInput: approval.input
     })
-    if (isEditTool) {
+    if (grantViaPermissionMode) {
       await backend.setJsonClaudePermissionMode(
         approval.sessionId,
         'acceptEdits'
       )
     } else {
-      await backend.grantJsonClaudeSessionToolApprovals(approval.sessionId, [
-        approval.toolName
-      ])
+      await backend.grantJsonClaudeSessionToolApprovals(
+        approval.sessionId,
+        isEditTool ? [...EDIT_TOOL_NAMES] : [approval.toolName]
+      )
     }
   }
 

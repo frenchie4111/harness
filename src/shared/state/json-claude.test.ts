@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   initialJsonClaude,
+  isJsonClaudePermissionMode,
   jsonClaudeReducer,
+  JSON_CLAUDE_PERMISSION_MODES,
   parseAutomatedMessage,
   stripJsonClaudeEntries,
   wrapAutomatedMessage,
@@ -629,6 +631,25 @@ describe('jsonClaudeReducer', () => {
       payload: { sessionId: SID, mode: 'acceptEdits' }
     })
     expect(state.sessions[SID].permissionMode).toBe('acceptEdits')
+  })
+
+  it('permissionModeChanged accepts auto', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/permissionModeChanged',
+      payload: { sessionId: SID, mode: 'auto' }
+    })
+    expect(state.sessions[SID].permissionMode).toBe('auto')
+  })
+
+  it('isJsonClaudePermissionMode accepts every exposed mode and rejects the rest', () => {
+    for (const mode of JSON_CLAUDE_PERMISSION_MODES) {
+      expect(isJsonClaudePermissionMode(mode)).toBe(true)
+    }
+    expect(JSON_CLAUDE_PERMISSION_MODES).toContain('auto')
+    for (const bad of ['bypassPermissions', 'dontAsk', '', undefined, null, 7]) {
+      expect(isJsonClaudePermissionMode(bad)).toBe(false)
+    }
   })
 
   it('permissionModeChanged is a no-op for unknown session', () => {

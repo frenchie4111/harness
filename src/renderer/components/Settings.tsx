@@ -16,6 +16,7 @@ import { BUILT_IN_THEMES_BY_MODE, type ThemeOption } from '../themes'
 import { SEMANTIC_KEYS } from '../theme-apply'
 import type { CustomTheme, UiScale } from '../../shared/state/settings'
 import { SCALES, scaleSpec } from '../../shared/state/settings'
+import { isJsonClaudePermissionMode } from '../../shared/state/json-claude'
 import { QRCodeSVG } from 'qrcode.react'
 
 interface SettingsProps {
@@ -2144,7 +2145,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     onChange={(e) => {
                       const v = e.target.value
                       void backend.setJsonModeDefaultPermissionMode(
-                        v === 'default' || v === 'plan' ? v : 'acceptEdits'
+                        isJsonClaudePermissionMode(v) ? v : 'acceptEdits'
                       )
                     }}
                     className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer"
@@ -2157,6 +2158,9 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     </option>
                     <option value="plan">
                       Plan mode — read-only, the agent proposes but doesn't act
+                    </option>
+                    <option value="auto">
+                      Auto — Claude decides what's safe to run and only asks about risky calls
                     </option>
                   </select>
                 </div>

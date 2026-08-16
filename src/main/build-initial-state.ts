@@ -8,7 +8,10 @@ import { initialUpdater } from '../shared/state/updater'
 import { initialRepoConfigs } from '../shared/state/repo-configs'
 import { initialCosts } from '../shared/state/costs'
 import { initialBrowser } from '../shared/state/browser'
-import { initialJsonClaude } from '../shared/state/json-claude'
+import {
+  initialJsonClaude,
+  isJsonClaudePermissionMode
+} from '../shared/state/json-claude'
 import { initialSnooze } from '../shared/state/snooze'
 import { initialCiNotify } from '../shared/state/ci-notify'
 import { initialAnnouncements } from '../shared/state/announcements'
@@ -155,11 +158,11 @@ export function buildInitialAppState(
           : 'small',
       jsonModeSendOnEnter: config.jsonModeSendOnEnter === true,
       autoScrollToBottom: config.autoScrollToBottom !== false,
-      jsonModeDefaultPermissionMode:
-        config.jsonModeDefaultPermissionMode === 'default' ||
-        config.jsonModeDefaultPermissionMode === 'plan'
-          ? config.jsonModeDefaultPermissionMode
-          : 'acceptEdits',
+      jsonModeDefaultPermissionMode: isJsonClaudePermissionMode(
+        config.jsonModeDefaultPermissionMode
+      )
+        ? config.jsonModeDefaultPermissionMode
+        : 'acceptEdits',
       autoSleepMinutes:
         typeof config.autoSleepMinutes === 'number' &&
         Number.isFinite(config.autoSleepMinutes) &&

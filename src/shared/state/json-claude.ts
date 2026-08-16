@@ -12,9 +12,24 @@ export type JsonClaudeSessionState =
   | 'auth-required'
 
 /** Mirrors `claude --permission-mode` choices. Subset relevant to a
- *  json-claude tab: we don't expose bypassPermissions (unsafe) or
- *  dontAsk/auto (overlap with default). */
-export type JsonClaudePermissionMode = 'default' | 'acceptEdits' | 'plan'
+ *  json-claude tab: in `auto` the CLI decides which calls are safe and
+ *  only routes the risky ones through the permission bridge. We don't
+ *  expose bypassPermissions (unsafe) or dontAsk (overlap with default). */
+export const JSON_CLAUDE_PERMISSION_MODES = [
+  'default',
+  'acceptEdits',
+  'plan',
+  'auto'
+] as const
+
+export type JsonClaudePermissionMode =
+  (typeof JSON_CLAUDE_PERMISSION_MODES)[number]
+
+export function isJsonClaudePermissionMode(
+  value: unknown
+): value is JsonClaudePermissionMode {
+  return (JSON_CLAUDE_PERMISSION_MODES as readonly unknown[]).includes(value)
+}
 
 /** Tool names that the approval card groups under "Allow edits this
  *  session". Granting any of these grants all of them — every tool that

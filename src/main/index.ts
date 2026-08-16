@@ -93,6 +93,10 @@ import type { ForkSource } from '../shared/state/worktrees'
 import { MAX_WAKE } from '../shared/state/snooze'
 import { hasScratchpadNote } from '../shared/state/scratchpad'
 import { normalizeAlias } from '../shared/state/aliases'
+import {
+  isJsonClaudePermissionMode,
+  type JsonClaudePermissionMode
+} from '../shared/state/json-claude'
 import { deriveWorktreeStatus } from './worktree-status'
 import {
   DEFAULT_LIGHT_THEME,
@@ -3749,7 +3753,7 @@ function registerIpcHandlers(): void {
 
   transport.onRequest(
     'jsonClaude:setPermissionMode',
-    (_ctx, sessionId: string, mode: 'default' | 'acceptEdits' | 'plan') => {
+    (_ctx, sessionId: string, mode: JsonClaudePermissionMode) => {
       if (!sessionId) return false
       // Optimistically reflect in the slice so the badge updates
       // immediately. The manager writes a stdin control_request that
@@ -3904,9 +3908,10 @@ function registerIpcHandlers(): void {
 
   transport.onRequest(
     'config:setJsonModeDefaultPermissionMode',
-    (_ctx, value: 'default' | 'acceptEdits' | 'plan') => {
-      const next: 'default' | 'acceptEdits' | 'plan' =
-        value === 'default' || value === 'plan' ? value : 'acceptEdits'
+    (_ctx, value: JsonClaudePermissionMode) => {
+      const next: JsonClaudePermissionMode = isJsonClaudePermissionMode(value)
+        ? value
+        : 'acceptEdits'
       if (next === 'acceptEdits') {
         delete config.jsonModeDefaultPermissionMode
       } else {
