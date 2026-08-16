@@ -110,8 +110,19 @@ export function Cleanup({
         if (cancelled) return
         const lastTs: Record<string, number> = {}
         for (const [path, rec] of Object.entries(log as ActivityLog)) {
-          const events = rec.events
-          if (events.length) lastTs[path] = events[events.length - 1].t
+          // Only 'processing' proves the agent actually ran here. Waking a
+          // chat session derives 'waiting' and auto-sleep derives 'idle',
+          // so using the newest event of any kind resets a worktree's age
+          // just from the user opening it.
+          let ts: number | undefined
+          for (let i = rec.events.length - 1; i >= 0; i--) {
+            if (rec.events[i].s === 'processing') {
+              ts = rec.events[i].t
+              break
+            }
+          }
+          ts ??= rec.createdAt
+          if (ts !== undefined) lastTs[path] = ts
         }
         setActivityLastTs(lastTs)
         const dmap: Record<string, boolean> = {}
@@ -284,7 +295,8 @@ export function Cleanup({
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto px-8 py-8">
           <p className="text-sm text-dim mb-6">
-            Remove old worktrees in bulk. Age is measured from the last recorded Claude activity.
+            Remove old worktrees in bulk. Age is measured from the last time Claude actually ran
+            here — opening a worktree doesn&apos;t count.
           </p>
 
           <div className="flex items-center gap-2 mb-4 flex-wrap">
