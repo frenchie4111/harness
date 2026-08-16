@@ -110,6 +110,11 @@ describe('resolveWorktreeQuery', () => {
     expect(resolveWorktreeQuery(state, 'feat/billing')).toEqual({ path: B })
   })
 
+  it('strips the worktree: prefix from a composer mention token', () => {
+    expect(resolveWorktreeQuery(state, 'worktree:feat/billing')).toEqual({ path: B })
+    expect(resolveWorktreeQuery(state, 'Worktree: Auth Refactor')).toEqual({ path: A })
+  })
+
   it('errors on an unknown handle', () => {
     expect(resolveWorktreeQuery(state, 'nope')).toEqual({
       error: 'no worktree matching "nope"'

@@ -56,6 +56,8 @@ function pickSleptTab(state: AppState, worktreePath: string): string | null {
   return fallback
 }
 
+const WORKTREE_HANDLE_PREFIX = 'worktree:'
+
 /** Resolve a caller-supplied worktree handle. Absolute path wins outright;
  *  otherwise alias and branch are matched case-insensitively. An ambiguous
  *  handle is an error rather than a guess — silently picking one of two
@@ -64,7 +66,13 @@ export function resolveWorktreeQuery(
   state: AppState,
   query: string
 ): { path: string } | { error: string } {
-  const q = query.trim()
+  // The chat composer's @-mention inserts `@worktree:<branch>`, and agents
+  // routinely pass that token through verbatim. Strip the prefix so it
+  // resolves instead of 404ing on a handle we handed them ourselves.
+  let q = query.trim()
+  if (q.toLowerCase().startsWith(WORKTREE_HANDLE_PREFIX)) {
+    q = q.slice(WORKTREE_HANDLE_PREFIX.length).trim()
+  }
   if (!q) return { error: 'worktree required' }
   // A prunable worktree's directory is already gone, so nothing can be
   // running in it to receive the message.
