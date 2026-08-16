@@ -31,6 +31,7 @@ function makeSession(
     autoApprovedDecisions: {},
     sessionToolApprovals: [],
     sessionAllowedDecisions: {},
+    backgroundAgents: {},
     ...overrides
   }
 }

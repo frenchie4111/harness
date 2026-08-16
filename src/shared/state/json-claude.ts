@@ -243,6 +243,27 @@ export interface JsonClaudeChatEntry {
   }
 }
 
+/** A sub-agent launched with `run_in_background: true`. Unlike a
+ *  synchronous sub-agent — whose activity streams inline on the parent's
+ *  stream-json tagged with `parent_tool_use_id` — a background agent
+ *  reports nothing to the parent until it finishes. Its Task tool_result
+ *  resolves immediately with a launch stub, and its real work lands in a
+ *  separate transcript that SubagentTailer follows. Without this record
+ *  the Task card would look instantly-complete-with-no-activity. */
+export interface JsonClaudeBackgroundAgent {
+  /** Claude Code's internal id for the detached agent. */
+  agentId: string
+  /** tool_use id of the launching Task call. Also this map's key, and the
+   *  `parentToolUseId` stamped on every tailed child entry. */
+  toolUseId: string
+  description: string
+  status: 'running' | 'completed' | 'failed'
+  startedAt: number
+  completedAt?: number
+  /** Totals reported in the completion notification's <usage> block. */
+  usage?: { totalTokens?: number; toolUses?: number; durationMs?: number }
+}
+
 export interface JsonClaudeSession {
   sessionId: string
   worktreePath: string
@@ -300,6 +321,10 @@ export interface JsonClaudeSession {
     string,
     { toolName: string; timestamp: number }
   >
+  /** Background sub-agents keyed by their launching Task tool_use id.
+   *  Entries persist after completion so the Task card can keep showing
+   *  the final usage totals. */
+  backgroundAgents: Record<string, JsonClaudeBackgroundAgent>
 }
 
 /** Status of the LLM-based auto-reviewer for a single pending approval.
@@ -484,6 +509,26 @@ export type JsonClaudeEvent =
         timestamp: number
       }
     }
+  | {
+      type: 'jsonClaude/backgroundAgentLaunched'
+      payload: {
+        sessionId: string
+        toolUseId: string
+        agentId: string
+        description: string
+        timestamp: number
+      }
+    }
+  | {
+      type: 'jsonClaude/backgroundAgentSettled'
+      payload: {
+        sessionId: string
+        toolUseId: string
+        status: 'completed' | 'failed'
+        timestamp: number
+        usage?: { totalTokens?: number; toolUses?: number; durationMs?: number }
+      }
+    }
 
 export const initialJsonClaude: JsonClaudeState = {
   sessions: {},
@@ -571,11 +616,62 @@ function applyBlockTextDelta(
   }
 }
 
+function patchBackgroundAgent(
+  state: JsonClaudeState,
+  sessionId: string,
+  toolUseId: string,
+  patch: (
+    existing: JsonClaudeBackgroundAgent | undefined
+  ) => JsonClaudeBackgroundAgent | undefined
+): JsonClaudeState {
+  const session = state.sessions[sessionId]
+  if (!session) return state
+  const next = patch(session.backgroundAgents[toolUseId])
+  if (!next) return state
+  return {
+    ...state,
+    sessions: {
+      ...state.sessions,
+      [sessionId]: {
+        ...session,
+        backgroundAgents: {
+          ...session.backgroundAgents,
+          [toolUseId]: next
+        }
+      }
+    }
+  }
+}
+
 export function jsonClaudeReducer(
   state: JsonClaudeState,
   event: JsonClaudeEvent
 ): JsonClaudeState {
   switch (event.type) {
+    case 'jsonClaude/backgroundAgentLaunched': {
+      const { sessionId, toolUseId, agentId, description, timestamp } =
+        event.payload
+      return patchBackgroundAgent(state, sessionId, toolUseId, () => ({
+        agentId,
+        toolUseId,
+        description,
+        status: 'running',
+        startedAt: timestamp
+      }))
+    }
+    case 'jsonClaude/backgroundAgentSettled': {
+      const { sessionId, toolUseId, status, timestamp, usage } = event.payload
+      return patchBackgroundAgent(state, sessionId, toolUseId, (existing) =>
+        existing
+          ? {
+              ...existing,
+              status,
+              completedAt: timestamp,
+              ...(usage ? { usage } : {})
+            }
+          : undefined
+      )
+    }
     case 'jsonClaude/sessionStarted': {
       const { sessionId, worktreePath } = event.payload
       // Preserve entries + permissionMode + slashCommands +
@@ -611,7 +707,8 @@ export function jsonClaudeReducer(
               : {}),
             autoApprovedDecisions: existing?.autoApprovedDecisions ?? {},
             sessionToolApprovals: existing?.sessionToolApprovals ?? [],
-            sessionAllowedDecisions: existing?.sessionAllowedDecisions ?? {}
+            sessionAllowedDecisions: existing?.sessionAllowedDecisions ?? {},
+            backgroundAgents: existing?.backgroundAgents ?? {}
           }
         }
       }

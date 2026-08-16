@@ -28,7 +28,8 @@ export function TaskCard({
   sessionAllowed,
   subAgentBody,
   subAgentChildCount,
-  subAgentDescendantHasPendingApproval
+  subAgentDescendantHasPendingApproval,
+  backgroundAgent
 }: TaskCardProps): JSX.Element {
   const input = (block.input ?? {}) as Record<string, unknown>
   const description =
@@ -39,29 +40,62 @@ export function TaskCard({
         ? (input.subagent_type as string)
         : 'Task'
 
-  const taskInFlight = !result
+  // A background agent's tool_result lands immediately (it's the launch
+  // stub, not the answer), so `result` can't stand in for "still working"
+  // the way it does for a synchronous sub-agent.
+  const backgroundRunning = backgroundAgent?.status === 'running'
+  const taskInFlight = backgroundAgent ? backgroundRunning : !result
   const autoExpandTrigger =
     taskInFlight || subAgentDescendantHasPendingApproval
 
-  const wasAutoExpandedRef = useRef(autoExpandTrigger)
+  // Auto-expand fires on the *edges* of the trigger, never on its steady
+  // state — depending on `expanded` here would re-open the card the instant
+  // the user collapsed it, which for a long-running background agent means
+  // it can't be collapsed at all.
+  const prevTriggerRef = useRef(autoExpandTrigger)
+  const prevApprovalRef = useRef(subAgentDescendantHasPendingApproval)
+  const userOverrodeRef = useRef(false)
   const [expanded, setExpanded] = useState<boolean>(autoExpandTrigger)
   useEffect(() => {
-    if (autoExpandTrigger && !expanded) {
-      wasAutoExpandedRef.current = true
+    const prevTrigger = prevTriggerRef.current
+    const prevApproval = prevApprovalRef.current
+    prevTriggerRef.current = autoExpandTrigger
+    prevApprovalRef.current = subAgentDescendantHasPendingApproval
+
+    // A newly-arrived approval overrides a manual collapse — the user has
+    // to see what they're being asked to approve.
+    if (subAgentDescendantHasPendingApproval && !prevApproval) {
+      userOverrodeRef.current = false
       setExpanded(true)
-    } else if (!autoExpandTrigger && wasAutoExpandedRef.current && expanded) {
-      wasAutoExpandedRef.current = false
+    } else if (autoExpandTrigger && !prevTrigger) {
+      userOverrodeRef.current = false
+      setExpanded(true)
+    } else if (!autoExpandTrigger && prevTrigger && !userOverrodeRef.current) {
       setExpanded(false)
     }
-  }, [autoExpandTrigger, expanded])
+  }, [autoExpandTrigger, subAgentDescendantHasPendingApproval])
 
-  const isError = !!result?.isError
+  const isError = !!result?.isError || backgroundAgent?.status === 'failed'
   const countLabel =
     subAgentChildCount === 0
       ? taskInFlight
         ? 'starting…'
         : 'no activity'
       : `${subAgentChildCount} ${subAgentChildCount === 1 ? 'entry' : 'entries'}`
+  const usage = backgroundAgent?.usage
+  const usageLabel = usage
+    ? [
+        typeof usage.toolUses === 'number' ? `${usage.toolUses} tools` : null,
+        typeof usage.totalTokens === 'number'
+          ? `${Math.round(usage.totalTokens / 1000)}k tokens`
+          : null,
+        typeof usage.durationMs === 'number'
+          ? `${Math.round(usage.durationMs / 1000)}s`
+          : null
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : ''
 
   return (
     <div
@@ -71,7 +105,7 @@ export function TaskCard({
       <button
         type="button"
         onClick={() => {
-          wasAutoExpandedRef.current = false
+          userOverrodeRef.current = true
           setExpanded((v) => !v)
         }}
         className="w-full flex items-center gap-2 cursor-pointer hover:bg-app/60 transition-colors text-left"
@@ -97,11 +131,20 @@ export function TaskCard({
         >
           {trunc(description, 120)}
         </span>
+        {backgroundAgent && (
+          <span
+            title={`background agent ${backgroundAgent.agentId}`}
+            className="uppercase tracking-wide text-muted bg-app/60 border border-border/50 rounded px-1 py-0.5 shrink-0"
+            style={{ fontSize: 'var(--chat-meta-text)' }}
+          >
+            background
+          </span>
+        )}
         <span
           className="text-muted/70 shrink-0"
           style={{ fontSize: 'var(--chat-meta-text)' }}
         >
-          {countLabel}
+          {usageLabel || countLabel}
         </span>
         {autoApproved && (
           <span
@@ -155,7 +198,10 @@ export function TaskCard({
           ) : (
             subAgentBody
           )}
-          {result && (
+          {/* While a background agent runs, `result` is still the launch
+              stub ("Async agent launched successfully…"), which is noise —
+              show it only once the real result has superseded it. */}
+          {result && !backgroundRunning && (
             <pre
               className={`my-1 px-2 py-1 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-auto rounded bg-app/40 ${
                 result.isError ? 'text-danger' : 'opacity-80'

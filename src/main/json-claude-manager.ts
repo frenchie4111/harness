@@ -1489,6 +1489,72 @@ export class JsonClaudeManager {
       })
       return
     }
+    // A detached (run_in_background) Agent resolves its tool_result
+    // immediately with a launch stub, so the Task card can't use "result
+    // arrived" to mean "finished" the way it does for a synchronous
+    // sub-agent. These two events are the real lifecycle. The agent's
+    // actual work streams inline on this same stdout carrying
+    // parent_tool_use_id, so nesting already works — only the card's
+    // running/settled status needs wiring.
+    if (type === 'system' && subtype === 'task_started') {
+      const toolUseId = parsed['tool_use_id']
+      const agentId = parsed['task_id']
+      if (typeof toolUseId !== 'string' || typeof agentId !== 'string') return
+      this.store.dispatch({
+        type: 'jsonClaude/backgroundAgentLaunched',
+        payload: {
+          sessionId: instance.sessionId,
+          toolUseId,
+          agentId,
+          description:
+            typeof parsed['description'] === 'string'
+              ? (parsed['description'] as string)
+              : '',
+          timestamp: Date.now()
+        }
+      })
+      return
+    }
+    if (type === 'system' && subtype === 'task_notification') {
+      const toolUseId = parsed['tool_use_id']
+      if (typeof toolUseId !== 'string') return
+      const failed = parsed['status'] !== 'completed'
+      const rawUsage = parsed['usage'] as Record<string, unknown> | undefined
+      const num = (v: unknown): number | undefined =>
+        typeof v === 'number' ? v : undefined
+      const usage = rawUsage
+        ? {
+            totalTokens: num(rawUsage['total_tokens']),
+            toolUses: num(rawUsage['tool_uses']),
+            durationMs: num(rawUsage['duration_ms'])
+          }
+        : undefined
+      this.store.dispatch({
+        type: 'jsonClaude/backgroundAgentSettled',
+        payload: {
+          sessionId: instance.sessionId,
+          toolUseId,
+          status: failed ? 'failed' : 'completed',
+          timestamp: Date.now(),
+          ...(usage ? { usage } : {})
+        }
+      })
+      // Supersede the launch stub with the agent's actual answer. The
+      // renderer keys results by tool_use id and takes the last one.
+      const summary = parsed['summary']
+      if (typeof summary === 'string' && summary.length > 0) {
+        this.store.dispatch({
+          type: 'jsonClaude/toolResultAttached',
+          payload: {
+            sessionId: instance.sessionId,
+            toolUseId,
+            content: summary,
+            isError: failed
+          }
+        })
+      }
+      return
+    }
     if (type === 'system' && subtype === 'init') {
       // Session id is already known (we pinned it via --session-id), but
       // the init payload includes the canonical slash_commands list — keep

@@ -18,7 +18,8 @@ function makeSession(
     slashCommands: [],
     autoApprovedDecisions: {},
     sessionToolApprovals: [],
-    sessionAllowedDecisions: {}
+    sessionAllowedDecisions: {},
+    backgroundAgents: {}
   }
 }
 

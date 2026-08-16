@@ -1419,6 +1419,70 @@ describe('stripJsonClaudeEntries', () => {
   })
 })
 
+describe('jsonClaudeReducer background agents', () => {
+  const TOOL_USE = 'toolu_bg1'
+
+  function launch(state: JsonClaudeState): JsonClaudeState {
+    return jsonClaudeReducer(state, {
+      type: 'jsonClaude/backgroundAgentLaunched',
+      payload: {
+        sessionId: SID,
+        toolUseId: TOOL_USE,
+        agentId: 'aece96b04cf6ba1c8',
+        description: 'Source U of A financial deadlines',
+        timestamp: 1000
+      }
+    })
+  }
+
+  it('backgroundAgentLaunched records a running agent keyed by tool_use id', () => {
+    const next = launch(seedSession(initialJsonClaude))
+    const agent = next.sessions[SID].backgroundAgents[TOOL_USE]
+    expect(agent.agentId).toBe('aece96b04cf6ba1c8')
+    expect(agent.status).toBe('running')
+    expect(agent.startedAt).toBe(1000)
+    expect(agent.description).toBe('Source U of A financial deadlines')
+  })
+
+  it('backgroundAgentSettled marks completion and keeps usage totals', () => {
+    const next = jsonClaudeReducer(launch(seedSession(initialJsonClaude)), {
+      type: 'jsonClaude/backgroundAgentSettled',
+      payload: {
+        sessionId: SID,
+        toolUseId: TOOL_USE,
+        status: 'completed',
+        timestamp: 2000,
+        usage: { totalTokens: 158902, toolUses: 168, durationMs: 793689 }
+      }
+    })
+    const agent = next.sessions[SID].backgroundAgents[TOOL_USE]
+    expect(agent.status).toBe('completed')
+    expect(agent.completedAt).toBe(2000)
+    expect(agent.usage?.toolUses).toBe(168)
+    // Identity preserved so the card can still label itself post-hoc.
+    expect(agent.agentId).toBe('aece96b04cf6ba1c8')
+  })
+
+  it('backgroundAgentSettled is a no-op for an unknown tool_use id', () => {
+    const state = launch(seedSession(initialJsonClaude))
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/backgroundAgentSettled',
+      payload: {
+        sessionId: SID,
+        toolUseId: 'toolu_nope',
+        status: 'completed',
+        timestamp: 2000
+      }
+    })
+    expect(next).toBe(state)
+  })
+
+  it('sessionStarted preserves background agents across a respawn', () => {
+    const next = seedSession(launch(seedSession(initialJsonClaude)))
+    expect(next.sessions[SID].backgroundAgents[TOOL_USE].status).toBe('running')
+  })
+})
+
 describe('automated message sentinel', () => {
   it('round-trips a wrapped body', () => {
     const body = 'CI is failing on PR #7 (feat/thing).\n\n- build: exit 1'

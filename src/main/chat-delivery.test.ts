@@ -40,6 +40,7 @@ function session(worktreePath: string, lastTs: number): JsonClaudeSession {
     permissionMode: 'acceptEdits',
     slashCommands: [],
     autoApprovedDecisions: {},
+    backgroundAgents: {},
     sessionToolApprovals: [],
     sessionAllowedDecisions: {}
   }

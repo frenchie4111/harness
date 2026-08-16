@@ -60,6 +60,7 @@ function session(
     permissionMode: 'acceptEdits',
     slashCommands: [],
     autoApprovedDecisions: {},
+    backgroundAgents: {},
     sessionToolApprovals: [],
     sessionAllowedDecisions: {}
   }
