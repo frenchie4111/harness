@@ -3,6 +3,7 @@ import {
   useDeferredValue,
   useEffect,
   useLayoutEffect,
+  memo,
   useMemo,
   useRef,
   useState,
@@ -10,7 +11,7 @@ import {
   type ReactNode
 } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
-import rehypeHighlight from 'rehype-highlight'
+import { rehypeHighlightShared } from '../rehype-highlight-shared'
 import remarkGfm from 'remark-gfm'
 import { remarkInsight } from '../remark-insight'
 import { InsightCard } from './InsightCard'
@@ -65,7 +66,7 @@ import {
 } from './JsonModeChatFind'
 
 const REMARK_PLUGINS = [remarkGfm, remarkInsight]
-const REHYPE_PLUGINS = [rehypeHighlight, rehypeColorHex]
+const REHYPE_PLUGINS = [rehypeHighlightShared, rehypeColorHex]
 
 // react-markdown v10's Components type only lists known HTML tag names,
 // but the runtime accepts any string tag; cast to register our custom
@@ -155,12 +156,23 @@ function rehypeColorHex() {
 /** ReactMarkdown wrapper that dynamically injects the find-highlight
  *  rehype plugin when Cmd+F has an active query. Kept as a small
  *  component so the plugins array is memoized per-query rather than
- *  rebuilt on every parent render. */
-function MarkdownWithFind({ children }: { children: string }): JSX.Element {
+ *  rebuilt on every parent render.
+ *
+ *  memo() matters here because renderEntries builds fresh elements for
+ *  every row on every render, so without it each streamed token
+ *  re-parsed the markdown of every message in the scrollback, not just
+ *  the one that grew. The find context value is itself useMemo'd on
+ *  [query, currentHitBlockId, forceOpenTick] — none of which move while
+ *  a message streams — so the memo actually gets to bail. */
+const MarkdownWithFind = memo(function MarkdownWithFind({
+  children
+}: {
+  children: string
+}): JSX.Element {
   const { query } = useFind()
   const rehypePlugins = useMemo(() => {
     if (!query) return REHYPE_PLUGINS
-    return [rehypeHighlight, createFindRehypePlugin(query)]
+    return [rehypeHighlightShared, createFindRehypePlugin(query)]
   }, [query])
   return (
     <ReactMarkdown
@@ -171,7 +183,7 @@ function MarkdownWithFind({ children }: { children: string }): JSX.Element {
       {children}
     </ReactMarkdown>
   )
-}
+})
 
 // Worktree file list cache. Same TTL/shape as CommandPalette uses — the
 // list rarely changes during a typing session, and listAllFiles shells
