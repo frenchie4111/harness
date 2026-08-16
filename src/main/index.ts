@@ -33,7 +33,8 @@ import { fixPathFromLoginShell } from './path-fix'
 import { parseCliFlags, USAGE, type CliFlags } from './cli-args'
 import { PlaywrightBrowserManager } from './browser-manager-playwright'
 import type { BrowserManagerLike } from './browser-manager-types'
-import { PerfMonitor } from './perf-monitor'
+import { PerfMonitor, formatRendererSample } from './perf-monitor'
+import type { RendererPerfSample } from '../shared/perf-types'
 import {
   setGitHubApiRecorder,
   setGitHubApiLoggingEnabled,
@@ -3121,15 +3122,18 @@ function registerIpcHandlers(): void {
 
   // Performance monitor
   transport.onRequest('perf:getMetrics', (_ctx) => perfMonitor.getMetrics())
-  transport.onSignal('perf:logSlowRender', (_ctx, ...args: unknown[]) => {
-    const id = String(args[0] ?? '')
-    const ms = typeof args[1] === 'number' ? args[1] : 0
-    const phase = String(args[2] ?? '')
-    perfLog('render-slow', `${id} ${ms.toFixed(1)}ms ${phase}`, {
-      id,
-      ms: +ms.toFixed(2),
-      phase
-    })
+  // One aggregated bucket per second per renderer, and only when a threshold
+  // tripped or the 30s heartbeat came due — the renderer decides what's
+  // interesting so a stalling renderer isn't also flooding IPC.
+  transport.onSignal('perf:reportRendererSample', (_ctx, ...args: unknown[]) => {
+    const sample = args[0] as RendererPerfSample | undefined
+    if (!sample || typeof sample !== 'object' || !Array.isArray(sample.flags)) return
+    perfMonitor.recordRendererSample(sample)
+    perfLog(
+      sample.flags.length > 0 ? 'renderer-slow' : 'renderer-snapshot',
+      formatRendererSample(sample),
+      sample
+    )
   })
 
   // GitHub API debug log — ring buffer + per-minute rollups + last-seen

@@ -126,8 +126,8 @@ export interface ChangedFile {
   deletions?: number
 }
 
-import type { PerfMetrics, PerfSample } from '../shared/perf-types'
-export type { PerfMetrics, PerfSample }
+import type { PerfMetrics, PerfSample, RendererPerfSample } from '../shared/perf-types'
+export type { PerfMetrics, PerfSample, RendererPerfSample }
 
 import type {
   GitHubApiEntry,
@@ -515,7 +515,7 @@ export interface ElectronAPI {
   devSimulateUpdate(state: 'available' | 'downloading' | 'downloaded' | 'clear'): Promise<boolean>
 
   getPerfMetrics(): Promise<PerfMetrics>
-  perfLogSlowRender(id: string, ms: number, phase: string): void
+  perfReportRendererSample(sample: RendererPerfSample): void
 
   getGitHubApiLog(): Promise<GitHubApiLogSnapshot>
   clearGitHubApiLog(): Promise<boolean>
