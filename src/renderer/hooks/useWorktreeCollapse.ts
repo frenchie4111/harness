@@ -22,20 +22,29 @@ function defaultCollapsed(key: GroupKey): boolean {
   return key === 'merged' || key === 'snoozed'
 }
 
+function loadFlagMap(key: string): Record<string, boolean> {
+  try {
+    const saved = localStorage.getItem(key)
+    return saved ? JSON.parse(saved) : {}
+  } catch {
+    return {}
+  }
+}
+
 export function useWorktreeCollapse(): WorktreeCollapseState {
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem('harness:collapsedGroups')
-      return saved ? JSON.parse(saved) : {}
-    } catch {
-      return {}
-    }
-  })
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() =>
+    loadFlagMap('harness:collapsedGroups')
+  )
   useEffect(() => {
     localStorage.setItem('harness:collapsedGroups', JSON.stringify(collapsedGroups))
   }, [collapsedGroups])
 
-  const [collapsedRepos, setCollapsedRepos] = useState<Record<string, boolean>>({})
+  const [collapsedRepos, setCollapsedRepos] = useState<Record<string, boolean>>(() =>
+    loadFlagMap('harness:collapsedRepos')
+  )
+  useEffect(() => {
+    localStorage.setItem('harness:collapsedRepos', JSON.stringify(collapsedRepos))
+  }, [collapsedRepos])
 
   const [unifiedRepos, setUnifiedRepos] = useState<boolean>(() => {
     const saved = localStorage.getItem('harness:unifiedRepos')
