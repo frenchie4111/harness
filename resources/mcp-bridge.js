@@ -253,7 +253,7 @@ const TOOLS = [
         worktree: {
           type: 'string',
           description:
-            'Which worktree to message — its display alias, its branch name, or its absolute path. A `@worktree:<branch>` token in the user\'s message is a worktree mention picked from the composer; pass it here as-is (with or without the `worktree:` prefix) to message that worktree. Call list_worktrees first if you are unsure what exists.'
+            'Which worktree to message — a `<repo>/<branch>` handle, its display alias, or its absolute path. A bare branch name works only when it is unique across every open repo, which `main` never is. A `@worktree:<repo>/<branch>` token in the user\'s message is a worktree mention picked from the composer; pass it here as-is (with or without the `worktree:` prefix). Call list_worktrees first if you are unsure what exists.'
         },
         message: {
           type: 'string',

@@ -1,5 +1,6 @@
 import type { AppState } from '../shared/state'
 import { getLeaves } from '../shared/state/terminals'
+import { worktreeHandle } from '../shared/state/worktrees'
 
 export interface ChatDeliveryDeps {
   /** Injects a user turn into a running json-mode chat session. */
@@ -59,16 +60,17 @@ function pickSleptTab(state: AppState, worktreePath: string): string | null {
 const WORKTREE_HANDLE_PREFIX = 'worktree:'
 
 /** Resolve a caller-supplied worktree handle. Absolute path wins outright;
- *  otherwise alias and branch are matched case-insensitively. An ambiguous
- *  handle is an error rather than a guess — silently picking one of two
- *  worktrees would deliver a message somewhere the sender didn't intend. */
+ *  otherwise a `<repo>/<branch>` handle, alias, and bare branch are matched
+ *  case-insensitively. An ambiguous handle is an error rather than a guess —
+ *  silently picking one of two worktrees would deliver a message somewhere
+ *  the sender didn't intend. */
 export function resolveWorktreeQuery(
   state: AppState,
   query: string
 ): { path: string } | { error: string } {
-  // The chat composer's @-mention inserts `@worktree:<branch>`, and agents
-  // routinely pass that token through verbatim. Strip the prefix so it
-  // resolves instead of 404ing on a handle we handed them ourselves.
+  // The chat composer's @-mention inserts `@worktree:<repo>/<branch>`, and
+  // agents routinely pass that token through verbatim. Strip the prefix so
+  // it resolves instead of 404ing on a handle we handed them ourselves.
   let q = query.trim()
   if (q.toLowerCase().startsWith(WORKTREE_HANDLE_PREFIX)) {
     q = q.slice(WORKTREE_HANDLE_PREFIX.length).trim()
@@ -82,7 +84,11 @@ export function resolveWorktreeQuery(
   const matches = new Set<string>()
   for (const w of list) {
     const alias = state.aliases.byPath[w.path]
-    if (alias?.toLowerCase() === lower || w.branch.toLowerCase() === lower) {
+    if (
+      alias?.toLowerCase() === lower ||
+      w.branch.toLowerCase() === lower ||
+      worktreeHandle(w.repoRoot, w.branch).toLowerCase() === lower
+    ) {
       matches.add(w.path)
     }
   }

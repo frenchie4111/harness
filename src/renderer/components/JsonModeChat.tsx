@@ -48,6 +48,7 @@ import { buildChildrenMap, isSubAgentToolName } from './json-mode-cards/grouping
 import { JsonModeMentionPopover, type MentionPopoverItem } from './JsonModeMentionPopover'
 import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
+import { worktreeHandle } from '../../shared/state/worktrees'
 import { CLAUDE_MODELS } from '../../shared/agent-registry'
 import {
   QUESTION_TOOL_NAME,
@@ -193,9 +194,9 @@ const FILE_CACHE = new Map<string, { files: string[]; ts: number }>()
 const FILE_CACHE_TTL_MS = 10_000
 const MAX_MENTION_RESULTS = 50
 
-// `@worktree:<branch>` is what a worktree mention inserts. The prefix keeps
-// the token from reading as a relative file path — without it the agent
-// tries to Read the branch name off disk before guessing it meant a
+// `@worktree:<repo>/<branch>` is what a worktree mention inserts. The prefix
+// keeps the token from reading as a relative file path — without it the
+// agent tries to Read the branch name off disk before guessing it meant a
 // worktree. resolveWorktreeQuery (main/chat-delivery.ts) strips the same
 // prefix, so the token can be passed straight to send_message.
 const WORKTREE_MENTION_PREFIX = 'worktree:'
@@ -208,13 +209,13 @@ const MAX_WORKTREE_MENTION_RESULTS = 5
 // `@worktree` lists them all, which is how the feature is discovered.
 function matchWorktreeMentions(
   query: string,
-  targets: { path: string; branch: string; alias?: string }[]
+  targets: { path: string; handle: string; alias?: string }[]
 ): MentionPopoverItem[] {
   const q = query.trim().toLowerCase()
   if (!q) return []
   const ranked: { at: number; item: MentionPopoverItem }[] = []
   for (const t of targets) {
-    const label = `${WORKTREE_MENTION_PREFIX}${t.branch}`
+    const label = `${WORKTREE_MENTION_PREFIX}${t.handle}`
     const at = label.toLowerCase().indexOf(q)
     const aliasHit = t.alias?.toLowerCase().includes(q) ?? false
     if (at === -1 && !aliasHit) continue
@@ -1965,7 +1966,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       .filter((w) => !w.prunable && w.path !== worktreePath)
       .map((w) => ({
         path: w.path,
-        branch: w.branch,
+        handle: worktreeHandle(w.repoRoot, w.branch),
         alias: aliases.byPath[w.path]
       }))
   }, [worktreeMessagingEnabled, worktrees.list, aliases.byPath, worktreePath])
