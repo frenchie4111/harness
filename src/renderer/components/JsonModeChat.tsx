@@ -2300,14 +2300,16 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   const permissionMode = session?.permissionMode ?? 'default'
 
   function cyclePermissionMode(): void {
-    // default → acceptEdits → plan → default. Matches the order Claude's
-    // TUI cycles via shift+tab.
+    // default → acceptEdits → plan → auto → default. Matches the order
+    // Claude's TUI cycles via shift+tab.
     const next =
       permissionMode === 'default'
         ? 'acceptEdits'
         : permissionMode === 'acceptEdits'
           ? 'plan'
-          : 'default'
+          : permissionMode === 'plan'
+            ? 'auto'
+            : 'default'
     void backend.setJsonClaudePermissionMode(sessionId, next)
   }
 
@@ -2316,13 +2318,17 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       ? 'bg-success/15 text-success border-success/30'
       : permissionMode === 'plan'
         ? 'bg-accent/15 text-accent border-accent/30'
-        : 'bg-surface text-muted border-border'
+        : permissionMode === 'auto'
+          ? 'bg-warning/15 text-warning border-warning/30'
+          : 'bg-surface text-muted border-border'
   const modeBadgeLabel =
     permissionMode === 'acceptEdits'
       ? 'accept edits'
       : permissionMode === 'plan'
         ? 'plan'
-        : 'ask every time'
+        : permissionMode === 'auto'
+          ? 'auto'
+          : 'ask every time'
 
   const stateDot =
     state === 'running'

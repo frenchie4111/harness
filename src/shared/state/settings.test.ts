@@ -635,6 +635,11 @@ describe('settingsReducer', () => {
       payload: 'default'
     })
     expect(back.jsonModeDefaultPermissionMode).toBe('default')
+    const auto = apply(back, {
+      type: 'settings/jsonModeDefaultPermissionModeChanged',
+      payload: 'auto'
+    })
+    expect(auto.jsonModeDefaultPermissionMode).toBe('auto')
   })
 
   it('useSystemClaudeForJsonModeChanged toggles the diagnostic flag', () => {

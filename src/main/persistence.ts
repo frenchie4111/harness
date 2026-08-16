@@ -22,6 +22,7 @@ import {
 import type { CostsState } from '../shared/state/costs'
 import type { SnoozeEntry } from '../shared/state/snooze'
 import type { PreventSleepMode } from '../shared/state/settings'
+import type { JsonClaudePermissionMode } from '../shared/state/json-claude'
 
 export type { PersistedPane, PersistedPaneNode, PersistedTab }
 
@@ -297,7 +298,7 @@ export interface Config {
   // Permission mode applied when a brand-new json-mode session spawns.
   // Existing sessions keep whatever mode they were last in. Default
   // 'acceptEdits' (auto-allow Edit/Write, still ask for Bash etc.).
-  jsonModeDefaultPermissionMode?: 'default' | 'acceptEdits' | 'plan'
+  jsonModeDefaultPermissionMode?: JsonClaudePermissionMode
   // Minutes a json-mode tab can sit at 'waiting' before the auto-sleep
   // monitor tears its subprocess down. 0 disables auto-sleep. Default 30.
   autoSleepMinutes?: number

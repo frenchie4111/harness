@@ -40,6 +40,7 @@ import type {
 } from '../shared/transport/transport'
 import type { ElectronAPI, AgentKind } from './types'
 import type { ForkSource } from '../shared/state/worktrees'
+import type { JsonClaudePermissionMode } from '../shared/state/json-claude'
 import type {
   SidebarDetailPrefsByMode,
   PreventSleepMode,
@@ -294,7 +295,7 @@ export function buildBackend(
       req('config:setJsonModeSendOnEnter', enabled),
     setAutoScrollToBottom: (enabled: boolean) =>
       req('config:setAutoScrollToBottom', enabled),
-    setJsonModeDefaultPermissionMode: (value: 'default' | 'acceptEdits' | 'plan') =>
+    setJsonModeDefaultPermissionMode: (value: JsonClaudePermissionMode) =>
       req('config:setJsonModeDefaultPermissionMode', value),
     setAutoSleepMinutes: (value: number) => req('config:setAutoSleepMinutes', value),
     setPreventSleepMode: (value: PreventSleepMode) =>
@@ -642,7 +643,7 @@ export function buildBackend(
       req('jsonClaude:openAuthLoginTab', worktreePath),
     setJsonClaudePermissionMode: (
       id: string,
-      mode: 'default' | 'acceptEdits' | 'plan'
+      mode: JsonClaudePermissionMode
     ) => req('jsonClaude:setPermissionMode', id, mode),
     setJsonClaudeTabModel: (id: string, model: string) =>
       req('jsonClaude:setTabModel', id, model),

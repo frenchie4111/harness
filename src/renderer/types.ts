@@ -151,7 +151,10 @@ export type { PRSummary, PRMetadata, PRLookupResult }
 import type { BrowserState, BrowserTabState } from '../shared/state/browser'
 export type { BrowserState, BrowserTabState }
 
-import type { JsonClaudeChatEntry } from '../shared/state/json-claude'
+import type {
+  JsonClaudeChatEntry,
+  JsonClaudePermissionMode
+} from '../shared/state/json-claude'
 export type { JsonClaudeChatEntry }
 
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
@@ -371,7 +374,7 @@ export interface ElectronAPI {
   setJsonModeSendOnEnter(enabled: boolean): Promise<boolean>
   setAutoScrollToBottom(enabled: boolean): Promise<boolean>
   setJsonModeDefaultPermissionMode(
-    value: 'default' | 'acceptEdits' | 'plan'
+    value: JsonClaudePermissionMode
   ): Promise<boolean>
   setAutoSleepMinutes(value: number): Promise<boolean>
   setPreventSleepMode(value: PreventSleepMode): Promise<boolean>
@@ -650,7 +653,7 @@ export interface ElectronAPI {
   ): Promise<{ ok: true; tabId: string } | { ok: false; error: string }>
   setJsonClaudePermissionMode(
     id: string,
-    mode: 'default' | 'acceptEdits' | 'plan'
+    mode: JsonClaudePermissionMode
   ): Promise<boolean>
   setJsonClaudeTabModel(
     id: string,
