@@ -17,6 +17,10 @@ export interface PerfSample {
 // process than the one perf-monitor's event-loop sampler watches.
 export interface RendererPerfSample {
   t: number
+  /** Wall time this bucket actually covers. Nominally 1000ms, but Chromium
+   *  throttles timers in hidden windows, so it can be far longer. Counts
+   *  below are totals over this window, not per-second rates. */
+  elapsedMs: number
   /** Tasks the browser reported as >50ms. Catches GC, layout, non-React work. */
   longTasks: number
   longTaskTotalMs: number

@@ -18,6 +18,10 @@ export function formatRendererSample(s: RendererPerfSample): string {
   if (s.slowEvents > 0) {
     parts.push(`input=${s.slowEventMaxMs}ms(${s.slowEventName ?? '?'})`)
   }
+  // Only worth printing when the window wasn't the nominal second — it means
+  // the window was hidden and timers were throttled, so the totals above cover
+  // far more than a second of wall time.
+  if (s.elapsedMs > 1500) parts.push(`window=${(s.elapsedMs / 1000).toFixed(1)}s`)
   if (s.flags.length > 0) parts.push(`flags=${s.flags.join(',')}`)
   return parts.join(' ')
 }

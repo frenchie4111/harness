@@ -48,12 +48,19 @@ export const THRESHOLDS = {
 } as const
 
 /** Which thresholds a bucket tripped. Pure so it can be tested without a DOM.
- *  Empty result means the sample is only worth emitting as a heartbeat. */
+ *  Empty result means the sample is only worth emitting as a heartbeat.
+ *
+ *  The time-integral metrics are compared per elapsed second, not per bucket.
+ *  Chromium throttles timers in hidden windows, so a backgrounded renderer can
+ *  hand us a 60-second "bucket" — flagging its raw totals would cry wolf every
+ *  time the user switched apps, and a profiler that cries wolf gets ignored,
+ *  which is the failure mode this whole module exists to fix. */
 export function computeFlags(sample: Omit<RendererPerfSample, 'flags'>): string[] {
+  const seconds = Math.max(sample.elapsedMs, 1) / 1000
   const flags: string[] = []
-  if (sample.blockingMs >= THRESHOLDS.blockingMs) flags.push('blocking')
+  if (sample.blockingMs / seconds >= THRESHOLDS.blockingMs) flags.push('blocking')
   if (sample.longTaskMaxMs >= THRESHOLDS.longTaskMaxMs) flags.push('longtask')
-  if (sample.reactTotalMs >= THRESHOLDS.reactTotalMs) flags.push('react')
+  if (sample.reactTotalMs / seconds >= THRESHOLDS.reactTotalMs) flags.push('react')
   if (sample.slowEventMaxMs >= THRESHOLDS.slowEventMaxMs) flags.push('input')
   if (sample.heapReclaimedMB >= THRESHOLDS.heapReclaimedMB) flags.push('gc')
   return flags
@@ -106,6 +113,7 @@ class RendererPerf {
   private observers: PerformanceObserver[] = []
   private timer: ReturnType<typeof setInterval> | null = null
   private lastEmitAt = 0
+  private lastTickAt = 0
 
   private report: ((sample: RendererPerfSample) => void) | null = null
 
@@ -116,6 +124,7 @@ class RendererPerf {
     this.observeLongTasks()
     this.observeSlowEvents()
 
+    this.lastTickAt = Date.now()
     this.timer = setInterval(() => this.tick(), BUCKET_MS)
   }
 
@@ -170,6 +179,10 @@ class RendererPerf {
   }
 
   private tick(): void {
+    const now = Date.now()
+    const elapsedMs = this.lastTickAt === 0 ? BUCKET_MS : Math.max(1, now - this.lastTickAt)
+    this.lastTickAt = now
+
     const heap = readHeap()
     const usedMB = heap?.usedMB ?? 0
     const prev = this.lastHeapUsedMB
@@ -177,7 +190,8 @@ class RendererPerf {
     this.lastHeapUsedMB = heap ? usedMB : null
 
     const base: Omit<RendererPerfSample, 'flags'> = {
-      t: Date.now(),
+      t: now,
+      elapsedMs,
       longTasks: this.longTasks,
       longTaskTotalMs: round(this.longTaskTotalMs),
       longTaskMaxMs: round(this.longTaskMaxMs),
@@ -254,6 +268,7 @@ class RendererPerf {
 function emptySample(): RendererPerfSample {
   return {
     t: 0,
+    elapsedMs: BUCKET_MS,
     longTasks: 0,
     longTaskTotalMs: 0,
     longTaskMaxMs: 0,

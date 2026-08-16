@@ -5,6 +5,7 @@ import type { RendererPerfSample } from '../shared/perf-types'
 function bucket(overrides: Partial<RendererPerfSample> = {}): Omit<RendererPerfSample, 'flags'> {
   const { flags: _flags, ...rest } = {
     t: 0,
+    elapsedMs: 1000,
     longTasks: 0,
     longTaskTotalMs: 0,
     longTaskMaxMs: 0,
@@ -58,6 +59,23 @@ describe('computeFlags', () => {
 
   it('does not flag a quiet second with one cheap commit', () => {
     expect(computeFlags(bucket({ reactCommits: 1, reactTotalMs: 3, reactMaxMs: 3 }))).toEqual([])
+  })
+
+  // Chromium throttles timers in hidden windows, so a backgrounded renderer
+  // hands back one enormous bucket. Flagging its raw totals would fire every
+  // time the user switched apps.
+  it('normalizes time-integral metrics over a throttled window', () => {
+    const throttled = bucket({ elapsedMs: 60000, blockingMs: 400, reactTotalMs: 400 })
+    expect(computeFlags(throttled)).toEqual([])
+
+    const sameTotalsInOneSecond = bucket({ blockingMs: 400, reactTotalMs: 400 })
+    expect(computeFlags(sameTotalsInOneSecond).sort()).toEqual(['blocking', 'react'])
+  })
+
+  it('still flags a single long stall inside a throttled window', () => {
+    // A max, not a rate — 300ms of unresponsiveness happened regardless of
+    // how long the window was.
+    expect(computeFlags(bucket({ elapsedMs: 60000, longTaskMaxMs: 300 }))).toContain('longtask')
   })
 
   it('reports every tripped threshold, not just the first', () => {
