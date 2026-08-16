@@ -37,6 +37,7 @@ import type { RemoteServerVersion } from '../shared/state/ssh-bootstrap'
 import type { LocalTransportHandle, BackendConnection } from './types'
 import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
 import { initBackend, getBackend } from './backend'
+import { transferWorktree, type TransferRequest } from './transfer-worktree'
 
 /** Stable id for the in-process Electron backend. Mirrors the value in
  *  src/main/persistence.ts; duplicated here because main isn't
@@ -405,6 +406,21 @@ export async function initStore(): Promise<void> {
       return t
     }
   })
+
+  // POC trigger for worktree transfer — no UI yet. From devtools:
+  //   __harness_transfer.backends()
+  //   __harness_transfer.send({fromBackendId, toBackendId, worktreePath, destRepoRoot})
+  // Remove once there's a real entry point.
+  ;(window as unknown as Record<string, unknown>).__harness_transfer = {
+    backends: () =>
+      registry.listConnections().map((c) => ({ id: c.id, label: c.label, kind: c.kind })),
+    send: (req: Omit<TransferRequest, 'onProgress'>) =>
+      transferWorktree({
+        ...req,
+        // eslint-disable-next-line no-console
+        onProgress: (p) => console.log('[transfer]', p)
+      })
+  }
 
   const [snapshot, id] = await Promise.all([
     localTransport.getStateSnapshot(),

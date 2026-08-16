@@ -55,6 +55,10 @@ export interface TransferExport {
    *  a `git stash create` commit, bundled along with the branch, that
    *  the destination applies after checkout. */
   stashSha: string | null
+  /** The single content-addressed ref covering every session lochy
+   *  found for this worktree — one `save` produces one ref, not one per
+   *  session, so the import side restores all transcripts in one call. */
+  lochyRef: string | null
   totalBytes: number
   chunkCount: number
   sessions: TransferSessionSummary[]

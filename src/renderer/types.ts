@@ -268,11 +268,7 @@ export interface ElectronAPI {
     backendId: string,
     params: { worktreePath: string }
   ): Promise<TransferExport>
-  transferReadChunk(
-    backendId: string,
-    handle: string,
-    index: number
-  ): Promise<{ base64: string }>
+  transferReadChunk(backendId: string, handle: string, index: number): Promise<string>
   transferBegin(
     backendId: string,
     params: {
@@ -287,7 +283,7 @@ export interface ElectronAPI {
     handle: string,
     index: number,
     base64: string
-  ): Promise<{ received: number }>
+  ): Promise<boolean>
   transferFinish(backendId: string, handle: string): Promise<TransferImport>
   transferDiscard(backendId: string, handle: string): Promise<boolean>
   listRepos(): Promise<string[]>

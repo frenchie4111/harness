@@ -57,6 +57,15 @@ import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitMeta, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, listRecentCommitShas, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, pruneWorktrees, type MergeStrategy } from './worktree'
+import {
+  probeTransfer,
+  exportWorktree,
+  readChunk,
+  beginImport,
+  writeChunk,
+  finishImport,
+  discardTransfer
+} from './transfer'
 import { listOpenPRs, getPRByNumber, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, approvePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult, type PRLookupResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
@@ -1604,6 +1613,40 @@ function registerIpcHandlers(): void {
     if (!repoRoot) return ''
     return defaultWorktreeDir(repoRoot)
   })
+
+  // Worktree transfer. Each backend implements both halves — which
+  // half it plays is decided by the caller, which drives one backend's
+  // export against another's import.
+  transport.onRequest('transfer:probe', () => probeTransfer())
+
+  transport.onRequest('transfer:export', (_ctx, params: { worktreePath: string }) =>
+    exportWorktree(params)
+  )
+
+  transport.onRequest('transfer:readChunk', (_ctx, handle: string, index: number) =>
+    readChunk(handle, index)
+  )
+
+  transport.onRequest(
+    'transfer:begin',
+    (
+      _ctx,
+      params: { repoRoot: string; branchName: string; chunkCount: number; totalBytes: number }
+    ) => beginImport(params)
+  )
+
+  transport.onRequest(
+    'transfer:writeChunk',
+    (_ctx, handle: string, index: number, base64: string) => writeChunk(handle, index, base64)
+  )
+
+  transport.onRequest('transfer:finish', async (_ctx, handle: string) => {
+    const result = await finishImport(handle)
+    await worktreesFSM.refreshList()
+    return result
+  })
+
+  transport.onRequest('transfer:discard', (_ctx, handle: string) => discardTransfer(handle))
 
   transport.onRequest('repo:list', (_ctx) => {
     return config.repoRoots
