@@ -186,17 +186,17 @@ const runtime = detectRuntime()
 // the only way to reach a remote backend now (see
 // plans/tier-1-multi-backend-ux.md §J).
 //
-// Apply the dev-mode userData override BEFORE fixPathFromLoginShell
+// Apply the userData path override BEFORE fixPathFromLoginShell
 // runs. path-fix can call log() (on PATH change / timeout / missing
 // sentinels), and log() reads userDataDir() which caches its first
-// result — without this, the production userData path gets cached
+// result — without this, the default userData path gets cached
 // and the override inside bootLocal arrives too late. bootLocal also
-// calls applyDevModeOverride; app.setPath is idempotent, so the
+// calls applyUserDataPathOverride; app.setPath is idempotent, so the
 // second call is a no-op.
 if (runtime === 'electron') {
   const dynamicRequire = createRequire(__filename)
   const ds = dynamicRequire('./desktop-shell') as typeof import('./desktop-shell')
-  ds.applyDevModeOverride()
+  ds.applyUserDataPathOverride()
 }
 // PATH fix runs before bootLocal so PtyManager / JsonClaudeManager are
 // constructed with an environment that includes Homebrew/nvm/etc.
@@ -348,11 +348,11 @@ let desktopShellMod: DesktopShellModule | null = null
 if (runtime === 'electron') {
   const dynamicRequire = createRequire(__filename)
   desktopShellMod = dynamicRequire('./desktop-shell') as DesktopShellModule
-  // Apply dev-mode userData override BEFORE loadConfig below — the
+  // Apply the userData path override BEFORE loadConfig below — the
   // paths module caches its first resolution, so waiting until
   // createDesktopShell() (which needs the store) would pin dev to the
   // production config dir.
-  desktopShellMod.applyDevModeOverride()
+  desktopShellMod.applyUserDataPathOverride()
 }
 
 const ptyManager = new PtyManager()
