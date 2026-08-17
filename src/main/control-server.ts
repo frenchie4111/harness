@@ -305,8 +305,22 @@ async function handleRequest(
     }
 
     const branchName = String(body.branchName || '').trim()
-    const initialPrompt = typeof body.initialPrompt === 'string' ? body.initialPrompt : undefined
+    const rawInitialPrompt =
+      typeof body.initialPrompt === 'string' ? body.initialPrompt : undefined
     const aliasInput = typeof body.alias === 'string' ? body.alias : undefined
+
+    // Every prompt arriving here was written by an agent, so it gets the same
+    // sentinel a worktree-to-worktree message does. Creation from the Harness
+    // UI goes through IPC, not this route, and stays unwrapped — that one
+    // really was typed by the human.
+    const kickoffSender = resolveScope(req, deps).scope
+    const initialPrompt = rawInitialPrompt
+      ? wrapAutomatedMessage('worktree-kickoff', rawInitialPrompt, {
+          from: kickoffSender
+            ? deps.messaging.describe(kickoffSender.worktreePath)
+            : undefined
+        })
+      : rawInitialPrompt
 
     const rawAgent = typeof body.agentKind === 'string' ? body.agentKind.trim().toLowerCase() : ''
     let agentKind: AgentKind | undefined
@@ -360,10 +374,12 @@ async function handleRequest(
       if (branchName) {
         log('control', `prNumber=${prNumber} provided — ignoring branchName=${branchName}`)
       }
-      // No explicit prompt → fall back to the configured review-prompt default.
-      // Empty-string prompts ('') are honored as "no prompt" so callers can
-      // opt out explicitly.
-      const promptForPR = initialPrompt === undefined ? deps.getPrReviewPrompt() : initialPrompt
+      // No explicit prompt → fall back to the configured review-prompt default,
+      // which the human wrote in Settings and so stays unwrapped. Empty-string
+      // prompts ('') are honored as "no prompt" so callers can opt out
+      // explicitly.
+      const promptForPR =
+        rawInitialPrompt === undefined ? deps.getPrReviewPrompt() : initialPrompt
       const result = await deps.runPendingPRWorktree({
         id: randomUUID(),
         repoRoot,

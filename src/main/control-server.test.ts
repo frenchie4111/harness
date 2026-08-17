@@ -42,14 +42,21 @@ const scope: CallerScope = {
 /** Mutable so a test can flip the setting off without restarting the server —
  * mirrors how the real dep re-reads config per request. */
 let conversationForkEnabled = true
+let prReviewPrompt = ''
+
+const runPendingPR = vi.fn<
+  (params: { initialPrompt?: string }) => Promise<
+    { ok: true; path: string; branch: string } | { ok: false; error: string }
+  >
+>(async () => ({ ok: false, error: 'not used in these tests' }))
 
 const deps: ControlServerDeps = {
   getRepoRoots: () => ['/repo'],
   getWorktreeBase: () => 'remote',
-  getPrReviewPrompt: () => '',
+  getPrReviewPrompt: () => prReviewPrompt,
   broadcast: () => {},
   runWorktreeSetup: async () => {},
-  runPendingPRWorktree: async () => ({ ok: false, error: 'not used in these tests' }),
+  runPendingPRWorktree: (params) => runPendingPR(params),
   resolveCallerScope: (terminalId) =>
     terminalId === CALLER_TERMINAL || terminalId === NO_TRANSCRIPT_TERMINAL ? scope : null,
   hasForkableTranscript: (sessionId) => sessionId === CALLER_TERMINAL,
@@ -268,6 +275,47 @@ describe('control-server POST /worktrees forkConversation', () => {
     } finally {
       conversationForkEnabled = true
     }
+  })
+})
+
+describe('control-server POST /worktrees kickoff wrapping', () => {
+  beforeAll(() => {
+    runPendingPR.mockImplementation(async () => ({
+      ok: true,
+      path: EXPLICIT_WORKTREE,
+      branch: 'pr-7'
+    }))
+  })
+
+  it('wraps an agent-supplied initialPrompt with the caller as sender', async () => {
+    runPendingPR.mockClear()
+    const r = await call('POST', '/worktrees', {
+      prNumber: 7,
+      initialPrompt: 'refactor the auth flow'
+    })
+    expect(r.status).toBe(200)
+    expect(parseAutomatedMessage(runPendingPR.mock.calls[0][0].initialPrompt)).toEqual({
+      source: 'worktree-kickoff',
+      body: 'refactor the auth flow',
+      from: 'Callers Tree'
+    })
+  })
+
+  it('leaves the configured PR-review default unwrapped', async () => {
+    runPendingPR.mockClear()
+    prReviewPrompt = 'review this PR'
+    try {
+      await call('POST', '/worktrees', { prNumber: 7 })
+      expect(runPendingPR.mock.calls[0][0].initialPrompt).toBe('review this PR')
+    } finally {
+      prReviewPrompt = ''
+    }
+  })
+
+  it('honors an empty-string prompt as opt-out rather than wrapping it', async () => {
+    runPendingPR.mockClear()
+    await call('POST', '/worktrees', { prNumber: 7, initialPrompt: '' })
+    expect(runPendingPR.mock.calls[0][0].initialPrompt).toBeUndefined()
   })
 })
 
