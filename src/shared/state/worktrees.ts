@@ -23,6 +23,14 @@ export interface Worktree {
   prunableReason?: string
 }
 
+/** Handle for a worktree in agent-facing text: `<repo>/<branch>`. Branch
+ *  alone collides the moment two repos are open — every repo has a `main` —
+ *  and an ambiguous handle is a hard error at resolve time, not a guess.
+ *  Shared so the composer's @-mention and resolveWorktreeQuery agree. */
+export function worktreeHandle(repoRoot: string, branch: string): string {
+  return `${repoRoot.split('/').pop() || repoRoot}/${branch}`
+}
+
 /** Merge per-repo `listWorktrees` results into a flat list, preserving the
  * caller's prior slice for any repo whose lookup failed (indicated by null).
  * Purpose: a transient `git worktree list` failure for one repo shouldn't

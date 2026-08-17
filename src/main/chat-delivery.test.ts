@@ -110,6 +110,26 @@ describe('resolveWorktreeQuery', () => {
     expect(resolveWorktreeQuery(state, 'feat/billing')).toEqual({ path: B })
   })
 
+  it('strips the worktree: prefix from a composer mention token', () => {
+    expect(resolveWorktreeQuery(state, 'worktree:repo/feat/billing')).toEqual({ path: B })
+    expect(resolveWorktreeQuery(state, 'Worktree: Auth Refactor')).toEqual({ path: A })
+  })
+
+  it('disambiguates a branch shared across repos via the <repo>/<branch> handle', () => {
+    const twoRepos = makeState({
+      worktrees: [
+        worktree(A, 'main', { repoRoot: '/src/harness' }),
+        worktree(B, 'main', { repoRoot: '/src/chicken' })
+      ]
+    })
+    expect(resolveWorktreeQuery(twoRepos, 'harness/main')).toEqual({ path: A })
+    expect(resolveWorktreeQuery(twoRepos, 'worktree:chicken/main')).toEqual({ path: B })
+    // The bare branch is still ambiguous, and stays an error rather than a guess.
+    expect(resolveWorktreeQuery(twoRepos, 'main')).toEqual({
+      error: '"main" matches 2 worktrees — pass the absolute path instead'
+    })
+  })
+
   it('errors on an unknown handle', () => {
     expect(resolveWorktreeQuery(state, 'nope')).toEqual({
       error: 'no worktree matching "nope"'

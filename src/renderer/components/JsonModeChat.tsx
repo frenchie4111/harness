@@ -34,7 +34,7 @@ import {
   GitBranchPlus
 } from 'lucide-react'
 import { openForkIntoWorktree } from './NewWorktreeScreen'
-import { useJsonClaudeSession, useSettings } from '../store'
+import { useAliases, useJsonClaudeSession, useSettings, useWorktrees } from '../store'
 import { useBackend } from '../backend'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
@@ -48,6 +48,7 @@ import { buildChildrenMap, isSubAgentToolName } from './json-mode-cards/grouping
 import { JsonModeMentionPopover, type MentionPopoverItem } from './JsonModeMentionPopover'
 import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
+import { worktreeHandle } from '../../shared/state/worktrees'
 import { CLAUDE_MODELS } from '../../shared/agent-registry'
 import {
   QUESTION_TOOL_NAME,
@@ -192,6 +193,49 @@ const MarkdownWithFind = memo(function MarkdownWithFind({
 const FILE_CACHE = new Map<string, { files: string[]; ts: number }>()
 const FILE_CACHE_TTL_MS = 10_000
 const MAX_MENTION_RESULTS = 50
+
+// `@worktree:<repo>/<branch>` is what a worktree mention inserts. The prefix
+// keeps the token from reading as a relative file path — without it the
+// agent tries to Read the branch name off disk before guessing it meant a
+// worktree. resolveWorktreeQuery (main/chat-delivery.ts) strips the same
+// prefix, so the token can be passed straight to send_message.
+const WORKTREE_MENTION_PREFIX = 'worktree:'
+const MAX_WORKTREE_MENTION_RESULTS = 5
+
+// Substring rather than fuzzy: worktree rows sort above the file matches,
+// so a loose subsequence hit ("src" matching s…r…c somewhere in a branch)
+// would steal the default selection from the file the user was after.
+// Matching against the full `worktree:<branch>` label means typing
+// `@worktree` lists them all, which is how the feature is discovered.
+function matchWorktreeMentions(
+  query: string,
+  targets: { path: string; handle: string; alias?: string }[]
+): MentionPopoverItem[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return []
+  const ranked: { at: number; item: MentionPopoverItem }[] = []
+  for (const t of targets) {
+    const label = `${WORKTREE_MENTION_PREFIX}${t.handle}`
+    const at = label.toLowerCase().indexOf(q)
+    const aliasHit = t.alias?.toLowerCase().includes(q) ?? false
+    if (at === -1 && !aliasHit) continue
+    ranked.push({
+      at: at === -1 ? Number.MAX_SAFE_INTEGER : at,
+      item: {
+        key: `worktree:${t.path}`,
+        label,
+        labelMatchIndices:
+          at === -1
+            ? undefined
+            : Array.from({ length: q.length }, (_, i) => at + i),
+        description: t.alias,
+        icon: <GitBranch className="icon-xs" />
+      }
+    })
+  }
+  ranked.sort((a, b) => a.at - b.at)
+  return ranked.slice(0, MAX_WORKTREE_MENTION_RESULTS).map((r) => r.item)
+}
 
 // Pre-baked descriptions for built-in slash commands. Skills + plugin
 // commands appear in the menu via session.slashCommands (sourced from
@@ -1185,8 +1229,11 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     jsonModeSendOnEnter: sendOnEnter,
     autoScrollToBottom,
     defaultClaudeTabType,
-    conversationForkEnabled
+    conversationForkEnabled,
+    worktreeMessagingEnabled
   } = useSettings()
+  const worktrees = useWorktrees()
+  const aliases = useAliases()
   const cameFromTerminalDefault = defaultClaudeTabType === 'xterm'
   const isMac =
     typeof window !== 'undefined' &&
@@ -1918,6 +1965,19 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
 
   const currentModelDisplay = claudeModelDisplayName(session?.currentModel)
 
+  // Gated on the setting that grants the agent send_message in the first
+  // place — tagging a worktree it has no tool to reach is a dead end.
+  const worktreeMentionTargets = useMemo(() => {
+    if (!worktreeMessagingEnabled) return []
+    return worktrees.list
+      .filter((w) => !w.prunable && w.path !== worktreePath)
+      .map((w) => ({
+        path: w.path,
+        handle: worktreeHandle(w.repoRoot, w.branch),
+        alias: aliases.byPath[w.path]
+      }))
+  }, [worktreeMessagingEnabled, worktrees.list, aliases.byPath, worktreePath])
+
   const mentionItems = useMemo<MentionPopoverItem[]>(() => {
     if (mentionDismissed === draft) return []
     if (modelPickerTrigger !== null) {
@@ -2002,7 +2062,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
         }
       })
     }
-    if (mentionTrigger !== null && files.length > 0) {
+    if (mentionTrigger !== null) {
       const q = mentionTrigger.query
       let ranked: { item: string; indices?: number[] }[]
       if (q.length === 0) {
@@ -2012,12 +2072,13 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           .slice(0, MAX_MENTION_RESULTS)
           .map((r) => ({ item: r.item, indices: r.indices }))
       }
-      return ranked.map((r) => ({
+      const fileRows = ranked.map((r) => ({
         key: r.item,
         label: r.item,
         labelMatchIndices: r.indices,
         icon: <FileText className="icon-xs" />
       }))
+      return [...matchWorktreeMentions(q, worktreeMentionTargets), ...fileRows]
     }
     return []
   }, [
@@ -2025,6 +2086,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     mentionTrigger,
     modelPickerTrigger,
     files,
+    worktreeMentionTargets,
     draft,
     mentionDismissed,
     session?.slashCommands,
