@@ -17,7 +17,7 @@
 //
 // Construction split:
 //   - `createDesktopShell` runs synchronously, before anything that
-//     reads `userDataDir()` is touched. It applies the dev-mode userData
+//     reads `userDataDir()` is touched. It applies the userData path
 //     override (so persistence/secrets/debug all see "Harness (Dev)"),
 //     creates the BrowserManager, and wires the ElectronServerTransport.
 //   - `startDesktopShell` is called after index.ts has registered all
@@ -100,17 +100,23 @@ export function resolveWebClientDir(): string {
  *  secrets.enc / etc. Must run before any module reads userDataDir() —
  *  that's `loadConfig()` in index.ts — so index.ts calls this right
  *  after requiring desktop-shell, not inside `createDesktopShell`
- *  (which only runs later, once the store + config exist). */
-export function applyDevModeOverride(): void {
-  if (!app.isPackaged) {
-    app.setPath('userData', join(app.getPath('appData'), 'Harness (Dev)'))
-  }
+ *  (which only runs later, once the store + config exist).
+ *
+ *  Packaged builds pin the literal 'Harness' — the value Electron derived
+ *  from the pre-rename productName. Letting it track productName would
+ *  resolve every existing install to a new empty dir and orphan their
+ *  config, secrets, and pane layout. */
+export function applyUserDataPathOverride(): void {
+  app.setPath(
+    'userData',
+    join(app.getPath('appData'), app.isPackaged ? 'Harness' : 'Harness (Dev)')
+  )
 }
 
 /** First call that needs the store. Constructs the BrowserManager +
  *  Electron transport that index.ts wires into the compound transport.
- *  The dev-mode userData override happens earlier via
- *  `applyDevModeOverride()` — see that function for why. */
+ *  The userData path override happens earlier via
+ *  `applyUserDataPathOverride()` — see that function for why. */
 export function createDesktopShell(init: DesktopShellInit): DesktopShellEarlyHandle {
   const browserManager = new BrowserManager()
   const transport = new ElectronServerTransport(init.store, init.perfMonitor)
