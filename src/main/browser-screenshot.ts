@@ -34,3 +34,30 @@ export function resolveScreenshotTarget(
   }
   return { cssSize, outputSize, scale }
 }
+
+/** Why a tab can't be captured at all, or null when its viewport is usable.
+ *
+ * A view that has never been laid out reports 0×0 bounds, which used to yield
+ * an empty NativeImage and a 200 response carrying an empty string.
+ */
+export function viewportCaptureError(bounds: {
+  width: number
+  height: number
+}): string | null {
+  if (!(bounds.width >= 1) || !(bounds.height >= 1)) {
+    return `tab viewport is ${bounds.width}x${bounds.height} — nothing to capture`
+  }
+  return null
+}
+
+/** Why an encoded capture is unusable, or null when it looks like a real image. */
+export function encodedCaptureError(
+  size: { width: number; height: number },
+  byteLength: number
+): string | null {
+  if (size.width < 1 || size.height < 1) {
+    return `capture returned a ${size.width}x${size.height} image`
+  }
+  if (byteLength < 1) return 'capture encoded to 0 bytes'
+  return null
+}

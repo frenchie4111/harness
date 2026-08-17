@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   startControlServer,
   getControlServerInfo,
@@ -6,6 +6,7 @@ import {
   type CallerScope
 } from './control-server'
 import type { ChatDeliveryResult } from './chat-delivery'
+import type { CaptureResult } from './browser-manager-types'
 import { parseAutomatedMessage } from '../shared/state/json-claude'
 
 // Integration test for the local HTTP control server. Exercises the
@@ -50,6 +51,10 @@ const runPendingPR = vi.fn<
   >
 >(async () => ({ ok: false, error: 'not used in these tests' }))
 
+const BROWSER_TAB = 'browser-tab-1'
+let browserEnabled = false
+let captureResult: CaptureResult | null = null
+
 const deps: ControlServerDeps = {
   getRepoRoots: () => ['/repo'],
   getWorktreeBase: () => 'remote',
@@ -61,14 +66,14 @@ const deps: ControlServerDeps = {
     terminalId === CALLER_TERMINAL || terminalId === NO_TRANSCRIPT_TERMINAL ? scope : null,
   hasForkableTranscript: (sessionId) => sessionId === CALLER_TERMINAL,
   getConversationForkEnabled: () => conversationForkEnabled,
-  getBrowserPerms: () => ({ enabled: false, mode: 'full' }),
+  getBrowserPerms: () => ({ enabled: browserEnabled, mode: 'full' }),
   getWorktreeStatus: () => ({ status: 'no-pr', statusLabel: 'Active' }),
   browser: {
     listTabsForWorktree: () => [],
-    getTabWorktree: () => null,
+    getTabWorktree: (tabId) => (tabId === BROWSER_TAB ? CALLER_WORKTREE : null),
     getTabUrl: () => null,
     getTabConsoleLogs: () => [],
-    screenshotTab: async () => null,
+    screenshotTab: async () => captureResult,
     getTabDom: async () => null,
     getTabClickables: async () => null,
     navigateTab: () => {},
@@ -108,6 +113,19 @@ const deps: ControlServerDeps = {
 
 let baseUrl: string
 let token: string
+
+async function get(
+  path: string
+): Promise<{ status: number; json: Record<string, unknown> }> {
+  const res = await fetch(`${baseUrl}${path}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'X-Harness-Terminal-Id': CALLER_TERMINAL
+    }
+  })
+  const text = await res.text()
+  return { status: res.status, json: text ? (JSON.parse(text) as Record<string, unknown>) : {} }
+}
 
 async function call(
   method: 'POST' | 'DELETE',
@@ -431,5 +449,42 @@ describe('control-server /messages endpoint', () => {
       { terminalId: 'unknown-terminal' }
     )
     expect(r.status).toBe(404)
+  })
+})
+
+describe('control-server /browser/screenshot endpoint', () => {
+  beforeAll(() => {
+    browserEnabled = true
+  })
+  afterAll(() => {
+    browserEnabled = false
+  })
+
+  it('returns the encoded image with its format and mime type', async () => {
+    captureResult = { data: 'AAAA', format: 'jpeg' }
+    const r = await get(`/browser/screenshot?tabId=${BROWSER_TAB}`)
+    expect(r.status).toBe(200)
+    expect(r.json).toMatchObject({ data: 'AAAA', format: 'jpeg', mimeType: 'image/jpeg' })
+  })
+
+  it('surfaces the capture failure reason verbatim as a 500', async () => {
+    captureResult = { error: 'tab viewport is 0x0 — nothing to capture' }
+    const r = await get(`/browser/screenshot?tabId=${BROWSER_TAB}`)
+    expect(r.status).toBe(500)
+    expect(r.json.error).toBe('tab viewport is 0x0 — nothing to capture')
+  })
+
+  it('fails instead of serving an empty image, the old silent HTTP-200 path', async () => {
+    captureResult = { data: '', format: 'jpeg' } as CaptureResult
+    const r = await get(`/browser/screenshot?tabId=${BROWSER_TAB}`)
+    expect(r.status).toBe(500)
+    expect(r.json.data).toBeUndefined()
+  })
+
+  it('reports a vanished tab rather than an empty body', async () => {
+    captureResult = null
+    const r = await get(`/browser/screenshot?tabId=${BROWSER_TAB}`)
+    expect(r.status).toBe(500)
+    expect(r.json.error).toMatch(/no longer available/)
   })
 })
