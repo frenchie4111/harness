@@ -54,7 +54,7 @@ async function getFirstTagContaining(worktreePath: string, sha: string): Promise
 async function doFetch(url: string, token: string | null): Promise<Response> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
-    'User-Agent': 'Harness',
+    'User-Agent': 'Ness',
     'X-GitHub-Api-Version': '2022-11-28'
   }
   if (token) headers.Authorization = `Bearer ${token}`
@@ -512,7 +512,7 @@ ${PR_FRAGMENT}`
     method: 'POST',
     headers: {
       Accept: 'application/vnd.github+json',
-      'User-Agent': 'Harness',
+      'User-Agent': 'Ness',
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json'
     },
@@ -763,7 +763,7 @@ ${PR_FRAGMENT}`
     method: 'POST',
     headers: {
       Accept: 'application/vnd.github+json',
-      'User-Agent': 'Harness',
+      'User-Agent': 'Ness',
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json'
     },
@@ -814,7 +814,7 @@ export async function approvePR(
         method: 'POST',
         headers: {
           Accept: 'application/vnd.github+json',
-          'User-Agent': 'Harness',
+          'User-Agent': 'Ness',
           'X-GitHub-Api-Version': '2022-11-28',
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -852,7 +852,7 @@ export async function isRepoStarred(token: string, owner: string, repo: string):
     const res = await trackedFetch(`https://api.github.com/user/starred/${owner}/${repo}`, {
       headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'Harness',
+        'User-Agent': 'Ness',
         Authorization: `Bearer ${token}`
       }
     })
@@ -871,7 +871,7 @@ export async function unstarRepo(token: string, owner: string, repo: string): Pr
       method: 'DELETE',
       headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'Harness',
+        'User-Agent': 'Ness',
         Authorization: `Bearer ${token}`,
         'X-GitHub-Api-Version': '2022-11-28'
       }
@@ -890,7 +890,7 @@ export async function starRepo(token: string, owner: string, repo: string): Prom
       method: 'PUT',
       headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'Harness',
+        'User-Agent': 'Ness',
         Authorization: `Bearer ${token}`,
         'X-GitHub-Api-Version': '2022-11-28',
         'Content-Length': '0'
@@ -933,7 +933,7 @@ export async function mergePR(
       method: 'PUT',
       headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'Harness',
+        'User-Agent': 'Ness',
         'X-GitHub-Api-Version': '2022-11-28',
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'
@@ -1201,7 +1201,7 @@ export async function listOpenPRs(repoRoot: string): Promise<PRSummary[] | null>
       method: 'POST',
       headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'Harness',
+        'User-Agent': 'Ness',
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
@@ -1285,7 +1285,7 @@ interface GraphQLSearchPR {
 }
 
 /** Fetch PRs where the viewer is a requested reviewer, filtered to the
- *  upstream repo of each Harness repo. Uses GitHub's search API with a
+ *  upstream repo of each Ness repo. Uses GitHub's search API with a
  *  multi-repo query. Returns a map keyed by repoRoot. Repos with no
  *  matching PRs get an empty array so the caller can distinguish "no PRs"
  *  from "not queried."
@@ -1305,7 +1305,7 @@ export async function fetchAssignedPRs(
 
   // GitHub search accepts multiple `repo:` qualifiers; they OR together.
   // Cap at ~30 to keep the URL/query length sane — repositories.length in
-  // Harness is realistically 1–5, so this is a very generous ceiling.
+  // Ness is realistically 1–5, so this is a very generous ceiling.
   const repoQualifiers = lookups
     .slice(0, 30)
     .map((l) => `repo:${l.nameWithOwner}`)
@@ -1328,7 +1328,7 @@ export async function fetchAssignedPRs(
     method: 'POST',
     headers: {
       Accept: 'application/vnd.github+json',
-      'User-Agent': 'Harness',
+      'User-Agent': 'Ness',
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json'
     },
@@ -1422,7 +1422,7 @@ export async function testToken(token: string): Promise<{ ok: boolean; username?
     const res = await trackedFetch('https://api.github.com/user', {
       headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'Harness',
+        'User-Agent': 'Ness',
         Authorization: `Bearer ${token}`
       }
     })

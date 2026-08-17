@@ -21,20 +21,20 @@ export interface AgentSpawnOpts {
 export interface AgentModule {
   hookEvents: string[]
   defaultCommand: string
-  /** If true, Harness generates the session ID and passes it to the agent
+  /** If true, Ness generates the session ID and passes it to the agent
    * CLI on first spawn (e.g. Claude's --session-id). If false, the agent
-   * assigns its own ID and Harness discovers it from the first hook event. */
+   * assigns its own ID and Ness discovers it from the first hook event. */
   assignsSessionId: boolean
   /** Install status hooks at the agent's user-scope settings file
    *  (~/.claude/settings.json for Claude, ~/.codex/hooks.json for Codex).
    *  The hook command is gated on $HARNESS_TERMINAL_ID so sessions spawned
-   *  outside Harness are untouched. */
+   *  outside Ness are untouched. */
   installHooks(): void
   hooksInstalled(): boolean
-  /** Remove only the Harness-marked entries from the user-scope settings file.
+  /** Remove only the Ness-marked entries from the user-scope settings file.
    *  Any user-authored hooks and unrelated keys survive. */
   uninstallHooks(): void
-  /** Migration: strip legacy Harness entries from a single worktree's
+  /** Migration: strip legacy Ness entries from a single worktree's
    *  per-worktree settings file. Returns true if the file was modified. */
   stripHooksFromWorktree(worktreePath: string): boolean
   sessionFileExists(cwd: string, sessionId: string): boolean
@@ -44,7 +44,7 @@ export interface AgentModule {
    *  or return null if this payload doesn't carry one. Keeps agent-specific
    *  field names (session_id vs conversation_id) out of shared code.
    *  Agents with `assignsSessionId: true` implement this too — an in-session
-   *  reset (Claude's `/clear`) hands the conversation a new ID that Harness
+   *  reset (Claude's `/clear`) hands the conversation a new ID that Ness
    *  would otherwise never see. */
   extractSessionId?(payload: Record<string, unknown>): string | null
 }

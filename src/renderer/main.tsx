@@ -53,13 +53,13 @@ function showBootError(err: unknown): void {
     'padding:32px;max-width:640px;margin:64px auto;font-family:system-ui,sans-serif;color:#e5e5e5;background:#1a1a1a;border:1px solid #333;border-radius:8px;'
   const title = document.createElement('h1')
   title.style.cssText = 'font-size:18px;margin:0 0 12px 0;color:#ff6b6b;'
-  title.textContent = isRemote ? 'Remote connection failed' : 'Harness failed to start'
+  title.textContent = isRemote ? 'Remote connection failed' : 'Ness failed to start'
   wrap.appendChild(title)
   const body = document.createElement('p')
   body.style.cssText = 'margin:0 0 16px 0;line-height:1.5;'
   body.textContent = isRemote
     ? 'Could not reach the remote harness-server. Check that the server is running and the URL/token are correct, then restart the app.'
-    : 'The local Harness backend did not respond. Check the debug log and restart the app.'
+    : 'The local Ness backend did not respond. Check the debug log and restart the app.'
   wrap.appendChild(body)
   const details = document.createElement('pre')
   details.style.cssText =

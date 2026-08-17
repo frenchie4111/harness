@@ -7,7 +7,7 @@
 // the pre-persistence behavior.
 //
 // `HARNESS_AUTH_TOKEN` env var, when set, takes precedence over the
-// persisted secret. This is what the local Harness's SSH bootstrap
+// persisted secret. This is what the local Ness's SSH bootstrap
 // (`src/main/ssh-bootstrap.ts`) uses to dictate a known token to a
 // freshly-launched remote `harness-server` so the local WS client
 // can authenticate without having to fish anything out of the remote.

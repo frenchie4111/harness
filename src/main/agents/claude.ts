@@ -116,7 +116,7 @@ export function uninstallHooks(): void {
   log('hooks', `uninstalled Claude hooks from ${path}`)
 }
 
-/** Strip any legacy Harness entries from a worktree's .claude/settings.local.json.
+/** Strip any legacy Ness entries from a worktree's .claude/settings.local.json.
  *  Returns true if the file was modified. Leaves user-authored hooks alone. */
 export function stripHooksFromWorktree(worktreePath: string): boolean {
   const path = worktreeSettingsPath(worktreePath)
@@ -133,7 +133,7 @@ export function stripHooksFromWorktree(worktreePath: string): boolean {
   if (!changed) return false
   if (Object.keys(settings.hooks).length === 0) delete settings.hooks
   writeSettings(path, settings)
-  log('hooks', `stripped legacy Harness entries from ${path}`)
+  log('hooks', `stripped legacy Ness entries from ${path}`)
   return true
 }
 

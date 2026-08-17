@@ -14,7 +14,7 @@ import { log } from './debug'
 import { getAgent } from './agents'
 import { findTabById } from '../shared/state/terminals'
 
-// This path is also the signature we use to recognize Harness-installed
+// This path is also the signature we use to recognize Ness-installed
 // hook entries when deduping at install time. If you change it, update
 // HARNESS_HOOK_COMMAND_SIGNATURE in src/main/agents/{claude,codex,cursor}.ts
 // to match, or older installed entries become unrecognizable and
@@ -33,7 +33,7 @@ export interface PendingTool {
 //
 // Gated on $HARNESS_TERMINAL_ID / $CLAUDE_HARNESS_ID — these are only set
 // by PtyManager when it spawns a terminal on our behalf. Sessions started
-// outside Harness (plain `claude` in a terminal, CI, etc.) hit the exit 0
+// outside Ness (plain `claude` in a terminal, CI, etc.) hit the exit 0
 // on the first line and do nothing. That inert-by-default behavior is why
 // a global user-scope install is safe.
 //

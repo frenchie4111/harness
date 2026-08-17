@@ -63,7 +63,7 @@ interface WorkspaceViewProps {
    *  strip visually continues across the gap above the right column (which
    *  is offset 40px from the top so the tab bar can claim that row). */
   topBarTrailingExtendPx?: number
-  /** Hide the "Harness" title block — used when the sidebar above it is
+  /** Hide the "Ness" title block — used when the sidebar above it is
    *  already showing the title, or in single-screen mode. The repo/branch
    *  label still clears the traffic lights via the leading padding. */
   hideAppTitle?: boolean

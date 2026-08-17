@@ -1,5 +1,5 @@
 // Web-client entry point. Drives the existing renderer App over a
-// WebSocket connection to a remote Harness main process.
+// WebSocket connection to a remote Ness main process.
 //
 // All it does:
 //   1. Open the WS to the harness-server we were served from.
@@ -44,7 +44,7 @@ async function boot(): Promise<void> {
   if (!token) {
     document.body.innerHTML =
       '<pre style="padding:24px;color:#fff;background:#222;font-family:monospace;">' +
-      'No Harness auth token. Open this page from the URL printed by the main process,\n' +
+      'No Ness auth token. Open this page from the URL printed by the main process,\n' +
       'e.g. http://&lt;host&gt;:37291/?token=&lt;token&gt;.</pre>'
     return
   }
@@ -126,5 +126,5 @@ void boot().catch((err) => {
   console.error('[harness-web] boot failed', err)
   document.body.innerHTML =
     '<pre style="padding:24px;color:#fff;background:#400;font-family:monospace;">' +
-    `Harness web client failed to boot: ${String(err?.message ?? err)}</pre>`
+    `Ness web client failed to boot: ${String(err?.message ?? err)}</pre>`
 })

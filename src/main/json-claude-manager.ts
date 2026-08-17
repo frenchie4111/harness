@@ -658,7 +658,7 @@ export class JsonClaudeManager {
 
     const envVars = this.opts.getClaudeEnvVars() || {}
     // Build env for the subprocess. We start from process.env, scrub
-    // env vars that the user-scope Harness hooks key off of so the
+    // env vars that the user-scope Ness hooks key off of so the
     // subprocess's hook firings don't masquerade as the parent agent
     // tab, then layer on json-claude-specific vars.
     const childEnv: Record<string, string> = {}

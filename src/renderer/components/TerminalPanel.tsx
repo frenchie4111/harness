@@ -95,7 +95,7 @@ interface TerminalPanelProps {
    *  empty space above the right column (which sits 40px down from the top).
    *  Set per-leaf by WorkspaceView to the topmost-right leaf only. */
   topBarTrailingExtendPx?: number
-  /** Render the "Harness" app title at the start of the tab bar. Set true
+  /** Render the "Ness" app title at the start of the tab bar. Set true
    *  on the top-left leaf only so the title appears once per workspace. */
   showAppTitle?: boolean
 }

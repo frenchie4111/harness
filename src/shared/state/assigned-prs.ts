@@ -1,5 +1,5 @@
 // Slice for PRs assigned to the viewer as a requested reviewer, grouped by
-// Harness repo root. Populated by PRPoller.refreshAssignedPRs when the
+// Ness repo root. Populated by PRPoller.refreshAssignedPRs when the
 // `settings.showAssignedPRs` flag is on. The sidebar reads this slice and
 // injects phantom entries into the Reviewing group, deduped against
 // existing worktrees for the same PR.
@@ -12,7 +12,7 @@ export interface AssignedPR {
   /** Head branch name — used to dedup against existing worktrees. */
   branch: string
   /** Repo root path from `worktrees.repoRoots` — this PR belongs to that
-   *  repo's Harness entry. Used both as the dedup key and the "which
+   *  repo's Ness entry. Used both as the dedup key and the "which
    *  bucket in split-by-repo view" key. */
   repoRoot: string
   /** owner/name of the upstream repo the PR was opened against.

@@ -66,7 +66,7 @@ function isPendingId(id: string | null | undefined): id is string {
 
 // Distance from the window's left edge to the start of the workspace
 // top-bar content — clears the macOS traffic lights. Also the left edge of
-// the "Harness" title segment when it sits above the sidebar.
+// the "Ness" title segment when it sits above the sidebar.
 const TITLE_LEADING_PX = 80
 
 // Static cap for the sidebar's resizable width. The title segment above the
@@ -119,16 +119,16 @@ function DesktopApp(): JSX.Element {
   const activeAlias = useAliasForPath(activeWorktreeId)
   useEffect(() => {
     if (!activeWorktreeId) {
-      document.title = 'Harness'
+      document.title = 'Ness'
       return
     }
     const wt = worktrees.find((w) => w.path === activeWorktreeId)
     if (!wt) {
-      document.title = 'Harness'
+      document.title = 'Ness'
       return
     }
     const label = activeAlias ?? wt.branch
-    document.title = `${label} — Harness`
+    document.title = `${label} — Ness`
   }, [activeWorktreeId, activeAlias, worktrees])
   const [editingAliasPath, setEditingAliasPath] = useState<string | null>(null)
   // Pane / tab tree lives in the main-process store; the renderer reads it
@@ -187,7 +187,7 @@ function DesktopApp(): JSX.Element {
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [singleScreenMode, setSingleScreenMode] = useState(false)
   // macOS hides the traffic lights in native fullscreen — main pushes the
-  // boolean so we can drop the 80px Harness-header leading clearance.
+  // boolean so we can drop the 80px Ness-header leading clearance.
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem('harness:sidebarWidth'))
@@ -1001,10 +1001,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
             <div className="text-center mb-6">
               <img
                 src={iconUrl}
-                alt="Harness"
+                alt="Ness"
                 className="w-16 h-16 mx-auto rounded-2xl mb-4 brand-glow-amber"
               />
-              <h1 className="gradient-text text-3xl font-extrabold tracking-tight mb-2">Harness</h1>
+              <h1 className="gradient-text text-3xl font-extrabold tracking-tight mb-2">Ness</h1>
               <p className="text-fg text-sm leading-relaxed max-w-md mx-auto">
                 Run many coding agents in parallel — one window, isolated git worktrees,
                 clear status on who needs you.
@@ -1204,7 +1204,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   <div className="flex-1 min-w-0">
                     <div className="text-fg-bright text-sm font-medium">Install status hooks</div>
                     <div className="text-xs text-dim mt-0.5">
-                      Adds a small hook at <code className="bg-app/50 px-1 rounded">~/.claude/settings.json</code> (and the Codex equivalent) so Harness can tell when an agent is{' '}
+                      Adds a small hook at <code className="bg-app/50 px-1 rounded">~/.claude/settings.json</code> (and the Codex equivalent) so Ness can tell when an agent is{' '}
                       <span className="inline-flex items-center gap-1 whitespace-nowrap">
                         <span className="w-1.5 h-1.5 rounded-full bg-success" />
                         <span className="text-fg">working</span>
@@ -1216,7 +1216,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                       <span className="inline-flex items-center gap-1 whitespace-nowrap">
                         <span className="w-1.5 h-1.5 rounded-full bg-danger" />
                         <span className="text-fg">asking for approval</span>
-                      </span>. Only fires for sessions Harness launches — others are untouched.
+                      </span>. Only fires for sessions Ness launches — others are untouched.
                     </div>
                   </div>
                 </div>
@@ -1263,7 +1263,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-fg-bright text-sm font-medium">Open a git repository</div>
-                    <div className="text-xs text-dim mt-0.5">Harness creates worktrees inside a sibling folder — your original repo stays untouched.</div>
+                    <div className="text-xs text-dim mt-0.5">Ness creates worktrees inside a sibling folder — your original repo stays untouched.</div>
                   </div>
                 </div>
                 <div className="ml-8 flex items-center gap-3 flex-wrap">
@@ -1309,7 +1309,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // True when a real WorkspaceView is on screen for the active worktree —
   // mirrors the render guards in the worktrees.map below (exists, not
   // pending/deleting, has at least one tab). When false and no overlay is
-  // up, the center shows a fallback so the draggable Harness title bar is
+  // up, the center shows a fallback so the draggable Ness title bar is
   // always present (no repos, no worktrees, or panes still initializing).
   const activeWorkspaceVisible =
     !!activeWorktreeId &&
@@ -1329,7 +1329,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     !inContentOverlay && !activeWorkspaceVisible && !activeIsPending && !activeIsDeleting
   // Trailing-side extension lets the fallback's top bar visually span across
   // the right column's drag strip. The leading side is no longer extended:
-  // the left chrome column hosts its own Harness header now, so reaching
+  // the left chrome column hosts its own Ness header now, so reaching
   // over it would cover that header.
   const fallbackTrailingExtend = singleScreenMode ? 0 : rightColumnHidden ? 48 : rightPanelWidth + 1
 
@@ -1352,7 +1352,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
               onClick={() => backend.openExternal(harnessReleaseNotesUrl(updaterStatus.version))}
               className="underline hover:text-success cursor-pointer no-drag"
             >
-              Harness {updaterStatus.version}
+              Ness {updaterStatus.version}
             </a>{' '}
             is ready to install. Restart to update.
           </span>
@@ -1378,7 +1378,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         !manualUpdateBannerDismissed && (
           <div className="bg-info/15 border-b border-info/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
             <span className="text-info text-sm flex-1">
-              Harness {updaterStatus.version} is available. Download the new package from
+              Ness {updaterStatus.version} is available. Download the new package from
               GitHub Releases to update.
             </span>
             <button
@@ -1454,16 +1454,16 @@ const setQuestStep = useCallback((next: QuestStep) => {
         </div>
       )}
 
-      {/* Hooks consent banner — one-time prompt at first launch. Harness
+      {/* Hooks consent banner — one-time prompt at first launch. Ness
           installs agent status hooks at ~/.claude/settings.json (+ Codex
           equivalent). The hook command is gated on $HARNESS_TERMINAL_ID
-          so sessions spawned outside Harness are unaffected. */}
+          so sessions spawned outside Ness are unaffected. */}
       {hooksConsent === 'pending' && (
         <div className="bg-warning/15 border-b border-warning/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
           <span className="text-warning text-sm flex-1">
-            Harness installs status hooks at <code className="text-xs">~/.claude/settings.json</code> to detect
+            Ness installs status hooks at <code className="text-xs">~/.claude/settings.json</code> to detect
             agent state (waiting, processing, needs approval). They only fire for agents you
-            launch inside Harness and can be removed at any time from Settings.
+            launch inside Ness and can be removed at any time from Settings.
           </span>
           <button
             onClick={handleAcceptHooks}
@@ -1481,7 +1481,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       )}
 
       <div className="flex flex-1 min-h-0 relative">
-        {/* Collapsed-sidebar mode keeps the Harness header pinned at its
+        {/* Collapsed-sidebar mode keeps the Ness header pinned at its
             full sidebar width above the 48px CollapsedSidebar — the
             workspace top bar pushes its content right of this overlay,
             and the workspace content area extends underneath. */}

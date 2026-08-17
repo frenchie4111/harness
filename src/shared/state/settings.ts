@@ -237,7 +237,7 @@ export interface SettingsState {
    *  "Warn Before Quitting"); a tap shows a toast and does nothing. When
    *  false, ⌘Q quits immediately. */
   warnBeforeQuitting: boolean
-  /** When true, the Open PR action (⌘⇧G) opens the PR in a Harness browser
+  /** When true, the Open PR action (⌘⇧G) opens the PR in a Ness browser
    *  tab instead of handing the URL to the system browser. */
   openPrInBrowserTab: boolean
   harnessSystemPromptEnabled: boolean
@@ -338,7 +338,7 @@ export interface SettingsState {
    *  cleared only by the user. */
   announcementsMuted: boolean
   /** When true, PRs that have you as a requested reviewer (across every
-   *  repo added to Harness) show up as phantom entries in the sidebar's
+   *  repo added to Ness) show up as phantom entries in the sidebar's
    *  Reviewing group — click one and it opens the "new worktree from PR"
    *  screen with that PR pre-selected. Off by default; opt-in via
    *  Settings. */

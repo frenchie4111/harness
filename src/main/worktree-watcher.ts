@@ -16,7 +16,7 @@
 // linked worktree's <path>/.git is a gitlink FILE pointing at
 // <main>/.git/worktrees/<name>/, and that's where index, HEAD and rebase-merge/
 // actually live. Watching <path>/.git (as this did before the merge) silently
-// never fired for linked worktrees — which is most of Harness's worktrees — so
+// never fired for linked worktrees — which is most of Ness's worktrees — so
 // both consumers were quietly leaning on the slow fallback poll. We resolve the
 // gitlink once per worktree and watch the real gitdir non-recursively
 // (cross-platform: every file we filter on sits directly in the gitdir, so no

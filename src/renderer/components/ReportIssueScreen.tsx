@@ -56,7 +56,7 @@ function buildBody(params: {
       ].join('\n')
     )
   }
-  sections.push(`---\nHarness v${version} on ${navigator.platform || 'macOS'}`)
+  sections.push(`---\nNess v${version} on ${navigator.platform || 'macOS'}`)
   return sections.join('\n\n')
 }
 
@@ -276,7 +276,7 @@ export function ReportIssueScreen({
               placeholder={
                 kind === 'bug'
                   ? 'What happened? What did you expect? Steps to reproduce?'
-                  : 'What would you like Harness to do? What problem would it solve?'
+                  : 'What would you like Ness to do? What problem would it solve?'
               }
               className="w-full bg-panel border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg placeholder-faint outline-none focus:border-accent transition-colors resize-y min-h-[200px]"
             />

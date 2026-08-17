@@ -21,7 +21,7 @@ vi.mock('../debug', () => ({
 }))
 
 vi.mock('../hooks', () => ({
-  // Match the real shape — every Harness hook command embeds the
+  // Match the real shape — every Ness hook command embeds the
   // status-dir path. That substring is what dedup recognizes.
   makeHookCommand: (event: string) =>
     `bash -c 'd=/tmp/harness-status; printf "${event}" >> "$d/$h.ndjson"'`
@@ -48,9 +48,9 @@ describe('buildSpawnArgs', () => {
   const base = { command: 'claude', cwd: '/tmp/test' }
 
   it('includes --append-system-prompt when systemPrompt is provided', () => {
-    const result = buildSpawnArgs({ ...base, systemPrompt: 'You are in Harness.' })
+    const result = buildSpawnArgs({ ...base, systemPrompt: 'You are in Ness.' })
     expect(result).toContain('--append-system-prompt')
-    expect(result).toContain('You are in Harness.')
+    expect(result).toContain('You are in Ness.')
   })
 
   it('omits --append-system-prompt when systemPrompt is undefined', () => {

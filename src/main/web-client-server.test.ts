@@ -23,7 +23,7 @@ beforeAll(async () => {
   writeFileSync(join(root, 'favicon.ico'), 'fake-icon')
   writeFileSync(
     join(root, 'manifest.webmanifest'),
-    JSON.stringify({ name: 'Harness', start_url: '.', display: 'standalone' })
+    JSON.stringify({ name: 'Ness', start_url: '.', display: 'standalone' })
   )
 
   server = createWebClientServer({ token: TOKEN, rootDir: root })
@@ -133,7 +133,7 @@ describe('createWebClientServer', () => {
     expect(res.headers.get('cache-control')).toMatch(/no-store/)
     const body = (await res.json()) as Record<string, unknown>
     expect(body.start_url).toBe(`./?token=${encodeURIComponent(TOKEN)}`)
-    expect(body.name).toBe('Harness')
+    expect(body.name).toBe('Ness')
   })
 
   it('accepts bearer token for dynamic manifest', async () => {

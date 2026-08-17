@@ -733,7 +733,7 @@ function RateLimitErrorCard({
 
 /** `brand` picks the gradient chrome the harness-control tool cards use.
  *  A CI failure keeps the warning tone — it's a problem report, not a
- *  Harness feature showing off. */
+ *  Ness feature showing off. */
 function automationLabel(
   source: JsonClaudeAutomationSource,
   from?: string
@@ -752,10 +752,10 @@ function automationLabel(
       brand: true
     }
   }
-  return { label: 'Harness · CI failure', note: 'sent automatically', brand: false }
+  return { label: 'Ness · CI failure', note: 'sent automatically', brand: false }
 }
 
-/** A user turn Harness injected on the human's behalf. Sits on the user
+/** A user turn Ness injected on the human's behalf. Sits on the user
  *  side of the transcript because that's what it is on the wire, but is
  *  toned and labelled so nobody mistakes it for something they typed. */
 function AutomatedTurnCard({

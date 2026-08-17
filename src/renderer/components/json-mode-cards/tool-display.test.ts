@@ -88,9 +88,9 @@ describe('getToolDisplay', () => {
     })
   })
 
-  it('formats harness-control as "Harness · Title Cased Action"', () => {
+  it('formats harness-control as "Ness · Title Cased Action"', () => {
     const display = getToolDisplay('mcp__harness-control__create_worktree')
-    expect(display.label).toBe('Harness · Create Worktree')
+    expect(display.label).toBe('Ness · Create Worktree')
     expect(display.icon).not.toBeNull()
   })
 
@@ -145,7 +145,7 @@ describe('getToolDisplay', () => {
 describe('prettyToolName back-compat', () => {
   it('returns the same label as getToolDisplay', () => {
     expect(prettyToolName('mcp__harness-control__create_worktree')).toBe(
-      'Harness · Create Worktree'
+      'Ness · Create Worktree'
     )
     expect(prettyToolName('Read')).toBe('Read')
   })

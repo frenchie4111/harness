@@ -1,6 +1,6 @@
 {
-  "name": "Harness",
-  "short_name": "Harness",
+  "name": "Ness",
+  "short_name": "Ness",
   "description": "Manage multiple Claude Code sessions across git worktrees.",
   "start_url": ".",
   "display": "standalone",

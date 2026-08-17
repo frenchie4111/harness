@@ -46,7 +46,7 @@ const entries = new Map<string, Entry>()
  * gitdir may not exist yet when `git worktree add` is still running. */
 function resolveGitPaths(worktreePath: string): GitPaths | null {
   const cached = pathsByWorktree.get(worktreePath)
-  // Revalidated rather than trusted: Harness removes and recreates worktrees
+  // Revalidated rather than trusted: Ness removes and recreates worktrees
   // under a shared root, so a path can be reused by a different gitdir.
   if (cached && existsSync(cached.gitDir)) return cached
 

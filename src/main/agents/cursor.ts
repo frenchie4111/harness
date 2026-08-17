@@ -150,7 +150,7 @@ export function stripHooksFromWorktree(worktreePath: string): boolean {
   if (!changed) return false
   if (Object.keys(data.hooks).length === 0) delete data.hooks
   writeHooksFile(path, data)
-  log('hooks', `stripped legacy Harness Cursor Agent entries from ${path}`)
+  log('hooks', `stripped legacy Ness Cursor Agent entries from ${path}`)
   return true
 }
 

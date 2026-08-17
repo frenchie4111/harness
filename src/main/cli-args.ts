@@ -9,7 +9,7 @@ export type ParseResult =
   | { kind: 'ok'; flags: CliFlags }
   | { kind: 'error'; message: string }
 
-export const USAGE = `harness-server — Harness headless backend
+export const USAGE = `harness-server — Ness headless backend
 
 Usage: harness-server [options]
 

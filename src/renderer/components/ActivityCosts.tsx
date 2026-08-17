@@ -231,7 +231,7 @@ export function ActivityCosts(): JSX.Element {
       <div className="flex items-center gap-3 mb-6">
         <img
           src={iconUrl}
-          alt="Harness"
+          alt="Ness"
           className="w-9 h-9 rounded-xl brand-glow-amber shrink-0"
         />
         <div className="flex-1 min-w-0">
@@ -350,7 +350,7 @@ export function ActivityCosts(): JSX.Element {
         <div className="inline-flex items-center gap-1.5 text-xs text-dim">
           <Sparkles className="icon-xs text-amber-400/70" />
           <span>
-            Tracked locally by Harness{' '}
+            Tracked locally by Ness{' '}
             <span className="text-faint">– https://harness.mikelyons.org/</span>
           </span>
         </div>

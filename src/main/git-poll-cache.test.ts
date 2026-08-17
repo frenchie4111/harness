@@ -33,7 +33,7 @@ describe('cachedGitRead', () => {
     writeFileSync(join(repo, 'f.txt'), 'base\n')
     git(repo, ['add', 'f.txt'])
     git(repo, ['commit', '-q', '-m', 'base'])
-    // Harness's normal topology: a linked worktree, whose gitdir holds HEAD
+    // Ness's normal topology: a linked worktree, whose gitdir holds HEAD
     // while refs/ and packed-refs live back in the main repo's common dir.
     linked = join(root, 'wt')
     git(repo, ['worktree', 'add', '-q', '-b', 'feature', linked])

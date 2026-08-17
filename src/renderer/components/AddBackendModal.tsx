@@ -26,7 +26,7 @@ type Tab = 'url' | 'ssh'
  *    (`http://host:port/?token=...`), validates by opening a WS test
  *    connection, registers the live transport on success.
  *  - **SSH host** (new): pick a Host from `~/.ssh/config` (or type a
- *    freeform `user@host[:port]`), Harness SSHes in, installs
+ *    freeform `user@host[:port]`), Ness SSHes in, installs
  *    `harness-server` if missing, starts it detached, opens a local
  *    port forward, and persists the BackendConnection. Progress is
  *    streamed live via the sshBootstrap slice.
@@ -372,7 +372,7 @@ function SshTab({ onClose }: { onClose: () => void }): JSX.Element {
       <div className="px-5 py-4 space-y-4">
         <p className="text-xs text-dim leading-relaxed">
           Pick a host from your <code className="bg-app/40 px-1 rounded text-xs">~/.ssh/config</code>, or
-          type one. Harness will SSH in, install{' '}
+          type one. Ness will SSH in, install{' '}
           <code className="bg-app/40 px-1 rounded text-xs">harness-server</code> if it's not
           there, and open a local tunnel.
         </p>

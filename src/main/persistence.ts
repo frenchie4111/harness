@@ -79,7 +79,7 @@ export interface Config {
   // Which agent CLI to default to when creating new tabs: 'claude', 'codex', or 'cursor'.
   defaultAgent?: 'claude' | 'codex' | 'cursor'
   // Command used to launch Claude in a worktree terminal. Runs via login shell.
-  // Harness appends `--session-id <uuid>` so each tab has a stable resumable session.
+  // Ness appends `--session-id <uuid>` so each tab has a stable resumable session.
   claudeCommand?: string
   // Command used to launch Codex in a worktree terminal.
   codexCommand?: string
@@ -97,7 +97,7 @@ export interface Config {
   codexEnvVars?: Record<string, string>
   // Extra environment variables injected into the PTY when spawning a Cursor Agent tab.
   cursorEnvVars?: Record<string, string>
-  // When false, Harness won't inject `--mcp-config <path>` pointing at the
+  // When false, Ness won't inject `--mcp-config <path>` pointing at the
   // bundled harness-control MCP server. Default is enabled (undefined/true).
   harnessMcpEnabled?: boolean
   // Persisted workspace panes nested by repoRoot → worktreePath → panes[].
@@ -176,7 +176,7 @@ export interface Config {
   // read time (see resolveBottomIconOrder). Absent from disk when the
   // user hasn't reordered anything.
   bottomIconOrder?: string[]
-  // Branches that have been merged locally via Harness, keyed by branch name.
+  // Branches that have been merged locally via Ness, keyed by branch name.
   // Value is the branch-tip SHA at merge time — if the branch later advances
   // past this SHA, the flag is considered stale and the branch is no longer
   // shown as merged.
@@ -204,14 +204,14 @@ export interface Config {
   // session jsonl transcripts. Entries persist across tab/terminal death
   // so worktree-level totals survive restarts.
   costs?: CostsState
-  // When false, Harness skips background update checks on startup and
+  // When false, Ness skips background update checks on startup and
   // on its periodic timer. The manual "Check for updates" button in
   // Settings still works. Default is enabled (undefined/true).
   autoUpdateEnabled?: boolean
   // When false, ⌘Q quits immediately. When true/undefined (default), ⌘Q
   // must be held briefly to quit (Chrome-style "Warn Before Quitting").
   warnBeforeQuitting?: boolean
-  // When true, the Open PR action opens the PR in a Harness browser tab
+  // When true, the Open PR action opens the PR in a Ness browser tab
   // instead of the system browser. Default is off (undefined/false).
   openPrInBrowserTab?: boolean
   // When false, new worktrees don't symlink their .claude/settings.local.json
@@ -224,7 +224,7 @@ export interface Config {
   hooksConsent?: 'pending' | 'accepted' | 'declined'
   // One-shot migration flag: once true, we've swept all known worktrees'
   // per-worktree .claude/settings.local.json + .codex/hooks.json files
-  // and stripped any legacy Harness entries. Prevents re-running the
+  // and stripped any legacy Ness entries. Prevents re-running the
   // migration on every boot.
   hooksMigratedToGlobal?: boolean
   harnessSystemPromptEnabled?: boolean
@@ -333,7 +333,7 @@ export interface Config {
   // feed contents.
   announcementsMuted?: boolean
   // When true, the sidebar's Reviewing group surfaces PRs where the user
-  // is a requested reviewer (across all Harness repos) as phantom entries
+  // is a requested reviewer (across all Ness repos) as phantom entries
   // that open the "new worktree from PR" screen on click. Default off.
   showAssignedPRs?: boolean
   // Per-worktree scratchpad notes, nested by repoRoot → worktreePath → text.
@@ -387,9 +387,9 @@ export const DEFAULT_CLAUDE_COMMAND = 'claude'
  *  interpolated into DEFAULT_HARNESS_SYSTEM_PROMPT below rather than duplicated,
  *  because the removal is an exact string match. A user who customized their
  *  prompt keeps whatever they wrote. */
-export const HARNESS_SYSTEM_PROMPT_FORK_PARAGRAPH = `By default the new session starts blank and reads only your initialPrompt, so write that prompt as a real briefing. When the new worktree is meant to continue THIS conversation, pass \`forkConversation: true\` instead and it resumes holding everything said here. If the user asks for continuity — "pick up where we left off", "they should already know what we discussed" — that is a request to fork, not an invitation to write a longer briefing. The useful question isn't whether you could write a sufficient prompt (you almost always could); it's what that prompt would have to contain. If it needs to relay findings, discarded options, or decisions from this conversation, fork. If it's a task description someone could have written before this conversation started, don't. Don't fork for merely adjacent work, a clean retry, or code review — there the history is noise. Note that the new branch is cut from the base ref, so your uncommitted work and possibly your commits won't be there; Harness tells the forked agent where it is and what survived.`
+export const HARNESS_SYSTEM_PROMPT_FORK_PARAGRAPH = `By default the new session starts blank and reads only your initialPrompt, so write that prompt as a real briefing. When the new worktree is meant to continue THIS conversation, pass \`forkConversation: true\` instead and it resumes holding everything said here. If the user asks for continuity — "pick up where we left off", "they should already know what we discussed" — that is a request to fork, not an invitation to write a longer briefing. The useful question isn't whether you could write a sufficient prompt (you almost always could); it's what that prompt would have to contain. If it needs to relay findings, discarded options, or decisions from this conversation, fork. If it's a task description someone could have written before this conversation started, don't. Don't fork for merely adjacent work, a clean retry, or code review — there the history is noise. Note that the new branch is cut from the base ref, so your uncommitted work and possibly your commits won't be there; Ness tells the forked agent where it is and what survived.`
 
-export const DEFAULT_HARNESS_SYSTEM_PROMPT = `You are running inside Harness, a desktop app that manages multiple Claude Code sessions across git worktrees. You have access to harness-control MCP tools:
+export const DEFAULT_HARNESS_SYSTEM_PROMPT = `You are running inside Ness, a desktop app that manages multiple Claude Code sessions across git worktrees. You have access to harness-control MCP tools:
 
 - mcp__harness-control__create_worktree: Create a new worktree with its own Claude session. Always provide a detailed initialPrompt so the new session has full context. Pass an optional alias — a short, human-readable label (Title Case with spaces, like "Auth Refactor" or "PR 214 Review"), not a kebab-case branch-style slug. Think tab title, not branch name.
 - mcp__harness-control__list_worktrees: List all active worktrees.
@@ -400,7 +400,7 @@ When the user wants to start a new task, fix, or investigation that would benefi
 
 ${HARNESS_SYSTEM_PROMPT_FORK_PARAGRAPH}
 
-Harness also exposes embedded browser tabs — you can open a browser alongside the terminal and see and drive what's in it via the harness-control browser tools (scoped to this worktree only):
+Ness also exposes embedded browser tabs — you can open a browser alongside the terminal and see and drive what's in it via the harness-control browser tools (scoped to this worktree only):
 
 - create_browser_tab: open a new browser tab in this worktree (optionally navigating to a URL).
 - list_browser_tabs, get_tab_url, get_tab_dom, get_tab_console_logs: inspect what's in the tab.
@@ -411,16 +411,16 @@ Harness also exposes embedded browser tabs — you can open a browser alongside 
 
 Click targeting workflow: **prefer get_tab_clickables → match by role + name → call click_tab(cx, cy) for anything you want to click**. It's far cheaper than a screenshot + vision and far more reliable for real DOM targets. Reserve screenshot_tab for confirming a click had the visual effect you wanted, or for targets without accessible names (canvas/SVG/images). The clickables snapshot is in-viewport only and capped at 500 items — if the target isn't there, scroll_tab first, then re-snapshot. To type into a field: click_tab on it first to focus, then type_tab. type_tab also accepts a \`key\` argument (Enter, Tab, Backspace, ArrowDown, …) for submitting forms or navigating menus.
 
-Prefer these over blind curl/fetch — or shelling out to \`open <url>\`, which launches the user's default browser outside Harness where you can't see the result — when you need to verify rendered UI, inspect a dev server, debug a page the user is looking at, or confirm your changes actually work in the browser.
+Prefer these over blind curl/fetch — or shelling out to \`open <url>\`, which launches the user's default browser outside Ness where you can't see the result — when you need to verify rendered UI, inspect a dev server, debug a page the user is looking at, or confirm your changes actually work in the browser.
 
-Harness also exposes shell tabs for long-running processes — anything that wouldn't naturally exit within a few seconds (dev servers, watchers, \`tail -f\`, REPL-style tools, long builds). Drive them via the harness-control shell tools (scoped to this worktree only):
+Ness also exposes shell tabs for long-running processes — anything that wouldn't naturally exit within a few seconds (dev servers, watchers, \`tail -f\`, REPL-style tools, long builds). Drive them via the harness-control shell tools (scoped to this worktree only):
 
 - create_shell: spawn a shell tab, optionally with a command to run (\`zsh -ilc <command>\`). Returns an id — keep it for later reads.
 - list_shells: enumerate existing shell tabs (id, label, command, alive). Check here before spawning — don't start a second \`npm run dev\` if one is already running.
 - read_shell_output: read a shell's output, optionally with a \`match\` regex + \`context\` lines to scan a long log for errors/warnings without pulling back megabytes.
 - kill_shell: terminate the process AND close the tab. For natural exits (process finishes on its own), the tab stays open for inspection — kill_shell is explicit cleanup.
 
-Prefer these over running long-running commands via Bash — Bash either blocks until the process exits or loses the output stream when backgrounded, whereas a Harness shell tab keeps streaming, stays readable via read_shell_output after the fact, and is visible to the user in the Harness UI. Short one-shots (\`npm test\`, \`tsc --noEmit\`, \`git status\`) still belong on Bash.`
+Prefer these over running long-running commands via Bash — Bash either blocks until the process exits or loses the output stream when backgrounded, whereas a Ness shell tab keeps streaming, stays readable via read_shell_output after the fact, and is visible to the user in the Ness UI. Short one-shots (\`npm test\`, \`tsc --noEmit\`, \`git status\`) still belong on Bash.`
 
 export const DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN = `You are on the main worktree. This is the primary checkout — avoid making direct changes here unless the user explicitly asks. Instead, use this session to plan, review, and coordinate work across worktrees. When the user describes a task, create a new worktree for it with a thorough initialPrompt that gives the new Claude session all the context it needs to work independently. If you need to run a dev server, watcher, or other long-running process here, use the harness-control shell tools (create_shell / list_shells / read_shell_output / kill_shell) rather than Bash, so the output keeps streaming and stays readable.`
 

@@ -143,9 +143,9 @@ interface McpBrand {
 // normalization step collapses those to one key so we don't have to
 // list each spelling.
 const MCP_BRANDS: Record<string, McpBrand> = {
-  // Harness — kept here for completeness even though it's special-cased
-  // (brand gradient implies it, so the label drops the "Harness · " bit).
-  harnesscontrol: { label: 'Harness', icon: HarnessIcon },
+  // Ness — kept here for completeness even though it's special-cased
+  // (brand gradient implies it, so the label drops the "Ness · " bit).
+  harnesscontrol: { label: 'Ness', icon: HarnessIcon },
 
   // Anthropic-hosted / first-party
   notion: { label: 'Notion', icon: NotionIcon },

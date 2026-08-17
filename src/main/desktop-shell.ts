@@ -297,7 +297,7 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
       width: bounds.width,
       height: bounds.height,
       ...(bounds.x != null ? { x: bounds.x, y: bounds.y } : {}),
-      title: 'Harness',
+      title: 'Ness',
       // nativeImage path so reads work from inside app.asar and the WM
       // gets a real pixel buffer for _NET_WM_ICON on Linux. A bare string
       // path here silently fails when the file is asar-bundled.

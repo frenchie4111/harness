@@ -26,7 +26,7 @@ const STEPS: StepDescriptor[] = [
     title: 'While agents are running',
     description: 'Stay awake whenever a session is processing.'
   },
-  { step: 'always', title: 'Always', description: 'Stay awake while Harness is open.' },
+  { step: 'always', title: 'Always', description: 'Stay awake while Ness is open.' },
   {
     step: 'temporary',
     title: 'For 1 hour',

@@ -285,7 +285,7 @@ async function handleRequest(
         if (roots.length === 1) {
           repoRoot = roots[0]
         } else if (roots.length === 0) {
-          return sendJson(res, 400, { error: 'no repos open in Harness' })
+          return sendJson(res, 400, { error: 'no repos open in Ness' })
         } else {
           return sendJson(res, 400, {
             error: 'repoRoot required when multiple repos are open',
@@ -343,7 +343,7 @@ async function handleRequest(
       if (!deps.getConversationForkEnabled()) {
         return sendJson(res, 400, {
           error:
-            'conversation forking is disabled in Harness settings. Retry without forkConversation and describe the task in initialPrompt instead.'
+            'conversation forking is disabled in Ness settings. Retry without forkConversation and describe the task in initialPrompt instead.'
         })
       }
       if (agentKind !== undefined && !supportsConversationFork(agentKind)) {
@@ -361,7 +361,7 @@ async function handleRequest(
       if (!scope || !deps.hasForkableTranscript(terminalId, scope.worktreePath)) {
         return sendJson(res, 400, {
           error:
-            'forkConversation is only available from a Harness Chat tab that already has conversation history. Retry without forkConversation and describe the task in initialPrompt instead.'
+            'forkConversation is only available from a Ness Chat tab that already has conversation history. Retry without forkConversation and describe the task in initialPrompt instead.'
         })
       }
       forkSource = { sessionId: terminalId, worktreePath: scope.worktreePath }
@@ -480,13 +480,13 @@ async function handleRequest(
     const perms = deps.getBrowserPerms()
     if (!perms.enabled) {
       return sendJson(res, 403, {
-        error: 'browser tools are disabled in Harness settings'
+        error: 'browser tools are disabled in Ness settings'
       })
     }
     if (perms.mode === 'view' && FULL_CONTROL_BROWSER_PATHS.has(path)) {
       return sendJson(res, 403, {
         error:
-          'browser tools are set to View Only in Harness settings — click/type/scroll/cursor are unavailable'
+          'browser tools are set to View Only in Ness settings — click/type/scroll/cursor are unavailable'
       })
     }
     const callerWorktree = scope.worktreePath
@@ -720,7 +720,7 @@ async function handleRequest(
     if (!deps.messaging.isEnabled()) {
       return sendJson(res, 403, {
         error:
-          'worktree messaging is disabled in Harness settings (Settings → Experimental → Worktree messaging)'
+          'worktree messaging is disabled in Ness settings (Settings → Experimental → Worktree messaging)'
       })
     }
     const { scope, terminalId } = resolveScope(req, deps)
