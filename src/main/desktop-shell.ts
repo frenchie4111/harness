@@ -102,14 +102,16 @@ export function resolveWebClientDir(): string {
  *  after requiring desktop-shell, not inside `createDesktopShell`
  *  (which only runs later, once the store + config exist).
  *
- *  Packaged builds pin the literal 'Harness' — the value Electron derived
- *  from the pre-rename productName. Letting it track productName would
- *  resolve every existing install to a new empty dir and orphan their
- *  config, secrets, and pane layout. */
+ *  Packaged builds pin the lowercase 'harness' — byte-identical to what
+ *  Electron derives from package.json `name` today. Anything else (even a
+ *  case variant, which only works on case-insensitive volumes) resolves
+ *  existing installs to a new empty dir and orphans their config, secrets,
+ *  and pane layout. Note `name` also keys the macOS Safe Storage keychain
+ *  item, which is why it stays 'harness' while productName becomes Ness. */
 export function applyUserDataPathOverride(): void {
   app.setPath(
     'userData',
-    join(app.getPath('appData'), app.isPackaged ? 'Harness' : 'Harness (Dev)')
+    join(app.getPath('appData'), app.isPackaged ? 'harness' : 'Harness (Dev)')
   )
 }
 
