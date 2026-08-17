@@ -27,7 +27,7 @@ export interface PRStatus {
   url: string
   branch: string
   /** SHA of the PR's head commit. Undefined on statuses cached by an older
-   *  Harness build. The CI notifier keys its dedup on this so a failing
+   *  Ness build. The CI notifier keys its dedup on this so a failing
    *  build notifies once per commit rather than once per poll. */
   headSha?: string
   /** Author of the PR. null when GitHub redacts (rare) or pre-Reviewing-grouping data. */

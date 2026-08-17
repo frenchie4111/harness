@@ -1,6 +1,6 @@
 // Icon components for tool cards. Built-in Claude tools (Read, Edit, …)
 // reuse lucide; MCP brand logos come from react-icons/si (the Simple
-// Icons family). The Harness mark is hand-drawn since Harness isn't in
+// Icons family). The Ness mark is hand-drawn since Ness isn't in
 // Simple Icons — replicates the dot grid from resources/icon.png.
 
 import type { ComponentType } from 'react'
@@ -189,7 +189,7 @@ export const XIcon = brand(SiX)
 export const BlueskyIcon = brand(SiBluesky, '#0285FF')
 export const CloudinaryIcon = brand(SiCloudinary, '#3448C5')
 
-// Harness mark — 3×3 dot grid, Simple-Icons-style silhouette (no
+// Ness mark — 3×3 dot grid, Simple-Icons-style silhouette (no
 // background rect) so it sits next to the other brand logos without
 // reading as a miniature app icon. Pre-sampled diagonal interpolation
 // of the brand-gradient stops (amber → red → purple) — five solid

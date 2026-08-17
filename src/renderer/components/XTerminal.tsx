@@ -677,7 +677,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
         // bytes from the PTY. A mouse-aware app (e.g. Claude Code, which
         // enables mouse tracking) can't tell the click landed on one of its
         // OSC 8 hyperlinks, so it would ALSO open the URL — a second browser
-        // tab on top of Harness's own link handling. Harness's linkHandler /
+        // tab on top of Ness's own link handling. Ness's linkHandler /
         // WebLinksAddon still fire on the same click, so the link opens
         // exactly once and honors the Cmd/Ctrl modifier. Non-link clicks
         // pass through untouched so the app's mouse UI keeps working.

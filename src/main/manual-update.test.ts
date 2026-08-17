@@ -19,14 +19,14 @@ describe('isManualUpdateInstallType', () => {
 
   it('returns false on linux AppImage', () => {
     expect(
-      isManualUpdateInstallType({ APPIMAGE: '/tmp/Harness.AppImage' }, 'linux', noFiles)
+      isManualUpdateInstallType({ APPIMAGE: '/tmp/Ness.AppImage' }, 'linux', noFiles)
     ).toBe(false)
   })
 
   it('AppImage env wins even if a stray .list file is present', () => {
     expect(
       isManualUpdateInstallType(
-        { APPIMAGE: '/tmp/Harness.AppImage' },
+        { APPIMAGE: '/tmp/Ness.AppImage' },
         'linux',
         debInstalled
       )

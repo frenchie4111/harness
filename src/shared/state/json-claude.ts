@@ -70,7 +70,7 @@ export interface JsonClaudeMessageBlock {
   isError?: boolean
 }
 
-/** Sources of a user turn that Harness injected on the human's behalf.
+/** Sources of a user turn that Ness injected on the human's behalf.
  *  Extend the union when a new automation learns to talk to the chat. */
 export type JsonClaudeAutomationSource =
   | 'ci-failure'
@@ -204,7 +204,7 @@ export interface JsonClaudeChatEntry {
    *  renderer styles these as dashed/muted "queued" bubbles with
    *  a cancel affordance. Cleared on the next `result`. */
   isQueued?: boolean
-  /** For kind === 'user'. Set when Harness injected the turn itself rather
+  /** For kind === 'user'. Set when Ness injected the turn itself rather
    *  than the human typing it, so the renderer can style the bubble as an
    *  automated notification. Derived from the sentinel in the wire text by
    *  `parseAutomatedMessage`, on both the live and the transcript-hydration
@@ -334,7 +334,7 @@ export interface JsonClaudeSession {
   slashCommands: string[]
   /** Model id the running subprocess self-reported in the system/init
    *  message. This is the ground truth (what Claude is actually using)
-   *  as opposed to what Harness asked for on the CLI, so the UI can
+   *  as opposed to what Ness asked for on the CLI, so the UI can
    *  show the effective model even when no `--model` was passed and the
    *  CLI fell back to its own default. Empty until init lands. */
   currentModel?: string

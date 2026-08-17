@@ -133,10 +133,10 @@ export async function buildRelocationPreamble(ctx: RelocationContext): Promise<s
 
   const survivingLine =
     surviving ??
-    'Harness could not determine which of your earlier changes are present here. Treat every edit you made earlier as unverified and check the files before building on them.'
+    'Ness could not determine which of your earlier changes are present here. Treat every edit you made earlier as unverified and check the files before building on them.'
 
   return [
-    '[Harness] You have been moved to a new git worktree. Read this before continuing.',
+    '[Ness] You have been moved to a new git worktree. Read this before continuing.',
     '',
     'The conversation above is real and it is yours, but it happened somewhere else on disk.',
     '',

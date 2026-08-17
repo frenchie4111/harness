@@ -119,7 +119,7 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
           <div className="text-center mb-8">
             <img
               src={iconUrl}
-              alt="Harness"
+              alt="Ness"
               className="w-20 h-20 mx-auto rounded-3xl mb-5 brand-glow-amber"
             />
             <h1 className="text-3xl font-extrabold tracking-tight mb-2">

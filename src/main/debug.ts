@@ -32,9 +32,9 @@ function getLogPath(): string {
     logPath = join(userDataDir(), 'debug.log')
     rotateIfNeeded()
     try {
-      appendFileSync(logPath, `=== Claude Harness debug log session started at ${new Date().toISOString()} ===\n`)
+      appendFileSync(logPath, `=== Ness debug log session started at ${new Date().toISOString()} ===\n`)
     } catch {
-      writeFileSync(logPath, `=== Claude Harness debug log started at ${new Date().toISOString()} ===\n`)
+      writeFileSync(logPath, `=== Ness debug log started at ${new Date().toISOString()} ===\n`)
     }
   }
   return logPath

@@ -358,7 +358,7 @@ export class PRPoller {
   }
 
   /** Fetch PRs where the viewer is a requested reviewer, scoped to the
-   *  upstream repos of every Harness-added repo. Populates the
+   *  upstream repos of every Ness-added repo. Populates the
    *  `assignedPRs` slice. Guarded to skip when the setting is off; the
    *  IPC handler that toggles the setting on kicks a refresh explicitly. */
   async refreshAssignedPRs(): Promise<void> {

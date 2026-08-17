@@ -23,7 +23,7 @@ async function probeToken(token: string): Promise<{ ok: boolean; scopes: string[
     const res = await trackedFetch('https://api.github.com/user', {
       headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'Harness',
+        'User-Agent': 'Ness',
         Authorization: `Bearer ${token}`
       }
     })

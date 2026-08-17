@@ -1,9 +1,9 @@
 export type HooksConsent = 'pending' | 'accepted' | 'declined'
 
 export interface HooksState {
-  /** User's choice about installing Harness's status hooks at user scope
+  /** User's choice about installing Ness's status hooks at user scope
    *  (~/.claude/settings.json, ~/.codex/hooks.json). The hook command is
-   *  env-gated on $HARNESS_TERMINAL_ID, so sessions outside Harness aren't
+   *  env-gated on $HARNESS_TERMINAL_ID, so sessions outside Ness aren't
    *  affected. Main seeds this on boot from config.hooksConsent; the accept
    *  / decline / uninstall IPC handlers keep the persisted copy in sync. */
   consent: HooksConsent

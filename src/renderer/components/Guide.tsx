@@ -29,7 +29,7 @@ export function Guide({ onClose }: GuideProps): JSX.Element {
             </h1>
             <p className="text-lg text-muted leading-relaxed">
               A short guide to git worktrees, why they matter for agentic coding,
-              and how Harness turns them into a workflow you&apos;ll actually use.
+              and how Ness turns them into a workflow you&apos;ll actually use.
             </p>
           </div>
 
@@ -137,11 +137,11 @@ claude`}</CodeBlock>
           </Section>
 
           {/* Section 4 */}
-          <Section icon={Eye} title="What Harness does for you">
+          <Section icon={Eye} title="What Ness does for you">
             <HarnessMockup />
             <ul className="space-y-3 list-none pl-0">
               <Bullet title="One-click worktrees">
-                Create and delete them from the sidebar. Harness runs the{' '}
+                Create and delete them from the sidebar. Ness runs the{' '}
                 <code>git worktree</code> commands, handles the path naming, and
                 selects the new worktree for you.
               </Bullet>
@@ -443,7 +443,7 @@ function CollisionDiagram(): JSX.Element {
   )
 }
 
-/** Miniature preview of the Harness sidebar with status dots and PR badges. */
+/** Miniature preview of the Ness sidebar with status dots and PR badges. */
 function HarnessMockup(): JSX.Element {
   const rows = [
     { name: 'feature/onboarding', status: 'needs', pr: 'open', checks: 'pass' },

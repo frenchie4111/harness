@@ -1,6 +1,6 @@
 // Payload shapes for the AskUserQuestion tool.
 //
-// The tool reaches Harness through the permission bridge like any other
+// The tool reaches Ness through the permission bridge like any other
 // tool call, but the approval response is also the answer channel: the
 // bundled claude binary's tool implementation reads `answers` and
 // `annotations` off its own input, and the only thing that can modify

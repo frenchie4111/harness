@@ -4,12 +4,12 @@ export interface AgentInfo {
   kind: AgentKind
   displayName: string
   vendor: string
-  /** If true, Harness generates a session ID and passes it to the CLI on
-   * first spawn. If false, the agent assigns its own ID and Harness
+  /** If true, Ness generates a session ID and passes it to the CLI on
+   * first spawn. If false, the agent assigns its own ID and Ness
    * discovers it from the first hook event. */
   assignsSessionId: boolean
   /** Whether a conversation can be forked INTO a new worktree running this
-   * agent. Requires a transcript format Harness can rewrite and a CLI flag
+   * agent. Requires a transcript format Ness can rewrite and a CLI flag
    * to resume it by id — only Claude Code qualifies today. Agents that
    * assign their own session ids can't be handed a pre-seeded one at all. */
   supportsConversationFork: boolean

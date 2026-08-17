@@ -60,7 +60,7 @@ export function InvalidConfigModal(): JSX.Element | null {
 
         <div className="px-5 py-4 flex flex-col gap-3 text-sm text-fg">
           <p>
-            Harness couldn&apos;t parse <code className="text-xs">config.json</code>, so it
+            Ness couldn&apos;t parse <code className="text-xs">config.json</code>, so it
             started with default settings. Fix it below and click Save &amp; Retry, or
             reset to defaults to start fresh — your settings won&apos;t be saved until
             this is resolved.

@@ -883,7 +883,7 @@ export function PRStatusPanel({
       {needsGithubToken && (
         <div className="px-3 py-3 space-y-2">
           <div className="text-xs text-info/90 leading-snug">
-            Connect a GitHub token to see PR status and open pull requests from Harness.
+            Connect a GitHub token to see PR status and open pull requests from Ness.
           </div>
           {onConnectGithub && (
             <button

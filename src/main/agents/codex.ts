@@ -148,7 +148,7 @@ export function stripHooksFromWorktree(worktreePath: string): boolean {
   if (!changed) return false
   if (Object.keys(data.hooks).length === 0) delete data.hooks
   writeHooksFile(path, data)
-  log('hooks', `stripped legacy Harness Codex entries from ${path}`)
+  log('hooks', `stripped legacy Ness Codex entries from ${path}`)
   return true
 }
 

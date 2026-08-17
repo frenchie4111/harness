@@ -1,4 +1,4 @@
-// Approval bridge between Harness main and the permission-prompt MCP
+// Approval bridge between Ness main and the permission-prompt MCP
 // server that Claude Code invokes for every per-tool approval in a
 // JSON-mode session.
 //

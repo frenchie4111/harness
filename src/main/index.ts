@@ -427,7 +427,7 @@ setGitHubApiLoggingEnabled(config.expandedDiagnosticLoggingEnabled === true)
 // ssh:bootstrap / ssh:reconnect handlers; entries are torn down on
 // connections:remove and on app quit. The remote `harness-server` is
 // intentionally NOT killed on unregister — it stays alive for future
-// reconnects + other Harnesses. See plans/remote-main.md §4.
+// reconnects + other Ness instances. See plans/remote-main.md §4.
 //
 // The manager reports dropped links; the supervisor below owns the
 // retry policy. They're declared in this order because the manager's
@@ -1165,9 +1165,9 @@ const wakeLockController = new WakeLockController(store)
 /** Install agent status hooks at the user-scope settings file for both
  *  supported agents. Called once when consent flips to 'accepted'. The
  *  hook command is env-gated on $HARNESS_TERMINAL_ID, so it no-ops for
- *  sessions started outside Harness. */
+ *  sessions started outside Ness. */
 function installHooksGlobally(): void {
-  // installHooks() is idempotent — it strips any existing Harness entries
+  // installHooks() is idempotent — it strips any existing Ness entries
   // before writing a fresh one — so calling it unconditionally also
   // collapses duplicate entries left by earlier buggy install passes.
   for (const agent of [getAgent('claude'), getAgent('codex'), getAgent('cursor')]) {
@@ -3280,7 +3280,7 @@ function registerIpcHandlers(): void {
 
   // Hooks. Install/uninstall happen once at user scope — the hook command
   // is env-gated on $HARNESS_TERMINAL_ID so sessions spawned outside
-  // Harness are unaffected.
+  // Ness are unaffected.
   transport.onRequest('hooks:accept', (_ctx) => {
     installHooksGlobally()
     config.hooksConsent = 'accepted'
@@ -3646,7 +3646,7 @@ function registerIpcHandlers(): void {
     (_ctx, worktreePath: string): { ok: true; tabId: string } | { ok: false; error: string } => {
       // One-click /login flow. Spawns the bundled claude binary's
       // `auth login` subcommand in a regular shell tab so the user
-      // gets the OAuth handshake without leaving Harness. Both binaries
+      // gets the OAuth handshake without leaving Ness. Both binaries
       // share ~/.claude/, so credentials written here are picked up by
       // the json-mode subprocess on its next start. Falls back to PATH
       // `claude` if the bundled binary can't be resolved (unsupported

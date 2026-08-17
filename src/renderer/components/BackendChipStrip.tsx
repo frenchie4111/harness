@@ -45,7 +45,7 @@ export function BackendChipStrip({ onAddBackend }: BackendChipStripProps): JSX.E
   const handleRemove = useCallback(
     (conn: BackendConnection) => {
       const ok = window.confirm(
-        `Remove backend "${conn.label}"?\n\nThe connection settings and saved auth token will be deleted from this Harness install. The remote server itself is not affected — you can re-add it later.`
+        `Remove backend "${conn.label}"?\n\nThe connection settings and saved auth token will be deleted from this Ness install. The remote server itself is not affected — you can re-add it later.`
       )
       if (!ok) return
       // Close the WS transport + drop from the registry first; the chip
@@ -210,7 +210,7 @@ function BackendChip({ connection, isActive, onSelect, onRemove }: BackendChipPr
           label={
             upgrading
               ? `Upgrading ${connection.label}…`
-              : `harness-server ${serverVersion?.installed} — this Harness is ${serverVersion?.expected}. Click to upgrade (restarts the remote, ending its sessions).`
+              : `harness-server ${serverVersion?.installed} — this Ness is ${serverVersion?.expected}. Click to upgrade (restarts the remote, ending its sessions).`
           }
           side="top"
         >

@@ -12,7 +12,7 @@ export const THEME_OPTIONS: ThemeOption[] = [
   {
     id: 'dark',
     label: 'Dark',
-    description: 'Neutral dark — the default Harness look.',
+    description: 'Neutral dark — the default Ness look.',
     swatches: ['#0a0a0a', '#262626', '#d4d4d4', '#22c55e'],
     mode: 'dark'
   },

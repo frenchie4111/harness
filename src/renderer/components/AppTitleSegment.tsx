@@ -1,4 +1,4 @@
-// The "Harness" wordmark plus — in dev builds — the active branch, rendered
+// The "Ness" wordmark plus — in dev builds — the active branch, rendered
 // as one block. Used in every spot the app title appears (above the sidebar,
 // workspace top bar when sidebar is hidden, empty-state fallback bar,
 // onboarding), so the wordmark + dev-branch suffix and styling are defined
@@ -24,7 +24,7 @@ export function AppTitleSegment({
         className ? ` ${className}` : ''
       }`}
     >
-      <span className="gradient-text">Harness</span>
+      <span className="gradient-text">Ness</span>
       {import.meta.env.DEV && __HARNESS_DEV_BRANCH__ && (
         <span className="text-faint font-normal text-xs ml-1">({__HARNESS_DEV_BRANCH__})</span>
       )}

@@ -247,7 +247,7 @@ export async function computeWeeklyStats(
   let linesRemoved = 0
   const seenRepos = new Set<string>(worktrees.repoRoots)
   // Include any repoRoots surfaced only by historical activity (repos the
-  // user removed from Harness but still committed in this week).
+  // user removed from Ness but still committed in this week).
   for (const rec of Object.values(activity)) {
     if (rec.repoRoot) seenRepos.add(rec.repoRoot)
   }

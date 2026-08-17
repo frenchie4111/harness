@@ -184,7 +184,7 @@ export interface BootstrapResult {
   remotePort: number
   /** What `harness-server --version` reported on the remote. Null only
    *  if the probe failed after a successful install (shouldn't happen).
-   *  The caller compares this to the local Harness version to decide
+   *  The caller compares this to the local Ness version to decide
    *  whether to offer an upgrade. */
   serverVersion: string | null
 }
@@ -402,7 +402,7 @@ async function startServerDetached(
   // Atomic write: tmp file + mv so a concurrent reader never sees a
   // truncated state.json. We're not racing anyone here today, but the
   // filesystem-level idempotence is cheap insurance for future
-  // "reconnect from two Harnesses at once" scenarios.
+  // "reconnect from two Ness instances at once" scenarios.
   const payload = JSON.stringify(state)
   await ssh.execCommand(
     `printf '%s' ${shellEscape(payload)} > ${REMOTE_STATE_FILE}.tmp && mv ${REMOTE_STATE_FILE}.tmp ${REMOTE_STATE_FILE}`
@@ -519,7 +519,7 @@ export async function bootstrapRemote(
   opts: {
     preferredLocalPort?: number
     skipInstallIfRunning?: boolean
-    /** Local Harness version. When set, a mismatch against the remote's
+    /** Local Ness version. When set, a mismatch against the remote's
      *  installed version is logged and reported via
      *  `BootstrapResult.serverVersion` so the caller can offer an
      *  upgrade. Never triggers one on its own. */
@@ -564,7 +564,7 @@ export async function bootstrapRemote(
       // acted on only when the user picks "Upgrade" in the chip strip.
       if (opts.expectedVersion && version !== opts.expectedVersion) {
         log(
-          `found harness-server ${version} on remote (this Harness is ${opts.expectedVersion} — upgrade available)`
+          `found harness-server ${version} on remote (this Ness is ${opts.expectedVersion} — upgrade available)`
         )
       } else {
         log(`found existing harness-server ${version} on remote`)

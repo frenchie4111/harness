@@ -252,7 +252,7 @@ describe('control-server POST /worktrees forkConversation', () => {
       { terminalId: NO_TRANSCRIPT_TERMINAL }
     )
     expect(r.status).toBe(400)
-    expect(r.json.error).toMatch(/only available from a Harness Chat tab/)
+    expect(r.json.error).toMatch(/only available from a Ness Chat tab/)
   })
 
   it('rejects a caller with no resolvable scope', async () => {
@@ -263,7 +263,7 @@ describe('control-server POST /worktrees forkConversation', () => {
       { terminalId: 'unknown-terminal' }
     )
     expect(r.status).toBe(400)
-    expect(r.json.error).toMatch(/only available from a Harness Chat tab/)
+    expect(r.json.error).toMatch(/only available from a Ness Chat tab/)
   })
 
   it('rejects forkConversation combined with prNumber', async () => {
@@ -289,7 +289,7 @@ describe('control-server POST /worktrees forkConversation', () => {
     try {
       const r = await call('POST', '/worktrees', { branchName: 'spinoff', forkConversation: true })
       expect(r.status).toBe(400)
-      expect(r.json.error).toMatch(/disabled in Harness settings/)
+      expect(r.json.error).toMatch(/disabled in Ness settings/)
     } finally {
       conversationForkEnabled = true
     }
@@ -434,7 +434,7 @@ describe('control-server /messages endpoint', () => {
         message: 'hi'
       })
       expect(r.status).toBe(403)
-      expect(r.json.error).toMatch(/disabled in Harness settings/)
+      expect(r.json.error).toMatch(/disabled in Ness settings/)
       expect(sendMessage).not.toHaveBeenCalled()
     } finally {
       messagingEnabled = true

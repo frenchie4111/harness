@@ -92,7 +92,7 @@ export interface BootstrapProgress {
 }
 
 /** What version of `harness-server` a remote is running, and whether it
- *  matches the Harness that's driving it. Headless tarballs are released
+ *  matches the Ness that's driving it. Headless tarballs are released
  *  on the same tag as the desktop build, so exact equality is the
  *  correctness bar — a mismatch in either direction means the wire
  *  protocol can drift.
@@ -104,7 +104,7 @@ export interface RemoteServerVersion {
   connectionId: string
   /** What `harness-server --version` printed on the remote. */
   installed: string
-  /** The local Harness version we compared against. */
+  /** The local Ness version we compared against. */
   expected: string
   upgradeAvailable: boolean
   checkedAt: number
