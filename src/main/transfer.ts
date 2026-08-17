@@ -22,7 +22,7 @@ import { promisify } from 'util'
 import { mkdtemp, mkdir, rm, readFile, writeFile, stat, open, realpath } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join, dirname } from 'path'
-import { tmpdir } from 'os'
+import { tmpdir, homedir } from 'os'
 import { randomUUID } from 'crypto'
 import { log } from './debug'
 import { resolveUserShell } from './user-shell'
@@ -33,7 +33,8 @@ import {
   type TransferExport,
   type TransferImport,
   type TransferImportedSession,
-  type TransferSessionSummary
+  type TransferSessionSummary,
+  type TranscriptPathCheck
 } from '../shared/transfer'
 
 const execFileAsync = promisify(execFile)
@@ -443,10 +444,20 @@ export async function finishImport(handle: string): Promise<TransferImport> {
     transcriptsSkipped = 'The source machine had no transcripts to send'
   }
 
+  const transcriptPathCheck = sessions.length
+    ? await checkTranscriptPaths(worktreePath, sessions)
+    : null
+
   imports.delete(handle)
   await rm(dir, { recursive: true, force: true })
 
-  log('transfer', `imported ${branchName} at ${worktreePath} sessions=${sessions.length}`)
+  const foreign = transcriptPathCheck
+    ? Object.values(transcriptPathCheck.foreign).reduce((a, b) => a + b, 0)
+    : 0
+  log(
+    'transfer',
+    `imported ${branchName} at ${worktreePath} sessions=${sessions.length} foreignCwds=${foreign}`
+  )
 
   return {
     worktreePath,
@@ -454,8 +465,45 @@ export async function finishImport(handle: string): Promise<TransferImport> {
     stashApplied,
     sessions,
     hasResidualPaths: sessions.some((s) => s.residualOriginPaths.length > 0),
-    transcriptsSkipped
+    transcriptsSkipped,
+    transcriptPathCheck
   }
+}
+
+/** Read the restored transcripts back and count how many records point
+ *  at `worktreePath`. This exists because a restore can rewrite paths
+ *  onto a directory that doesn't exist here and still report success,
+ *  which makes a broken transfer indistinguishable from a good one. */
+async function checkTranscriptPaths(
+  worktreePath: string,
+  sessions: TransferImportedSession[]
+): Promise<TranscriptPathCheck> {
+  const slug = worktreePath.replace(/[^a-zA-Z0-9]/g, '-')
+  const projectDir = join(homedir(), '.claude', 'projects', slug)
+  const check: TranscriptPathCheck = { checked: 0, correct: 0, foreign: {} }
+
+  for (const session of sessions) {
+    let text: string
+    try {
+      text = await readFile(join(projectDir, `${session.sessionId}.jsonl`), 'utf8')
+    } catch {
+      continue
+    }
+    for (const line of text.split('\n')) {
+      if (!line) continue
+      let cwd: unknown
+      try {
+        cwd = (JSON.parse(line) as Record<string, unknown>).cwd
+      } catch {
+        continue
+      }
+      if (typeof cwd !== 'string' || !cwd) continue
+      check.checked++
+      if (cwd === worktreePath) check.correct++
+      else check.foreign[cwd] = (check.foreign[cwd] ?? 0) + 1
+    }
+  }
+  return check
 }
 
 export async function discardTransfer(handle: string): Promise<boolean> {

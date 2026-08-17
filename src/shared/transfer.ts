@@ -80,6 +80,25 @@ export interface TransferImportedSession {
   resumeCommand: string
 }
 
+/** Independent check that restored transcripts point at the worktree we
+ *  put them in. Deliberately does not consult lochy's own reporting: a
+ *  restore that rewrites paths wrongly still reports success, and its
+ *  residual-path detector cannot see the case where a wrong-but-
+ *  well-formed path replaced the origin one. Counted by reading the
+ *  restored files back. */
+export interface TranscriptPathCheck {
+  /** Records carrying a top-level `cwd`. Zero means nothing was
+   *  verifiable, which is not the same as everything being correct. */
+  checked: number
+  /** Records whose `cwd` is the worktree the import created. */
+  correct: number
+  /** Every other `cwd`, by value, with a count. These name directories
+   *  that need not exist here, so a resumed session opens somewhere
+   *  wrong. Non-empty is a correctness warning, not a failure — the
+   *  transcript content itself is intact. */
+  foreign: Record<string, number>
+}
+
 export interface TransferImport {
   /** The worktree path as the DESTINATION resolved it. Not necessarily
    *  the path that was requested: on macOS /tmp resolves to /private/tmp,
@@ -96,6 +115,8 @@ export interface TransferImport {
    *  the list. */
   hasResidualPaths: boolean
   transcriptsSkipped: string | null
+  /** Null when no transcripts were restored. */
+  transcriptPathCheck: TranscriptPathCheck | null
 }
 
 /** Chunk size for the base64 legs. The transport is JSON, so payload
