@@ -701,6 +701,13 @@ function automationLabel(
       brand: true
     }
   }
+  if (source === 'worktree-kickoff') {
+    return {
+      label: from ? `Task Brief · from ${from}` : 'Task Brief',
+      note: 'opened this worktree',
+      brand: true
+    }
+  }
   return { label: 'Harness · CI failure', note: 'sent automatically', brand: false }
 }
 

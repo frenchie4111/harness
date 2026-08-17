@@ -96,6 +96,8 @@ import { hasScratchpadNote } from '../shared/state/scratchpad'
 import { normalizeAlias } from '../shared/state/aliases'
 import {
   isJsonClaudePermissionMode,
+  parseAutomatedMessage,
+  wrapAutomatedMessage,
   type JsonClaudePermissionMode
 } from '../shared/state/json-claude'
 import { deriveWorktreeStatus } from './worktree-status'
@@ -1029,8 +1031,16 @@ async function resolveForkedKickoff(args: {
     destWorktreePath: createdPath,
     baseRef
   })
+  // The preamble goes INSIDE an automated-kickoff sentinel rather than in
+  // front of it — `parseAutomatedMessage` only matches at the start of the
+  // text, so prepending would leave the tags visible in the transcript.
+  const automated = parseAutomatedMessage(initialPrompt)
   return {
-    initialPrompt: `${preamble}${initialPrompt ?? ''}`,
+    initialPrompt: automated
+      ? wrapAutomatedMessage(automated.source, `${preamble}${automated.body}`, {
+          from: automated.from
+        })
+      : `${preamble}${initialPrompt ?? ''}`,
     forkedSessionId: outcome.newSessionId
   }
 }
