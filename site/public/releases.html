@@ -3,27 +3,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Release notes — Harness</title>
-  <meta name="description" content="Every version of Harness from v1.0 to now. New features, improvements, and fixes for each release." />
+  <title>Release notes — Ness</title>
+  <meta name="description" content="Every version of Ness from v1.0 to now. New features, improvements, and fixes for each release." />
 
   <!-- Open Graph -->
-  <meta property="og:site_name" content="Harness" />
-  <meta property="og:title" content="Release notes — Harness" />
-  <meta property="og:description" content="Every version of Harness from v1.0 to now. New features, improvements, and fixes for each release." />
+  <meta property="og:site_name" content="Ness" />
+  <meta property="og:title" content="Release notes — Ness" />
+  <meta property="og:description" content="Every version of Ness from v1.0 to now. New features, improvements, and fixes for each release." />
   <meta property="og:image" content="https://harness.mikelyons.org/og-image.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:type" content="image/png" />
-  <meta property="og:image:alt" content="Screenshot of Harness showing the worktree sidebar, terminal tabs, and changed-files panel." />
+  <meta property="og:image:alt" content="Screenshot of Ness showing the worktree sidebar, terminal tabs, and changed-files panel." />
   <meta property="og:url" content="https://harness.mikelyons.org/releases.html" />
   <meta property="og:type" content="website" />
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Release notes — Harness" />
-  <meta name="twitter:description" content="Every version of Harness from v1.0 to now. New features, improvements, and fixes for each release." />
+  <meta name="twitter:title" content="Release notes — Ness" />
+  <meta name="twitter:description" content="Every version of Ness from v1.0 to now. New features, improvements, and fixes for each release." />
   <meta name="twitter:image" content="https://harness.mikelyons.org/og-image.png" />
-  <meta name="twitter:image:alt" content="Screenshot of Harness showing the worktree sidebar, terminal tabs, and changed-files panel." />
+  <meta name="twitter:image:alt" content="Screenshot of Ness showing the worktree sidebar, terminal tabs, and changed-files panel." />
 
   <link rel="icon" type="image/png" href="icon.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
@@ -58,8 +58,8 @@
   <!-- Nav -->
   <nav class="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between relative z-30">
     <a href="/" class="flex items-center gap-3">
-      <img src="icon.png" alt="Harness icon" class="w-9 h-9 rounded-lg" />
-      <span class="text-xl font-bold">Harness</span>
+      <img src="icon.png" alt="Ness icon" class="w-9 h-9 rounded-lg" />
+      <span class="text-xl font-bold">Ness</span>
     </a>
     <div class="hidden sm:flex items-center gap-4 sm:gap-6 text-sm text-neutral-400">
       <a href="/#features" class="hover:text-neutral-100 transition-colors">Features</a>
@@ -95,7 +95,7 @@
       Release <span class="gradient-text">notes.</span>
     </h1>
     <p class="text-lg text-neutral-400 leading-relaxed">
-      Every version of Harness, from v1.0 to now.
+      Every version of Ness, from v1.0 to now.
     </p>
   </section>
 
@@ -115,12 +115,12 @@
         <ul>
           <li><strong>Tag other worktrees from the @ menu in Chat</strong> — type <code>@</code> in a Chat tab to reference another worktree directly in your message.</li>
           <li><strong>Auto permission mode in Chat</strong> — Claude Code's auto permission mode is now exposed as a toggle in Chat tabs.</li>
-          <li><strong>Open PRs in a Harness browser tab</strong> — a new setting opens pull requests inside a Harness browser tab instead of your external browser.</li>
+          <li><strong>Open PRs in a Ness browser tab</strong> — a new setting opens pull requests inside a Ness browser tab instead of your external browser.</li>
           <li><strong>Mobile: create worktrees and add tabs</strong> — the mobile client can now create worktrees and add tabs, with bigger, easier-to-tap approval buttons.</li>
           <li><strong>CI-failure notifications in Chat</strong> — Chat now notifies you when a PR's CI checks go red.</li>
           <li><strong>Fork a conversation into a new worktree</strong> — fork a Chat conversation into a brand-new worktree that continues from that point.</li>
           <li><strong>Interrupt & send in Chat</strong> — send a new message to interrupt a response that's still streaming, instead of waiting for it to finish.</li>
-          <li><strong>Stale SSH remote upgrade prompt</strong> — Harness now offers an opt-in upgrade when a remote's <code>harness-server</code> is out of date.</li>
+          <li><strong>Stale SSH remote upgrade prompt</strong> — Ness now offers an opt-in upgrade when a remote's <code>harness-server</code> is out of date.</li>
           <li><strong>Better performance diagnostics</strong> — new renderer instrumentation catches GC pauses and rendering storms, making UI stutter easier to track down.</li>
         </ul>
         <h4>Improvements</h4>
@@ -137,12 +137,12 @@
           <li>Opening a worktree no longer resets its age, so it doesn't dodge cleanup by looking recently used.</li>
           <li>Mobile: idle chat tabs now wake up and show their full history instead of appearing empty.</li>
           <li>Sub-agents launched in the background now render correctly in Chat.</li>
-          <li>Dropped SSH tunnels now recover automatically instead of crashing Harness or going silently dead.</li>
+          <li>Dropped SSH tunnels now recover automatically instead of crashing Ness or going silently dead.</li>
           <li>Worktrees no longer flash red while the auto-approver is still deciding on a tool call.</li>
           <li>Background git polling no longer contends with other git operations for the index lock.</li>
           <li>Fixed low-contrast code blocks in light theme.</li>
           <li>Fixed a race where a new worktree's kickoff prompt could get silently dropped during pane setup.</li>
-          <li>Restarting Harness now resumes the correct Claude session after using <code>/clear</code>, instead of an old one.</li>
+          <li>Restarting Ness now resumes the correct Claude session after using <code>/clear</code>, instead of an old one.</li>
           <li>Claude's clarifying questions in Chat are now answerable instead of silently going unanswered.</li>
         </ul>
       </div>
@@ -215,7 +215,7 @@
           <li><strong>Prevent system sleep while agents run</strong> — a new sidebar icon and hotkey block your Mac from sleeping while agents are working, with multiple modes and a popover that previews what each mode does.</li>
           <li><strong>Unified find across chat and terminals</strong> — <code>Cmd+F</code> now opens the same find UI in both Chat and terminal tabs.</li>
           <li><strong>Hotkeys to approve/deny tool use in Chat</strong> — approve or deny a pending tool-use request from the keyboard instead of clicking.</li>
-          <li><strong>"Harness" header pinned above the sidebar</strong> — the app title now stays pinned above the worktrees list.</li>
+          <li><strong>"Ness" header pinned above the sidebar</strong> — the app title now stays pinned above the worktrees list.</li>
           <li><strong>Worktree aliases</strong> — give any worktree a custom display name, settable from the UI or via new <code>set_worktree_alias</code> / <code>clear_worktree_alias</code> MCP tools.</li>
           <li><strong>Option to disable auto-scroll in Chat</strong> — turn off automatic scroll-to-bottom while a response streams in.</li>
         </ul>
@@ -282,10 +282,10 @@
         <h4>Fixes</h4>
         <ul>
           <li>Typing <code>r</code>, <code>j</code>, <code>k</code>, <code>[</code>, or <code>]</code> while editing in the Monaco editor no longer gets intercepted by review-tab hotkeys.</li>
-          <li>A corrupt <code>config.json</code> no longer silently resets all settings — Harness now recovers gracefully instead of losing your configuration. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/151" class="text-amber-400/80 hover:text-amber-300">#151</a>)</em></li>
+          <li>A corrupt <code>config.json</code> no longer silently resets all settings — Ness now recovers gracefully instead of losing your configuration. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/151" class="text-amber-400/80 hover:text-amber-300">#151</a>)</em></li>
           <li>WebSocket reconnects now apply the server's latest state snapshot before signalling reconnect, preventing stale UI after a connection drop. <em class="text-neutral-500">(thanks <a href="https://github.com/blindpirate" class="text-amber-400/80 hover:text-amber-300">@blindpirate</a>, <a href="https://github.com/frenchie4111/harness/pull/175" class="text-amber-400/80 hover:text-amber-300">#175</a>)</em></li>
-          <li>Harness no longer crashes when spawning a terminal process fails with ENOENT, and handles stale prunable worktrees more gracefully.</li>
-          <li>The MCP dev-mode script path is now anchored to the app install location, fixing failures when Harness is launched from a non-standard working directory.</li>
+          <li>Ness no longer crashes when spawning a terminal process fails with ENOENT, and handles stale prunable worktrees more gracefully.</li>
+          <li>The MCP dev-mode script path is now anchored to the app install location, fixing failures when Ness is launched from a non-standard working directory.</li>
           <li>API cost estimates for Opus 4.5 and later models were reported 3× too high — this is now corrected.</li>
         </ul>
         <p class="text-neutral-400 text-sm mt-6 leading-relaxed">Huge thanks to <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/blindpirate" class="text-amber-400/80 hover:text-amber-300">@blindpirate</a>, and <a href="https://github.com/bz-canva" class="text-amber-400/80 hover:text-amber-300">@bz-canva</a> for their contributions to this release.</p>
@@ -312,13 +312,13 @@
           <li><strong>Create worktree from any existing branch</strong> — a new "Any Git Ref" tab in the worktree creator lets you check out an existing branch or ref, not just create a new one. <em class="text-neutral-500">(thanks <a href="https://github.com/tresat" class="text-amber-400/80 hover:text-amber-300">@tresat</a>, <a href="https://github.com/frenchie4111/harness/pull/113" class="text-amber-400/80 hover:text-amber-300">#113</a>)</em></li>
           <li><strong>PR approval button</strong> — when you're a requested reviewer, an Approve button now appears directly in the PR panel so you don't have to switch to GitHub.</li>
           <li><strong>Richer PR picker in the new-worktree flow</strong> — the PR picker shows richer rows with assignees and labels, and a "Needs my review" filter so you can find your review queue instantly.</li>
-          <li><strong>Connect to a remote host via SSH</strong> — a new VSCode-style "Connect to remote host" flow bootstraps an SSH connection from within Harness without any manual setup.</li>
+          <li><strong>Connect to a remote host via SSH</strong> — a new VSCode-style "Connect to remote host" flow bootstraps an SSH connection from within Ness without any manual setup.</li>
           <li><strong>File search prefers changed files</strong> — the file picker now surfaces modified and new files at the top and shows each file's git status alongside its name.</li>
           <li><strong>Settings UX overhaul</strong> — search across all settings, organized subsections per category, and hotkeys grouped together for easier scanning. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/94" class="text-amber-400/80 hover:text-amber-300">#94</a>)</em></li>
           <li><strong>Per-worktree Scratchpad</strong> — each worktree has a Scratchpad section in the right panel for freeform notes. A non-empty scratchpad counts as a dirty change so you won't forget it.</li>
           <li><strong>Rewind-to-here in Chat</strong> — right-click any message in a chat session to rewind the conversation to that point and try a different direction.</li>
           <li><strong>Hold ⌘Q to Quit</strong> — Chrome-style quit protection: hold ⌘Q for a moment to confirm you really want to close. Configurable via a "Warn Before Quitting" setting. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/130" class="text-amber-400/80 hover:text-amber-300">#130</a>)</em></li>
-          <li><strong>Confirm before closing a running tab</strong> — Harness now asks for confirmation before closing a tab that still has an active process, so you can't accidentally kill a running Claude session. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/148" class="text-amber-400/80 hover:text-amber-300">#148</a>)</em></li>
+          <li><strong>Confirm before closing a running tab</strong> — Ness now asks for confirmation before closing a tab that still has an active process, so you can't accidentally kill a running Claude session. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/148" class="text-amber-400/80 hover:text-amber-300">#148</a>)</em></li>
           <li><strong>More clickable links in terminals</strong> — file paths, commit SHAs, and <code>vnc://</code> URLs are now clickable alongside <code>http(s)://</code> links. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/139" class="text-amber-400/80 hover:text-amber-300">#139</a>)</em></li>
           <li><strong>Cyberfunk built-in theme</strong> — a new high-contrast neon color theme. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/92" class="text-amber-400/80 hover:text-amber-300">#92</a>)</em></li>
           <li><strong>Configurable sidebar detail for worktree rows</strong> — choose how much information each worktree row shows in the sidebar; <code>Cmd+I</code> cycles through detail levels including a minimal "none" mode. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/71" class="text-amber-400/80 hover:text-amber-300">#71</a>)</em></li>
@@ -360,7 +360,7 @@
           <li><strong>Chat mode is now first-class</strong> — the interface formerly known as "JSON mode" is relaunched as Chat and promoted to a primary Claude interface, with an in-app announcements banner that surfaces release news and updates from within the app.</li>
           <li><strong>Send on Enter in Chat</strong> — a new setting lets you send messages with Enter; the active hotkey is shown on the Send button and in the compose placeholder so you always know what to press.</li>
           <li><strong>Clickable URLs, progress bars, and Cmd+F search in terminals</strong> — URLs in terminal output are now clickable, OSC 9;4 progress events display a progress bar in the tab, and <code>Cmd+F</code> opens an in-terminal search overlay. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/58" class="text-amber-400/80 hover:text-amber-300">#58</a>)</em></li>
-          <li><strong>System theme + custom themes from disk</strong> — Harness now follows your system light/dark preference automatically, and you can load fully custom themes from a JSON file on disk. <em class="text-neutral-500">(thanks <a href="https://github.com/pgodschalk" class="text-amber-400/80 hover:text-amber-300">@pgodschalk</a>, <a href="https://github.com/frenchie4111/harness/pull/47" class="text-amber-400/80 hover:text-amber-300">#47</a>)</em></li>
+          <li><strong>System theme + custom themes from disk</strong> — Ness now follows your system light/dark preference automatically, and you can load fully custom themes from a JSON file on disk. <em class="text-neutral-500">(thanks <a href="https://github.com/pgodschalk" class="text-amber-400/80 hover:text-amber-300">@pgodschalk</a>, <a href="https://github.com/frenchie4111/harness/pull/47" class="text-amber-400/80 hover:text-amber-300">#47</a>)</em></li>
           <li><strong>MCP <code>create_worktree</code> parity</strong> — the MCP tool for creating worktrees now supports the same options as the UI: PR creation, kickoff prompts, agent selection, and model choice.</li>
           <li><strong>Reveal in Finder from the All Files panel</strong> — a new button lets you open any file in Finder without leaving the app. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/51" class="text-amber-400/80 hover:text-amber-300">#51</a>)</em></li>
           <li><strong>Copy as JSON for built-in themes</strong> — built-in theme rows now have a Copy as JSON button, making it easy to use them as a starting point for a custom theme. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/55" class="text-amber-400/80 hover:text-amber-300">#55</a>)</em></li>
@@ -374,7 +374,7 @@
           <li><strong>Improved <code>gh</code> CLI integration</strong> — GitHub auth via the <code>gh</code> CLI is more reliable across different shell setups. <em class="text-neutral-500">(thanks <a href="https://github.com/ljacomet" class="text-amber-400/80 hover:text-amber-300">@ljacomet</a>, <a href="https://github.com/frenchie4111/harness/pull/46" class="text-amber-400/80 hover:text-amber-300">#46</a>)</em></li>
           <li><strong>Persistent debug log</strong> — the debug log is now append-only across sessions and rotates at 10 MB, so crash forensics from before the most recent restart remain inspectable.</li>
           <li><strong>Git branch in the sidebar title bar</strong> — dev builds now show the active git branch in the sidebar title for quick orientation. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/67" class="text-amber-400/80 hover:text-amber-300">#67</a>)</em></li>
-          <li><strong>Monaco recovery banner</strong> — if the built-in editor's language worker fails to initialize, Harness now logs a diagnostic and shows a recovery banner instead of silently degrading.</li>
+          <li><strong>Monaco recovery banner</strong> — if the built-in editor's language worker fails to initialize, Ness now logs a diagnostic and shows a recovery banner instead of silently degrading.</li>
         </ul>
         <h4>Fixes</h4>
         <ul>
@@ -407,10 +407,10 @@
         <ul>
           <li><strong>Snooze</strong> — snooze a worktree to keep it out of the way until you're ready to return to it. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/28" class="text-amber-400/80 hover:text-amber-300">#28</a>)</em></li>
           <li><strong>Open PR as worktree</strong> — open any existing GitHub pull request directly as a new worktree, so you can pick up where another session left off without manual branch setup.</li>
-          <li><strong>Multi-backend support</strong> — connect a single Harness window to multiple backends — your local instance plus any number of remote Harness servers — and switch between them using the chip strip at the bottom of the sidebar.</li>
-          <li><strong>Merge button in the PR panel</strong> — merge your pull request directly from the Harness PR panel without switching to GitHub.</li>
+          <li><strong>Multi-backend support</strong> — connect a single Ness window to multiple backends — your local instance plus any number of remote Ness servers — and switch between them using the chip strip at the bottom of the sidebar.</li>
+          <li><strong>Merge button in the PR panel</strong> — merge your pull request directly from the Ness PR panel without switching to GitHub.</li>
           <li><strong>Activity costs tab</strong> — view accumulated API costs broken down by activity directly in the activity panel.</li>
-          <li><strong>PR status for upstream forks</strong> — Harness now correctly tracks PR status when the pull request originates from an upstream fork, not just same-repo branches. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/33" class="text-amber-400/80 hover:text-amber-300">#33</a>)</em></li>
+          <li><strong>PR status for upstream forks</strong> — Ness now correctly tracks PR status when the pull request originates from an upstream fork, not just same-repo branches. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/33" class="text-amber-400/80 hover:text-amber-300">#33</a>)</em></li>
           <li><strong>Release notes deep links in the updater</strong> — the in-app update notification now links directly to the relevant changelog section for each release. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/35" class="text-amber-400/80 hover:text-amber-300">#35</a>)</em></li>
         </ul>
         <h4>Improvements</h4>
@@ -424,7 +424,7 @@
           <li>Duplicate Claude and Codex hook entries are no longer created when hooks are re-installed — existing entries are now matched by command substring before adding a new one. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/43" class="text-amber-400/80 hover:text-amber-300">#43</a>)</em></li>
           <li>Fixed the MCP worktree setup script failing in certain configurations. <em class="text-neutral-500">(thanks <a href="https://github.com/ljacomet" class="text-amber-400/80 hover:text-amber-300">@ljacomet</a>, <a href="https://github.com/frenchie4111/harness/pull/39" class="text-amber-400/80 hover:text-amber-300">#39</a>)</em></li>
           <li>PR status is now preserved from cache when a GitHub API fetch fails, preventing status flickers. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/32" class="text-amber-400/80 hover:text-amber-300">#32</a>)</em></li>
-          <li>Harness no longer errors when a remote snapshot contains state slices it doesn't recognise, making mixed-version setups more resilient during rolling updates.</li>
+          <li>Ness no longer errors when a remote snapshot contains state slices it doesn't recognise, making mixed-version setups more resilient during rolling updates.</li>
           <li>Fixed snooze not routing correctly to the backend in multi-backend setups.</li>
         </ul>
         <p class="text-neutral-400 text-sm mt-6 leading-relaxed">Huge thanks to <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/ljacomet" class="text-amber-400/80 hover:text-amber-300">@ljacomet</a>, and <a href="https://github.com/tresat" class="text-amber-400/80 hover:text-amber-300">@tresat</a> for their contributions to this release.</p>
@@ -456,11 +456,11 @@
         <span class="text-sm text-neutral-500">May 6, 2026</span>
       </div>
       <a href="https://github.com/frenchie4111/harness/releases/tag/v2.8.2" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
-      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Fixes a PATH issue where Homebrew, nvm, pyenv, and other shell tools were not found when Harness was launched from Finder, the Dock, or a headless service.</p>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Fixes a PATH issue where Homebrew, nvm, pyenv, and other shell tools were not found when Ness was launched from Finder, the Dock, or a headless service.</p>
       <div class="note-body">
         <h4>Fixes</h4>
         <ul>
-          <li>Harness now captures your login shell's PATH at startup and merges it into the app's environment, so the bundled Claude binary can find Homebrew, nvm, pyenv, and other tools regardless of how the app was launched.</li>
+          <li>Ness now captures your login shell's PATH at startup and merges it into the app's environment, so the bundled Claude binary can find Homebrew, nvm, pyenv, and other tools regardless of how the app was launched.</li>
         </ul>
       </div>
     </section>
@@ -502,7 +502,7 @@
         <ul>
           <li><strong>Chat history loads on demand</strong> — opening a tab with a long conversation history is now fast; earlier messages load incrementally as you scroll up.</li>
           <li><strong>Cost tracking streams incrementally</strong> — per-message cost estimates now update token-by-token during streaming rather than jumping at the end of a response.</li>
-          <li><strong>External links route to the viewing client</strong> — links that previously opened in your default browser now open in Harness's built-in viewer when one is available.</li>
+          <li><strong>External links route to the viewing client</strong> — links that previously opened in your default browser now open in Ness's built-in viewer when one is available.</li>
         </ul>
         <h4>Fixes</h4>
         <ul>
@@ -519,12 +519,12 @@
         <span class="text-sm text-neutral-500">May 3, 2026</span>
       </div>
       <a href="https://github.com/frenchie4111/harness/releases/tag/v2.7.1" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
-      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Electron remote mode lets the desktop app connect to a headless Harness server, Linux gains a native <code>.deb</code> package, and the headless server picks up CLI flags and a version endpoint — plus fixes for shell detection and the headless web client path.</p>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Electron remote mode lets the desktop app connect to a headless Ness server, Linux gains a native <code>.deb</code> package, and the headless server picks up CLI flags and a version endpoint — plus fixes for shell detection and the headless web client path.</p>
       <div class="note-body">
         <h4>New features</h4>
         <ul>
-          <li><strong>Electron remote mode</strong> — the desktop app can now connect to a remote headless Harness server, giving you a native window backed by a backend running on another machine or in the cloud.</li>
-          <li><strong>Linux <code>.deb</code> package</strong> — Harness is now distributed as a <code>.deb</code> for Debian and Ubuntu, alongside the existing AppImage.</li>
+          <li><strong>Electron remote mode</strong> — the desktop app can now connect to a remote headless Ness server, giving you a native window backed by a backend running on another machine or in the cloud.</li>
+          <li><strong>Linux <code>.deb</code> package</strong> — Ness is now distributed as a <code>.deb</code> for Debian and Ubuntu, alongside the existing AppImage.</li>
           <li><strong>Headless server CLI flags</strong> — the headless server now accepts command-line flags so you can configure port, data directory, and other options at startup without editing config files.</li>
         </ul>
         <h4>Improvements</h4>
@@ -555,7 +555,7 @@
           <li><strong>Sub-agent nesting in chat mode</strong> — when Claude spawns sub-agents, their tool calls appear as collapsible nested groups in the chat UI, making multi-agent flows much easier to follow.</li>
           <li><strong>Rich file viewers in chat mode</strong> — images, PDFs, and other files surfaced during a chat session now render inline rather than showing a raw path.</li>
           <li><strong>Bundled Claude for chat mode</strong> — chat (json-mode) tabs now ship with a pinned Claude Code binary so the chat interface stays stable regardless of what version is on your PATH.</li>
-          <li><strong>Headless server tarballs</strong> — the Harness backend is now distributed as self-contained tarballs for Linux and macOS servers, so you can install it without npm or Electron.</li>
+          <li><strong>Headless server tarballs</strong> — the Ness backend is now distributed as self-contained tarballs for Linux and macOS servers, so you can install it without npm or Electron.</li>
           <li><strong>Browser control in headless mode</strong> — browser panes and Browser MCP tools now work in headless / server deployments, not just the desktop app.</li>
           <li><strong>Remote file picker for opening repos</strong> — headless and web sessions now include a file-system picker for opening a repository, so you no longer need to type the full path manually.</li>
         </ul>
@@ -616,7 +616,7 @@
           <li><strong>Native Claude chat</strong> — a built-in chat interface for Claude sessions with a compose bar, streaming responses, and inline tool call display. Switch any worktree to chat mode for a cleaner, more structured experience alongside the traditional terminal.</li>
           <li><strong>Allow this session</strong> — a new option on permission approval cards lets you grant a one-off permission for the current session without permanently changing your settings.</li>
           <li><strong>LiteLLM proxy support</strong> — configure a LiteLLM proxy endpoint in Settings to route Claude API calls through your own backend.</li>
-          <li><strong>Open debug log button</strong> — open Harness's debug log file directly from the UI for faster troubleshooting.</li>
+          <li><strong>Open debug log button</strong> — open Ness's debug log file directly from the UI for faster troubleshooting.</li>
           <li><strong>Default tab type &amp; swap</strong> — set your preferred default tab type (chat or terminal) per worktree, and swap an existing tab between modes at any time.</li>
         </ul>
         <h4>Improvements</h4>
@@ -641,20 +641,20 @@
         <span class="text-sm text-neutral-500">April 25, 2026</span>
       </div>
       <a href="https://github.com/frenchie4111/harness/releases/tag/v2.5.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
-      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Harness goes remote — drive your agents from any browser or phone over a new WebSocket transport, with Browser MCP tools so Claude can click, type, and scroll in a live browser pane alongside your terminals.</p>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Ness goes remote — drive your agents from any browser or phone over a new WebSocket transport, with Browser MCP tools so Claude can click, type, and scroll in a live browser pane alongside your terminals.</p>
       <div class="note-body">
         <h4>New features</h4>
         <ul>
-          <li><strong>Web client</strong> — control Harness from any browser over a WebSocket connection. Installable as a PWA so it behaves like a native app on desktop or mobile.</li>
+          <li><strong>Web client</strong> — control Ness from any browser over a WebSocket connection. Installable as a PWA so it behaves like a native app on desktop or mobile.</li>
           <li><strong>Mobile-optimized web client</strong> — the browser UI is fully adapted for phones and tablets, with proper terminal scroll, icon layout, and a full-screen right panel.</li>
-          <li><strong>Headless backend</strong> — the Harness backend can now run as a pure Node server with no Electron required, making server and CI deployments possible.</li>
+          <li><strong>Headless backend</strong> — the Ness backend can now run as a pure Node server with no Electron required, making server and CI deployments possible.</li>
           <li><strong>Browser panes</strong> — open a live browser tab as a pane directly alongside your terminals, so you can see your running app without leaving the workspace.</li>
           <li><strong>Browser MCP tools</strong> — Claude can click, type, and scroll in the browser pane with a visible cursor overlay, so you can watch it navigate your app in real time.</li>
           <li><strong>Controller / spectator mode</strong> — terminal tabs now support a tmux-style controller/spectator split: one session drives input while others watch without interfering.</li>
           <li><strong>Weekly activity wrap</strong> — a weekly summary of what each agent worked on, delivered automatically so you can review the week at a glance.</li>
-          <li><strong>New project flow</strong> — a guided flow for starting a brand-new project from within Harness, with branch naming and initial prompt setup.</li>
-          <li><strong>In-app issue reporting</strong> — report bugs directly from within Harness without switching to a browser.</li>
-          <li><strong>Dev server tracking</strong> — Harness detects dev servers started in worktree shells and lets you open them in a browser pane with one click.</li>
+          <li><strong>New project flow</strong> — a guided flow for starting a brand-new project from within Ness, with branch naming and initial prompt setup.</li>
+          <li><strong>In-app issue reporting</strong> — report bugs directly from within Ness without switching to a browser.</li>
+          <li><strong>Dev server tracking</strong> — Ness detects dev servers started in worktree shells and lets you open them in a browser pane with one click.</li>
           <li><strong>Hotkey rebinding from the cheat sheet</strong> — click any shortcut in the <code>?</code> cheat sheet to rebind it on the spot.</li>
           <li><strong>Claude TUI defaults to fullscreen</strong> — new Claude sessions launch in fullscreen TUI mode by default for a cleaner, distraction-free view.</li>
         </ul>
@@ -706,7 +706,7 @@
           <li><strong>Command palette recents</strong> — recently used worktrees and actions float to the top of the command palette for faster access.</li>
           <li><strong>Commit view in the review panel</strong> — the PR review panel now includes a commit list alongside the diff so you can navigate changes commit by commit.</li>
           <li><strong>Add-worktree hotkey</strong> — create a new worktree from the keyboard without reaching for the mouse.</li>
-          <li><strong>Harness system prompt</strong> — Claude sessions now start with workspace context baked in, so Claude understands your project setup from the first message.</li>
+          <li><strong>Ness system prompt</strong> — Claude sessions now start with workspace context baked in, so Claude understands your project setup from the first message.</li>
           <li><strong>Claude settings sync</strong> — Claude Code settings are symlinked across all worktrees so configuration changes apply everywhere at once.</li>
         </ul>
         <h4>Improvements</h4>
@@ -737,7 +737,7 @@
           <li><strong>Fuzzy file picker</strong> — jump to any file in the worktree instantly with a keyboard-driven fuzzy search.</li>
           <li><strong>Performance monitor</strong> — track token usage and latency per agent with a live time-series chart.</li>
           <li><strong>Hotkey cheat sheet</strong> — press <code>?</code> to bring up a full reference of every keyboard shortcut.</li>
-          <li><strong>In-app PR review screen</strong> — browse pull request diffs and check CI status without leaving Harness.</li>
+          <li><strong>In-app PR review screen</strong> — browse pull request diffs and check CI status without leaving Ness.</li>
           <li><strong>Codex support</strong> — run Codex-powered agents alongside Claude sessions in the same workspace.</li>
           <li><strong>First-repo onboarding</strong> — new users see a guided setup flow before adding their first repository.</li>
         </ul>
@@ -786,7 +786,7 @@
       <div class="note-body">
         <h4>New features</h4>
         <ul>
-          <li><strong>Automatic GitHub auth</strong> — if you have <code>gh</code> installed and logged in, Harness picks up your token automatically. No more pasting a PAT unless you want to.</li>
+          <li><strong>Automatic GitHub auth</strong> — if you have <code>gh</code> installed and logged in, Ness picks up your token automatically. No more pasting a PAT unless you want to.</li>
           <li><strong>Line change counts</strong> — the changed-files panel now shows how many lines were added and removed per file.</li>
           <li><strong>Colored repo names</strong> — each repo gets a distinct accent color in the sidebar for quick visual scanning.</li>
         </ul>
@@ -886,7 +886,7 @@
         <span class="text-sm text-neutral-500">April 12, 2026</span>
       </div>
       <a href="https://github.com/frenchie4111/harness/releases/tag/v1.9.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
-      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Multi-repo support lands — open several repositories in a single Harness window.</p>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Multi-repo support lands — open several repositories in a single Ness window.</p>
       <div class="note-body">
         <h4>New features</h4>
         <ul>
@@ -1023,7 +1023,7 @@
         <h4>New features</h4>
         <ul>
           <li><strong>Multiple Claude tabs per worktree</strong> — open a second (or third) Claude session in the same worktree when one isn't enough.</li>
-          <li><strong>Built-in worktree guide</strong> — new users see a short guide explaining what worktrees are and how Harness uses them.</li>
+          <li><strong>Built-in worktree guide</strong> — new users see a short guide explaining what worktrees are and how Ness uses them.</li>
         </ul>
         <h4>Fixes</h4>
         <ul>
@@ -1039,7 +1039,7 @@
         <span class="text-sm text-neutral-500">April 10, 2026</span>
       </div>
       <a href="https://github.com/frenchie4111/harness/releases/tag/v1.2.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
-      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Theming support — pick from nine built-in color themes to make Harness feel like yours.</p>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Theming support — pick from nine built-in color themes to make Ness feel like yours.</p>
       <div class="note-body">
         <h4>New features</h4>
         <ul>
@@ -1096,7 +1096,7 @@
     <div class="max-w-6xl mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-neutral-600">
       <div class="flex items-center gap-2">
         <img src="icon.png" alt="" class="w-5 h-5 rounded" />
-        <span>Harness · Open source · MIT</span>
+        <span>Ness · Open source · MIT</span>
       </div>
       <div class="flex items-center gap-6">
         <a href="/guide.html" class="hover:text-neutral-300 transition-colors">Guide</a>

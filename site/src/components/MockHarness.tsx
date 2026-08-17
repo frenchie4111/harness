@@ -160,7 +160,7 @@ function MockSidebar({ state }: { state: MockHarnessState }) {
 
       <div className="h-10 relative shrink-0">
         <span className="gradient-text text-xs font-semibold absolute left-20 top-[11px]">
-          Harness
+          Ness
         </span>
       </div>
 
@@ -454,7 +454,7 @@ function repoNameFromPath(path: string): string {
 }
 
 /** Renders a screenshot of Claude Code's fullscreen TUI as seen inside a
- * Harness terminal pane. Layout mirrors the real thing: banner at top,
+ * Ness terminal pane. Layout mirrors the real thing: banner at top,
  * empty working area, effort indicator + path-terminated separators, the
  * input prompt (or an approval prompt when the worktree is blocked), and
  * the "accept edits on" status line. */
@@ -785,7 +785,7 @@ function MockNewWorktreeScreen() {
           <div className="text-center mb-6">
             <img
               src="/icon.png"
-              alt="Harness"
+              alt="Ness"
               className="w-14 h-14 mx-auto rounded-2xl mb-3 brand-glow-amber"
             />
             <h1 className="text-3xl font-extrabold tracking-tight mb-1">

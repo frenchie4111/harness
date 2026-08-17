@@ -7,7 +7,7 @@ export function FeatureCallouts() {
           <div className="h-80 mb-5 flex items-center justify-center">
             <img
               src="/screenshot-mobile.svg"
-              alt="Harness running on a phone, with sidebar of agents and a terminal pane"
+              alt="Ness running on a phone, with sidebar of agents and a terminal pane"
               className="h-full w-auto object-contain"
               loading="lazy"
             />
@@ -23,7 +23,7 @@ export function FeatureCallouts() {
           <div className="h-80 mb-5 flex items-center justify-center">
             <img
               src="/screenshot-browser.png"
-              alt="Harness with an embedded browser tab the agent is driving"
+              alt="Ness with an embedded browser tab the agent is driving"
               className="max-h-full w-auto"
               loading="lazy"
             />

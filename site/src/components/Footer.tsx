@@ -4,7 +4,7 @@ export function Footer() {
       <div className="max-w-6xl mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-ink-600">
         <div className="flex items-center gap-2">
           <img src="/icon.png" alt="" className="w-5 h-5 rounded" />
-          <span>Harness · Open source · MIT</span>
+          <span>Ness · Open source · MIT</span>
         </div>
         <div className="flex items-center gap-6">
           <a

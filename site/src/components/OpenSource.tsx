@@ -16,7 +16,7 @@ export function OpenSource() {
         <h2 className="text-3xl font-bold">Open source, for real</h2>
       </div>
       <p className="text-ink-400 leading-relaxed max-w-xl mx-auto mb-2">
-        Harness is MIT licensed. Use it, fork it, modify it — no strings attached. This is a passion
+        Ness is MIT licensed. Use it, fork it, modify it — no strings attached. This is a passion
         project, not a business. It will never become paid or freemium.
       </p>
       <p className="text-ink-500 text-sm mb-8">

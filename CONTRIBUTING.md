@@ -1,4 +1,4 @@
-# Contributing to Harness
+# Contributing to Ness
 
 Thanks for taking the time to contribute. This project is small enough that a single thoughtful PR really does move it forward — every external contribution we've gotten so far has shaped the product in ways we couldn't have anticipated.
 
@@ -28,7 +28,7 @@ The `--legacy-peer-deps` flag is required because of an `electron-vite@5` peer r
 
 ## How to edit code in this codebase
 
-Honestly - every single line of code in this codebase is written by claude. (at least all the lines I wrote). So I highly recommend using claude code to make changes (I keep harness itself open at all times)
+Honestly - every single line of code in this codebase is written by claude. (at least all the lines I wrote). So I highly recommend using claude code to make changes (I keep Ness itself open at all times)
 
 There is a pretty well tuned CLAUDE.md file that should be able to make changes correctly
 
@@ -42,7 +42,7 @@ Just all the normal things. Please make sure your agent is committing regularly.
 
 ## Architecture overview
 
-Harness is built as three layers in one repo. Understanding the layering up front will save you a lot of "where does this go?" thrash.
+Ness is built as three layers in one repo. Understanding the layering up front will save you a lot of "where does this go?" thrash.
 
 ### Frontend / backend split
 
@@ -146,7 +146,7 @@ We don't run a strict formatter on every PR [yet](https://github.com/frenchie411
 
 ## Reviewing PRs
 
-In the spirit of the rest of the project, most reviews will be done using claude (using the PR review feature inside of Harness itself).
+In the spirit of the rest of the project, most reviews will be done using claude (using the PR review feature inside of Ness itself).
 
 In a modern AI way: If there are any small nitpicks or styling issues in the PR, the reviewer's claude code instance will take care of them (and leave a related comment on the PR). This is because it's just so much faster for the reviewer to handle it than for you to take their comments and put them into your claude instance
 
