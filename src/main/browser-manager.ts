@@ -1,8 +1,14 @@
-import { WebContentsView, BrowserWindow, session } from 'electron'
+import { WebContentsView, BrowserWindow, app, nativeImage, session } from 'electron'
+import type { NativeImage } from 'electron'
 import type { Store } from './store'
-import type { BrowserManagerLike, ConsoleLog } from './browser-manager-types'
+import type { BrowserManagerLike, CaptureResult, ConsoleLog } from './browser-manager-types'
 import { log } from './debug'
-import { resolveScreenshotTarget } from './browser-screenshot'
+import {
+  encodedCaptureError,
+  resolveScreenshotTarget,
+  viewportCaptureError
+} from './browser-screenshot'
+import { normalizeBrowserUrl } from './browser-url'
 
 export type { ConsoleLog }
 
@@ -16,9 +22,20 @@ export interface BrowserInstance {
   /** When false, the view is detached (removed from the window) and bounds
    * updates will re-attach it. */
   visible: boolean
+  /** True while the view sits in the offscreen park window. */
+  parked: boolean
+  /** Viewport to give the view while parked — the size it last had on screen,
+   * or the default for a tab that has never been displayed. */
+  parkedSize: { width: number; height: number }
 }
 
 const CONSOLE_LOG_CAP = 200
+
+/** Viewport for tabs that have never been the visible pane. Without it they'd
+ * sit at 0×0, which yields an empty screenshot and an empty clickables list. */
+const DEFAULT_VIEW_SIZE = { width: 1280, height: 800 }
+
+const CAPTURE_TIMEOUT_MS = 10_000
 
 function sanitizePartition(worktreePath: string): string {
   return worktreePath.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120)
@@ -156,13 +173,116 @@ const CLICKABLES_SCRIPT = `(() => {
  *
  * The renderer sends bounds updates (placeholder div geometry) via IPC; we
  * reposition the underlying view over the BrowserWindow's content area.
+ *
+ * A view that isn't the visible pane is *parked* in a never-shown window
+ * rather than left parentless. A parentless WebContentsView reports a 0×0
+ * viewport and has no compositor surface, so `capturePage()` either throws
+ * `UnknownVizError` or hands back a stale frame, and viewport-scoped scripts
+ * (get_tab_clickables) see an empty page. Parking keeps every tab laid out and
+ * rendering, which is what makes screenshots work for background worktrees.
+ * The park window is never shown, so nothing flashes and focus never moves.
  */
 export class BrowserManager implements BrowserManagerLike {
   private instances = new Map<string, BrowserInstance>()
   private store: Store | null = null
+  private parkWindow: BrowserWindow | null = null
+  private quitGuardInstalled = false
 
   setStore(store: Store): void {
     this.store = store
+  }
+
+  private ensureParkWindow(): BrowserWindow | null {
+    if (this.parkWindow && !this.parkWindow.isDestroyed()) return this.parkWindow
+    try {
+      this.parkWindow = new BrowserWindow({
+        show: false,
+        skipTaskbar: true,
+        // Frameless + square so the host's title bar and macOS corner rounding
+        // don't eat into the region a parked view can paint.
+        frame: false,
+        roundedCorners: false,
+        width: DEFAULT_VIEW_SIZE.width,
+        height: DEFAULT_VIEW_SIZE.height
+      })
+      this.installQuitGuard()
+      return this.parkWindow
+    } catch (err) {
+      this.parkWindow = null
+      log('browser', 'park window create failed', err instanceof Error ? err.message : err)
+      return null
+    }
+  }
+
+  /** The park window is a real BrowserWindow, so on Linux/Windows it would
+   * suppress 'window-all-closed' and leave the app running headless after the
+   * user closes the last real window. Drop it once no real window is left. */
+  private installQuitGuard(): void {
+    if (this.quitGuardInstalled) return
+    this.quitGuardInstalled = true
+    const check = (): void => {
+      const real = BrowserWindow.getAllWindows().filter(
+        (w) => w !== this.parkWindow && !w.isDestroyed()
+      )
+      if (real.length === 0) this.destroyParkWindow()
+    }
+    const watch = (w: BrowserWindow): void => {
+      if (w !== this.parkWindow) w.once('closed', check)
+    }
+    for (const w of BrowserWindow.getAllWindows()) watch(w)
+    app.on('browser-window-created', (_e, w) => watch(w))
+  }
+
+  private destroyParkWindow(): void {
+    const win = this.parkWindow
+    this.parkWindow = null
+    if (!win || win.isDestroyed()) return
+    for (const inst of this.instances.values()) {
+      if (!inst.parked) continue
+      try {
+        win.contentView.removeChildView(inst.view)
+      } catch {
+        // window already tearing down
+      }
+      inst.parked = false
+    }
+    win.destroy()
+  }
+
+  /** Put a hidden view into the park window so it keeps a viewport + surface. */
+  private park(inst: BrowserInstance): void {
+    if (inst.parked && this.parkWindow && !this.parkWindow.isDestroyed()) return
+    const host = this.ensureParkWindow()
+    if (!host) return
+    try {
+      // A view only paints the part of itself that fits inside its host window,
+      // so a tab parked at pane size in a smaller host comes back half black.
+      const { width, height } = host.getContentBounds()
+      if (width < inst.parkedSize.width || height < inst.parkedSize.height) {
+        host.setContentSize(
+          Math.max(width, inst.parkedSize.width),
+          Math.max(height, inst.parkedSize.height)
+        )
+      }
+      host.contentView.addChildView(inst.view)
+      inst.view.setBounds({ x: 0, y: 0, ...inst.parkedSize })
+      inst.parked = true
+    } catch (err) {
+      inst.parked = false
+      log('browser', 'park failed', err instanceof Error ? err.message : err)
+    }
+  }
+
+  private unpark(inst: BrowserInstance): void {
+    if (!inst.parked) return
+    inst.parked = false
+    const win = this.parkWindow
+    if (!win || win.isDestroyed()) return
+    try {
+      win.contentView.removeChildView(inst.view)
+    } catch {
+      // window already gone
+    }
   }
 
   hasTab(tabId: string): boolean {
@@ -217,12 +337,17 @@ export class BrowserManager implements BrowserManagerLike {
       attachedWindow: null,
       logs: [],
       lastBounds: null,
-      visible: false
+      visible: false,
+      parked: false,
+      parkedSize: { ...DEFAULT_VIEW_SIZE }
     }
     this.instances.set(tabId, inst)
     this.wireEvents(tabId, inst)
+    // Park before the first load so the page lays out against a real viewport
+    // even if this tab is never displayed.
+    this.park(inst)
 
-    const initialUrl = url && url.trim() ? url : 'about:blank'
+    const initialUrl = normalizeBrowserUrl(url) ?? 'about:blank'
     this.dispatchState(tabId, { url: initialUrl, loading: true })
     view.webContents.loadURL(initialUrl).catch((err) => {
       log('browser', `loadURL failed tab=${tabId}`, err instanceof Error ? err.message : err)
@@ -297,9 +422,8 @@ export class BrowserManager implements BrowserManagerLike {
   navigate(tabId: string, url: string): void {
     const inst = this.instances.get(tabId)
     if (!inst) return
-    const target = url.trim()
-    if (!target) return
-    const normalized = /^[a-z][a-z0-9+\-.]*:/i.test(target) ? target : `https://${target}`
+    const normalized = normalizeBrowserUrl(url)
+    if (!normalized) return
     inst.view.webContents.loadURL(normalized).catch((err) => {
       log('browser', `navigate failed tab=${tabId}`, err instanceof Error ? err.message : err)
     })
@@ -355,6 +479,9 @@ export class BrowserManager implements BrowserManagerLike {
       inst.attachedWindow = win
       inst.visible = true
     }
+    if (rounded.width >= 1 && rounded.height >= 1) {
+      inst.parkedSize = { width: rounded.width, height: rounded.height }
+    }
     if (
       !inst.lastBounds ||
       inst.lastBounds.x !== rounded.x ||
@@ -371,9 +498,11 @@ export class BrowserManager implements BrowserManagerLike {
     const inst = this.instances.get(tabId)
     if (!inst) return
     this.detachView(inst)
+    this.park(inst)
   }
 
   private detachView(inst: BrowserInstance): void {
+    this.unpark(inst)
     if (!inst.visible || !inst.attachedWindow) return
     try {
       inst.attachedWindow.contentView.removeChildView(inst.view)
@@ -500,8 +629,15 @@ export class BrowserManager implements BrowserManagerLike {
   async getClickables(tabId: string): Promise<unknown | null> {
     const inst = this.instances.get(tabId)
     if (!inst) return null
+    if (!inst.visible) this.park(inst)
     try {
       const result = await inst.view.webContents.executeJavaScript(CLICKABLES_SCRIPT)
+      // The script only reports in-viewport elements, so a 0×0 viewport looks
+      // like "this page has no buttons" rather than a failure.
+      const viewport = (result as { viewport?: { w: number; h: number } } | null)?.viewport
+      if (viewport && (viewport.w < 1 || viewport.h < 1)) {
+        log('browser', `getClickables tab=${tabId} has a ${viewport.w}x${viewport.h} viewport`)
+      }
       return result ?? null
     } catch (err) {
       log('browser', `getClickables failed tab=${tabId}`, err instanceof Error ? err.message : err)
@@ -509,15 +645,80 @@ export class BrowserManager implements BrowserManagerLike {
     }
   }
 
+  /** Render a view that isn't on screen.
+   *
+   * `webContents.capturePage()` reads the compositor surface, which a hidden
+   * view doesn't have — it throws, or worse returns the last frame from before
+   * the tab was hidden. CDP's Page.captureScreenshot with `fromSurface: false`
+   * renders in the renderer process instead, so it stays correct for a parked
+   * tab. It does still need the view to be parented, hence the park window.
+   */
+  private async captureOffscreen(inst: BrowserInstance): Promise<NativeImage> {
+    const dbg = inst.view.webContents.debugger
+    const wasAttached = dbg.isAttached()
+    if (!wasAttached) dbg.attach('1.3')
+    let timer: NodeJS.Timeout | undefined
+    try {
+      const shot = dbg.sendCommand('Page.captureScreenshot', {
+        format: 'png',
+        fromSurface: false,
+        captureBeyondViewport: false
+      }) as Promise<{ data?: string }>
+      const result = await Promise.race([
+        shot,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`Page.captureScreenshot timed out after ${CAPTURE_TIMEOUT_MS}ms`)),
+            CAPTURE_TIMEOUT_MS
+          )
+        })
+      ])
+      return nativeImage.createFromBuffer(Buffer.from(result?.data ?? '', 'base64'))
+    } finally {
+      clearTimeout(timer)
+      // Leaving the debugger attached would block DevTools on this tab.
+      if (!wasAttached && dbg.isAttached()) {
+        try {
+          dbg.detach()
+        } catch {
+          // webContents already gone
+        }
+      }
+    }
+  }
+
   async capturePage(
     tabId: string,
     opts?: { format?: 'jpeg' | 'png'; quality?: number }
-  ): Promise<{ data: string; format: 'jpeg' | 'png' } | null> {
+  ): Promise<CaptureResult | null> {
     const inst = this.instances.get(tabId)
     if (!inst) return null
+    // Self-heal a tab whose park window went away (macOS closes all windows
+    // without quitting) so capture isn't permanently broken afterwards.
+    if (!inst.visible) this.park(inst)
+    const bounds = inst.view.getBounds()
+    const viewportError = viewportCaptureError(bounds)
+    if (viewportError) {
+      log('browser', `capturePage unusable tab=${tabId}`, viewportError)
+      return { error: viewportError }
+    }
     try {
-      const image = await inst.view.webContents.capturePage()
-      const bounds = inst.view.getBounds()
+      let image: NativeImage | null = null
+      if (inst.visible) {
+        try {
+          image = await inst.view.webContents.capturePage()
+        } catch (err) {
+          // Minimized / occluded windows lose their surface too; the offscreen
+          // path below still works because the view is parented.
+          log(
+            'browser',
+            `capturePage surface miss tab=${tabId}`,
+            err instanceof Error ? err.message : err
+          )
+        }
+      }
+      if (!image || image.isEmpty()) image = await this.captureOffscreen(inst)
+
       const { outputSize } = resolveScreenshotTarget(bounds)
       const captured = image.getSize()
       const normalized =
@@ -525,14 +726,18 @@ export class BrowserManager implements BrowserManagerLike {
           ? image
           : image.resize({ width: outputSize.width, height: outputSize.height })
       const format = opts?.format === 'png' ? 'png' : 'jpeg'
-      if (format === 'png') {
-        return { data: normalized.toPNG().toString('base64'), format: 'png' }
-      }
       const q = Math.max(1, Math.min(100, Math.round(opts?.quality ?? 70)))
-      return { data: normalized.toJPEG(q).toString('base64'), format: 'jpeg' }
+      const buf = format === 'png' ? normalized.toPNG() : normalized.toJPEG(q)
+      const encodedError = encodedCaptureError(normalized.getSize(), buf.length)
+      if (encodedError) {
+        log('browser', `capturePage produced no image tab=${tabId}`, encodedError)
+        return { error: encodedError }
+      }
+      return { data: buf.toString('base64'), format }
     } catch (err) {
-      log('browser', `capturePage failed tab=${tabId}`, err instanceof Error ? err.message : err)
-      return null
+      const message = err instanceof Error ? err.message : String(err)
+      log('browser', `capturePage failed tab=${tabId}`, message)
+      return { error: `capture failed: ${message}` }
     }
   }
 
@@ -562,5 +767,6 @@ export class BrowserManager implements BrowserManagerLike {
 
   destroyAll(): void {
     for (const id of [...this.instances.keys()]) this.destroy(id)
+    this.destroyParkWindow()
   }
 }

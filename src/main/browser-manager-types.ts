@@ -17,6 +17,12 @@ export interface ConsoleLog {
   message: string
 }
 
+/** Success carries the encoded image; failure carries a reason the caller can
+ * surface verbatim. `null` from capturePage still means "no such tab". */
+export type CaptureResult =
+  | { data: string; format: 'jpeg' | 'png'; error?: undefined }
+  | { error: string; data?: undefined; format?: undefined }
+
 export interface BrowserManagerLike {
   setStore(store: Store): void
   hasTab(tabId: string): boolean
@@ -54,6 +60,6 @@ export interface BrowserManagerLike {
   capturePage(
     tabId: string,
     opts?: { format?: 'jpeg' | 'png'; quality?: number }
-  ): Promise<{ data: string; format: 'jpeg' | 'png' } | null>
+  ): Promise<CaptureResult | null>
   getDom(tabId: string): Promise<string | null>
 }

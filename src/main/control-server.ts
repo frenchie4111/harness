@@ -7,6 +7,7 @@ import { agentDisplayName, supportsConversationFork } from '../shared/agent-regi
 import type { GroupKey } from '../shared/worktree-sort'
 import type { PRStatus } from '../shared/state/prs'
 import type { ChatDeliveryResult } from './chat-delivery'
+import type { CaptureResult } from './browser-manager-types'
 import { wrapAutomatedMessage } from '../shared/state/json-claude'
 import { log } from './debug'
 
@@ -26,7 +27,7 @@ export interface BrowserQueries {
   screenshotTab: (
     tabId: string,
     opts?: { format?: 'jpeg' | 'png'; quality?: number }
-  ) => Promise<{ data: string; format: 'jpeg' | 'png' } | null>
+  ) => Promise<CaptureResult | null>
   getTabDom: (tabId: string) => Promise<string | null>
   getTabClickables: (tabId: string) => Promise<unknown | null>
   navigateTab: (tabId: string, url: string) => void
@@ -522,13 +523,19 @@ async function handleRequest(
       const qParam = url.searchParams.get('quality')
       const quality = qParam ? parseInt(qParam, 10) : undefined
       const result = await deps.browser.screenshotTab(tabId, { format, quality })
-      return sendJson(res, result ? 200 : 500, {
-        data: result?.data,
-        format: result?.format,
-        mimeType: result ? (result.format === 'png' ? 'image/png' : 'image/jpeg') : undefined,
+      // An empty image used to come back as HTTP 200 with `data: ''`, which
+      // the bridge reported as a bare "screenshot failed" and nothing logged.
+      if (!result?.data) {
+        return sendJson(res, 500, {
+          error: result?.error ?? 'capture failed: tab is no longer available'
+        })
+      }
+      return sendJson(res, 200, {
+        data: result.data,
+        format: result.format,
+        mimeType: result.format === 'png' ? 'image/png' : 'image/jpeg',
         // Kept for older MCP bridge versions. New bridges read `data`+`format`.
-        pngBase64: result && result.format === 'png' ? result.data : undefined,
-        error: result ? undefined : 'capture failed'
+        pngBase64: result.format === 'png' ? result.data : undefined
       })
     }
     if (req.method === 'GET' && path === '/browser/dom') {

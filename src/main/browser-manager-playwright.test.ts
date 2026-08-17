@@ -127,9 +127,9 @@ describe('PlaywrightBrowserManager', () => {
       expect(url).toMatch(new RegExp(`^${baseUrl}/?$`))
 
       const shot = await m.capturePage(tabId)
-      expect(shot).not.toBeNull()
-      expect(shot!.format).toBe('jpeg')
-      expect(shot!.data.length).toBeGreaterThan(100)
+      expect(shot?.error).toBeUndefined()
+      expect(shot?.format).toBe('jpeg')
+      expect(shot?.data?.length ?? 0).toBeGreaterThan(100)
 
       const clickables = (await m.getClickables(tabId)) as
         | { items: Array<{ role: string; name: string; cx: number; cy: number }> }

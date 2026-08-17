@@ -21,9 +21,10 @@
 
 import { createRequire } from 'module'
 import type { Browser, BrowserContext, Page } from 'playwright-core'
-import type { BrowserManagerLike, ConsoleLog } from './browser-manager-types'
+import type { BrowserManagerLike, CaptureResult, ConsoleLog } from './browser-manager-types'
 import type { Store } from './store'
 import { log } from './debug'
+import { normalizeBrowserUrl } from './browser-url'
 
 const CONSOLE_LOG_CAP = 200
 
@@ -311,7 +312,7 @@ export class PlaywrightBrowserManager implements BrowserManagerLike {
     if (this.hasTab(tabId)) return
     log('browser-playwright', `create tab=${tabId} wt=${worktreePath} url=${url}`)
     this.pendingTabIds.add(tabId)
-    const initialUrl = url && url.trim() ? url : 'about:blank'
+    const initialUrl = normalizeBrowserUrl(url) ?? 'about:blank'
     this.dispatchState(tabId, { url: initialUrl, loading: true })
     void this.createAsync(tabId, worktreePath, initialUrl).catch((err) => {
       const message = err instanceof Error ? err.message : String(err)
@@ -468,9 +469,8 @@ export class PlaywrightBrowserManager implements BrowserManagerLike {
   navigate(tabId: string, url: string): void {
     const inst = this.instances.get(tabId)
     if (!inst) return
-    const target = url.trim()
-    if (!target) return
-    const normalized = /^[a-z][a-z0-9+\-.]*:/i.test(target) ? target : `https://${target}`
+    const normalized = normalizeBrowserUrl(url)
+    if (!normalized) return
     this.dispatchState(tabId, { loading: true })
     inst.page.goto(normalized).catch((err) => {
       log(
@@ -619,25 +619,25 @@ export class PlaywrightBrowserManager implements BrowserManagerLike {
   async capturePage(
     tabId: string,
     opts?: { format?: 'jpeg' | 'png'; quality?: number }
-  ): Promise<{ data: string; format: 'jpeg' | 'png' } | null> {
+  ): Promise<CaptureResult | null> {
     const inst = this.instances.get(tabId)
     if (!inst) return null
     try {
       const format = opts?.format === 'png' ? 'png' : 'jpeg'
-      if (format === 'png') {
-        const buf = await inst.page.screenshot({ type: 'png' })
-        return { data: buf.toString('base64'), format: 'png' }
-      }
       const q = Math.max(1, Math.min(100, Math.round(opts?.quality ?? 70)))
-      const buf = await inst.page.screenshot({ type: 'jpeg', quality: q })
-      return { data: buf.toString('base64'), format: 'jpeg' }
+      const buf =
+        format === 'png'
+          ? await inst.page.screenshot({ type: 'png' })
+          : await inst.page.screenshot({ type: 'jpeg', quality: q })
+      if (buf.length < 1) {
+        log('browser-playwright', `capturePage produced no image tab=${tabId}`)
+        return { error: 'capture encoded to 0 bytes' }
+      }
+      return { data: buf.toString('base64'), format }
     } catch (err) {
-      log(
-        'browser-playwright',
-        `capturePage failed tab=${tabId}`,
-        err instanceof Error ? err.message : err
-      )
-      return null
+      const message = err instanceof Error ? err.message : String(err)
+      log('browser-playwright', `capturePage failed tab=${tabId}`, message)
+      return { error: `capture failed: ${message}` }
     }
   }
 
