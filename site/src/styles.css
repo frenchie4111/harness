@@ -17,7 +17,7 @@
   --color-brand-red: #ef4444;
   --color-brand-purple: #a855f7;
 
-  /* Tokens lifted verbatim from the real Harness renderer theme so copied
+  /* Tokens lifted verbatim from the real Ness renderer theme so copied
    * JSX (Sidebar, WorktreeTab, Terminal header) renders with identical
    * bg-panel / text-fg-bright / border-border-strong utilities. */
   --color-app: #0a0a0a;

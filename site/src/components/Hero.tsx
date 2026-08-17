@@ -5,7 +5,7 @@ export function Hero() {
     <section className="max-w-6xl mx-auto px-6 pt-12 pb-20 text-center">
       <img
         src="/icon.png"
-        alt="Harness"
+        alt="Ness"
         className="w-28 h-28 mx-auto rounded-3xl mb-8 glow-amber"
       />
       <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6">
@@ -158,7 +158,7 @@ function LinkCard({ body }: { body: string }) {
     <div className="link-card">
       <div className="link-preview">
         <div className="link-icon">H</div>
-        <div className="link-title">Harness — run a team of agents</div>
+        <div className="link-title">Ness — run a team of agents</div>
         <div className="link-domain">harness.mikelyons.org</div>
       </div>
       <div className="link-body">{body}</div>

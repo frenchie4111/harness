@@ -1,12 +1,12 @@
-# Harness — repo overview for Claude
+# Ness — repo overview for Claude
 
 This file is read automatically by Claude Code at the start of every session.
 It documents the project structure and the conventions used here.
 
 ## What this app is
 
-Harness is a macOS Electron app that manages multiple Claude Code instances
-across git worktrees. The user runs many parallel Claude sessions, and Harness
+Ness is a macOS Electron app that manages multiple Claude Code instances
+across git worktrees. The user runs many parallel Claude sessions, and Ness
 gives them a single window with a sidebar of worktrees, terminal tabs per
 worktree (Claude + raw shells), changed-files panel, PR status, and hotkey
 navigation.
@@ -419,8 +419,8 @@ Token resolution lives in `src/main/github-auth.ts` and runs once at boot
 (re-runs on a 401): an explicit PAT in `secrets.enc` or `GITHUB_TOKEN` wins,
 then `gh auth token` (spawned through a login zsh so Homebrew's `gh` is on
 PATH), then nothing. The `gh` CLI is an **optional** auto-detect convenience
-— if it's installed and authenticated, Harness uses its token automatically;
-if not, the PAT paste flow in Settings is still the fallback. Harness has no
+— if it's installed and authenticated, Ness uses its token automatically;
+if not, the PAT paste flow in Settings is still the fallback. Ness has no
 hard dependency on `gh`.
 
 ## Important quirks
@@ -444,7 +444,7 @@ hard dependency on `gh`.
 - **Login-shell PATH fix at boot** — at boot we run the user's login shell once
   via `path-fix.ts` to capture its PATH and **merge** into `process.env.PATH`.
   Without this, the bundled claude (spawned directly, not via shell) inherits
-  whatever stripped PATH Harness was launched with and can't find homebrew/
+  whatever stripped PATH Ness was launched with and can't find homebrew/
   nvm/pyenv tools. The fix runs in both Electron-local boots (Finder/Dock
   launches with `/usr/bin:/bin:/usr/sbin:/sbin`) and headless boots
   (`ssh host 'harness-server'` / systemd / launchd run non-interactive
@@ -456,6 +456,20 @@ hard dependency on `gh`.
   to macOS only; linux can be added if anyone reports the same problem.
 - **Auto-updater is dev-mode no-op** — `setupAutoUpdater()` returns early
   unless `app.isPackaged`.
+- **`package.json` `name` is load-bearing — never change it.** It's still
+  `"harness"` even though the product is Ness. Electron derives
+  `app.getName()` from it (there's no top-level `productName` — the one in
+  `build` is electron-builder's and Electron never reads it), and that name
+  keys *two* things: the userData directory
+  (`~/Library/Application Support/harness`) and the macOS Safe Storage
+  keychain item (service `harness Safe Storage`, account `harness Key`),
+  which is what decrypts `secrets.enc`. The filesystem is case-insensitive
+  but the keychain is **not**, so even a capitalization change breaks token
+  decryption with "A keychain can not be found to store …". Packaged builds
+  additionally pin the dir explicitly in `applyUserDataPathOverride()`
+  (`src/main/desktop-shell.ts`) so a future `name` edit can't orphan
+  existing installs' config, secrets, and pane layout. Same reasoning as
+  `build.appId` staying `org.mikelyons.harness`.
 - **Dual browser-controller** — Browser tabs are backed by Electron's
   `WebContentsView` in desktop mode and by `playwright-core` in headless
   mode. Both implement the `BrowserManagerLike` contract so MCP tools,
@@ -468,7 +482,7 @@ hard dependency on `gh`.
   message. The headless renderer (web client) renders a polled JPEG
   via `RemoteBrowserView` instead of a native overlay — live screencast
   is a follow-up.
-- **Multi-backend (Tier 1)** — a single Electron Harness can connect
+- **Multi-backend (Tier 1)** — a single Electron Ness can connect
   to N backends (the in-process local one + remote `harness-server`
   instances), with a chip strip at the bottom of the sidebar to switch.
   See `plans/tier-1-multi-backend-ux.md` for the full design.
@@ -495,11 +509,11 @@ hard dependency on `gh`.
   happens via the chip strip's `+` button (or `File → Add Backend…`
   if/when wired). Tokens encrypted in `secrets.enc` keyed
   `backend-token:<id>`; connections list lives in `userData/config.json`.
-- **Dual-claude model** — Harness ships two Claude Code binaries. **Terminal
+- **Dual-claude model** — Ness ships two Claude Code binaries. **Terminal
   tabs** (internally xterm-hosted) spawn `/bin/zsh -ilc claude` so the user's
   PATH `claude` is what runs (lets bleeding-edge / beta testers stay on their
   own build). **Chat tabs** (internally `json-mode`) spawn the bundled
-  `@anthropic-ai/claude-code` native binary directly — pinned per Harness
+  `@anthropic-ai/claude-code` native binary directly — pinned per Ness
   release so the `--permission-prompt-tool` round trip and stream-json
   schema can't drift between npm publishes. Both share `~/.claude/` for
   auth + MCP config, so the dual binaries are invisible at the user
@@ -575,7 +589,7 @@ These are how the user wants Claude to behave when working on this repo:
    on the user's behalf, not the user themselves:
 
    ```
-   _Comment left on behalf of @<github-username> by <agent-name> via [Harness](https://github.com/frenchie4111/harness)._
+   _Comment left on behalf of @<github-username> by <agent-name> via [Ness](https://github.com/frenchie4111/harness)._
    ```
 
    - `<github-username>` is the user's GitHub login — run
@@ -590,7 +604,7 @@ These are how the user wants Claude to behave when working on this repo:
    closing PRs, force-pushing, deleting branches or releases, etc. When in
    doubt, ask.
 
-10. **When reviewing a PR from a contributor's fork inside a Harness
+10. **When reviewing a PR from a contributor's fork inside a Ness
     PR-review worktree, push cleanup commits back to THEIR branch — not
     to upstream `origin` and not to a new branch on the reviewer's fork.**
     `CONTRIBUTING.md` promises contributors that the reviewer's agent
@@ -598,7 +612,7 @@ These are how the user wants Claude to behave when working on this repo:
     promise to hold, the commits must land on the contributor's PR
     branch so the PR itself updates.
 
-    **The trap.** When Harness opens a PR for review, it fetches
+    **The trap.** When Ness opens a PR for review, it fetches
     `refs/pull/<N>/head` from `origin` (the upstream repo) into a local
     branch named after the PR's head ref. It does **not** add the
     contributor's fork as a remote, and the local branch has **no
@@ -616,7 +630,7 @@ These are how the user wants Claude to behave when working on this repo:
       change history, confuses the contributor, forces manual
       cherry-picking.
 
-    **The fix.** Inside the Harness-created worktree, run
+    **The fix.** Inside the Ness-created worktree, run
     `gh pr checkout <num>` once before pushing. `gh` is idempotent on a
     branch that already exists at the right SHA — it just adds the
     contributor's fork as a remote (named after the fork owner) and
@@ -624,7 +638,7 @@ These are how the user wants Claude to behave when working on this repo:
     `git push` does the right thing:
 
     ```sh
-    # inside the Harness PR-review worktree
+    # inside the Ness PR-review worktree
     gh pr checkout <num>   # patches up remote + upstream config;
                            # safe no-op on the existing local branch
     # …make the fix, commit…

@@ -60,13 +60,13 @@ const SECTIONS: Section[] = [
   {
     eyebrow: 'New worktree in a click',
     title: 'Start new work instantly.',
-    body: 'Spawn a fresh agent from the sidebar. Harness manages the full lifecycle of the git worktree, so you never even have to learn the commands.',
-    bonus: 'Bonus: Agents can create new worktrees themselves through the Harness MCP. Just ask!'
+    body: 'Spawn a fresh agent from the sidebar. Ness manages the full lifecycle of the git worktree, so you never even have to learn the commands.',
+    bonus: 'Bonus: Agents can create new worktrees themselves through the Ness MCP. Just ask!'
   },
   {
     eyebrow: 'Everything in one UI',
     title: 'Everything about the worktree, one keystroke away.',
-    body: 'Pull request status, branch commits, changed-file review, and any file opened in an embedded editor. All right there next to Claude. Review what shipped without leaving Harness.'
+    body: 'Pull request status, branch commits, changed-file review, and any file opened in an embedded editor. All right there next to Claude. Review what shipped without leaving Ness.'
   }
 ]
 

@@ -41,10 +41,10 @@ export function HeaderNav() {
       <a href="/" className="flex items-center gap-3 min-w-0 group">
         <img
           src="/icon.png"
-          alt="Harness icon"
+          alt="Ness icon"
           className="w-9 h-9 rounded-lg flex-shrink-0 transition-transform group-hover:scale-105"
         />
-        <span className="text-xl font-bold tracking-tight">Harness</span>
+        <span className="text-xl font-bold tracking-tight">Ness</span>
       </a>
 
       <div className="hidden sm:flex items-center gap-4 sm:gap-6 text-sm text-ink-400 flex-shrink-0">
