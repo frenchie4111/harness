@@ -84,7 +84,12 @@ import {
   type PersistedPaneNode,
   type QuestStep
 } from './persistence'
-import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
+import {
+  loadRepoConfig,
+  saveRepoConfig,
+  repoConfigFilename,
+  type RepoConfig
+} from './repo-config'
 import { createNewProject, type GitignorePreset } from './repo-create'
 import { resolveRepoPath } from './repo-resolve'
 import { registerRepoRoot } from './repo-roots'
@@ -2254,7 +2259,7 @@ function registerIpcHandlers(): void {
     const saved = saveRepoConfig(repoRoot, merged)
     store.dispatch({
       type: 'repoConfigs/changed',
-      payload: { repoRoot, config: saved }
+      payload: { repoRoot, config: saved, filename: repoConfigFilename(repoRoot) }
     })
     return saved
   })
@@ -4533,10 +4538,15 @@ async function reapplyConfigFromDisk(): Promise<void> {
   )
 
   const repoConfigsMap: Record<string, RepoConfig> = {}
+  const repoConfigNames: Record<string, string> = {}
   for (const root of config.repoRoots || []) {
     repoConfigsMap[root] = loadRepoConfig(root)
+    repoConfigNames[root] = repoConfigFilename(root)
   }
-  store.dispatch({ type: 'repoConfigs/loaded', payload: repoConfigsMap })
+  store.dispatch({
+    type: 'repoConfigs/loaded',
+    payload: { byRepo: repoConfigsMap, filenameByRepo: repoConfigNames }
+  })
 
   await panesFSM.restoreFromConfig(config.panes)
   await worktreesFSM.refreshList()
@@ -4558,12 +4568,17 @@ async function runBoot(): Promise<void> {
     reconcileBrowserViews()
   })()
 
-  // Seed per-repo config slice from each repo's .harness.json file.
+  // Seed per-repo config slice from each repo's config file.
   const initialRepoConfigsMap: Record<string, RepoConfig> = {}
+  const initialRepoConfigNames: Record<string, string> = {}
   for (const root of config.repoRoots || []) {
     initialRepoConfigsMap[root] = loadRepoConfig(root)
+    initialRepoConfigNames[root] = repoConfigFilename(root)
   }
-  store.dispatch({ type: 'repoConfigs/loaded', payload: initialRepoConfigsMap })
+  store.dispatch({
+    type: 'repoConfigs/loaded',
+    payload: { byRepo: initialRepoConfigsMap, filenameByRepo: initialRepoConfigNames }
+  })
 
   // Start the activity deriver — it observes terminals/prs/panes events
   // and writes recordActivity + lastActive without renderer involvement.

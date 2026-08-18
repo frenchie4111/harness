@@ -732,6 +732,14 @@ export function useRepoConfigs() {
   return useAppState((s) => s.repoConfigs.byRepo)
 }
 
+/** Config filename for one repo — `.ness.json`, or `.harness.json` for
+ *  repos that already had one before the rename. */
+export function useRepoConfigFilename(repoRoot: string | null): string {
+  return useAppState((s) =>
+    repoRoot ? s.repoConfigs.filenameByRepo[repoRoot] || '.ness.json' : '.ness.json'
+  )
+}
+
 export function useCosts() {
   return useAppState((s) => s.costs)
 }

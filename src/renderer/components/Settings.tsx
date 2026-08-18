@@ -2,7 +2,13 @@ import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } fr
 import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, Moon, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
-import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
+import {
+  useSettings,
+  useUpdater,
+  useRepoConfigs,
+  useRepoConfigFilename,
+  useHooks
+} from '../store'
 import { useBackend } from '../backend'
 import type { UpdaterStatus, MergeStrategy, RepoConfig, AgentKind, SidebarDensity, SidebarDetailPrefs, Worktree, PRStatus } from '../types'
 import { SubtitleDetail } from './WorktreeSubtitleDetail'
@@ -462,11 +468,12 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
   // Per-repo scope state for scopable worktree settings. scopeRepoRoot === null
   // means the controls bind to global config; otherwise they bind to the
-  // repo-scoped .harness.json at that repoRoot. The configs map itself
+  // repo-scoped config file at that repoRoot. The configs map itself
   // lives in the main-process store.
   const repoConfigs = useRepoConfigs()
   const repoList = useMemo(() => Object.keys(repoConfigs), [repoConfigs])
   const [scopeRepoRoot, setScopeRepoRoot] = useState<string | null>(null)
+  const scopeConfigFilename = useRepoConfigFilename(scopeRepoRoot)
 
   // Hooks consent — drives the copy in the "Status hooks" card below.
   const { consent: hooksConsent } = useHooks()
@@ -2661,8 +2668,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   </div>
                   <p className="text-xs text-faint mt-1.5">
                     {scopeRepoRoot
-                      ? <>Editing <code className="bg-panel-raised px-1 rounded">.harness.json</code> in <span className="font-mono">{repoBasename(scopeRepoRoot)}</span>. Unset fields inherit from global. You can commit this file to share settings with teammates.</>
-                      : 'Editing global settings. Individual repos can override these values via their .harness.json file.'}
+                      ? <>Editing <code className="bg-panel-raised px-1 rounded">{scopeConfigFilename}</code> in <span className="font-mono">{repoBasename(scopeRepoRoot)}</span>. Unset fields inherit from global. You can commit this file to share settings with teammates.</>
+                      : 'Editing global settings. Individual repos can override these values via their .ness.json file.'}
                   </p>
                 </div>
               )}

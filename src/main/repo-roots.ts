@@ -1,7 +1,7 @@
 import type { Store } from './store'
 import type { Config } from './persistence'
 import { saveConfig } from './persistence'
-import { loadRepoConfig } from './repo-config'
+import { loadRepoConfig, repoConfigFilename } from './repo-config'
 import type { WorktreesFSM } from './worktrees-fsm'
 
 interface RegisterRepoDeps {
@@ -24,7 +24,11 @@ export function registerRepoRoot(
   deps.worktreesFSM.dispatchRepos([...deps.config.repoRoots])
   deps.store.dispatch({
     type: 'repoConfigs/changed',
-    payload: { repoRoot, config: loadRepoConfig(repoRoot) }
+    payload: {
+      repoRoot,
+      config: loadRepoConfig(repoRoot),
+      filename: repoConfigFilename(repoRoot)
+    }
   })
   return true
 }
