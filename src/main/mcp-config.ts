@@ -21,7 +21,7 @@ function sanitize(id: string): string {
 
 /**
  * Write a per-terminal MCP config file pointing Claude Code at the bundled
- * harness-control MCP server. Returns the absolute path, or null if the
+ * ness-control MCP server. Returns the absolute path, or null if the
  * control server isn't running.
  *
  * Injects scope env vars (HARNESS_WORKTREE_ID, HARNESS_REPO_ROOT,
@@ -57,7 +57,7 @@ export function writeMcpConfigForTerminal(
   }
   const config = {
     mcpServers: {
-      'harness-control': {
+      'ness-control': {
         command: process.execPath,
         args: [getBridgeScriptPath()],
         env

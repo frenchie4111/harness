@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Brain } from 'lucide-react'
-import { getToolDisplay, isHarnessControl } from './index'
+import { getToolDisplay, isNessControl } from './index'
 
 export interface ToolGroupRow {
   key: string
@@ -18,10 +18,10 @@ export interface ToolGroupRow {
 export function ToolGroup({ rows }: { rows: ToolGroupRow[] }): JSX.Element {
   const hasError = rows.some((r) => r.hasError)
   const hasPending = rows.some((r) => r.hasPendingApproval)
-  // Brand styling only fires when an actual harness-control tool is in
+  // Brand styling only fires when an actual ness-control tool is in
   // the group — thinking rows shouldn't trigger the gold gradient.
   const anyBrand = rows.some(
-    (r) => !r.isThinking && isHarnessControl(r.toolName)
+    (r) => !r.isThinking && isNessControl(r.toolName)
   )
   // Auto-expand only for pending approvals — those need user action.
   // Errors get a header badge but stay collapsed; user can drill in.

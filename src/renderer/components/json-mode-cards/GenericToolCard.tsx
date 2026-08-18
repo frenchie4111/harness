@@ -2,7 +2,7 @@ import {
   ToolCardChrome,
   extractArgs,
   getToolDisplay,
-  isHarnessControl,
+  isNessControl,
   trunc,
   type ToolCardProps
 } from './index'
@@ -10,7 +10,7 @@ import { ArgsBlock, CompactArgs } from './ArgsDisplay'
 import { HighlightedText } from '../JsonModeChatFind'
 
 export function GenericToolCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
-  const brand = isHarnessControl(block.name)
+  const brand = isNessControl(block.name)
   const display = getToolDisplay(block.name)
   const args = extractArgs(block.input)
   const hasArgs = args.length > 0

@@ -2011,7 +2011,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">Enable Ness MCP</div>
                       <div className="text-xs text-dim mt-0.5">
-                        Injects <code className="bg-panel px-1 rounded text-xs">harness-control</code> MCP server via <code className="bg-panel px-1 rounded text-xs">--mcp-config</code>.
+                        Injects <code className="bg-panel px-1 rounded text-xs">ness-control</code> MCP server via <code className="bg-panel px-1 rounded text-xs">--mcp-config</code>.
                       </div>
                     </div>
                   </label>
@@ -3509,7 +3509,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <div className="flex-1">
                     <label htmlFor="browser-tools-enabled" className="text-sm text-fg-bright cursor-pointer">Enable browser tools</label>
                     <div className="text-xs text-dim mt-0.5 mb-2">
-                      Exposes <code className="bg-panel px-1 rounded text-xs">harness-control</code> MCP browser_* tools to the agent.
+                      Exposes <code className="bg-panel px-1 rounded text-xs">ness-control</code> MCP browser_* tools to the agent.
                     </div>
                     <select
                       value={browserToolsMode}

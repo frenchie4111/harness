@@ -101,14 +101,14 @@ export interface JsonClaudeManagerOptions {
   closeApprovalSession: (sessionId: string) => void
   getClaudeEnvVars: () => Record<string, string>
   /** Looked up from main when building the inline MCP config. Returning
-   *  null means the harness-control bridge isn't injected (settings flag
+   *  null means the ness-control bridge isn't injected (settings flag
    *  off, or control server not yet up). */
   getControlServer: () => JsonClaudeControlServerInfo | null
-  /** Returns the bundled harness-control bridge script path. Lives in
+  /** Returns the bundled ness-control bridge script path. Lives in
    *  resources/ same as permission-prompt-mcp.js — index.ts already
    *  knows how to resolve it via getBridgeScriptPath(). */
   getControlBridgeScriptPath: () => string
-  /** True when the user has disabled the harness-control MCP via
+  /** True when the user has disabled the ness-control MCP via
    *  settings.harnessMcpEnabled. Skips the bridge entry entirely. */
   isHarnessMcpEnabled: () => boolean
   /** Looks up scope (worktree + repo + isMain) for a given session id.
@@ -565,8 +565,8 @@ export class JsonClaudeManager {
     // need a separate Node install in packaged builds.
     //   * harness-permissions: receives the per-tool approval requests
     //     Claude raises via --permission-prompt-tool. Tool is 'approve'.
-    //   * harness-control: the same MCP bridge used by xterm-backed
-    //     Claude tabs, exposing harness-control tools (worktree mgmt,
+    //   * ness-control: the same MCP bridge used by xterm-backed
+    //     Claude tabs, exposing ness-control tools (worktree mgmt,
     //     browser tabs, shell tabs, etc.). Skipped when settings has
     //     harnessMcpEnabled=false or the control server isn't up.
     const mcpServers: Record<
@@ -601,7 +601,7 @@ export class JsonClaudeManager {
           controlEnv.HARNESS_REPO_ROOT = scope.repoRoot
           if (scope.isMain) controlEnv.HARNESS_IS_MAIN = '1'
         }
-        mcpServers['harness-control'] = {
+        mcpServers['ness-control'] = {
           command: process.execPath,
           args: [this.opts.getControlBridgeScriptPath()],
           env: controlEnv

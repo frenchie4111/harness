@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   extractArgs,
   getToolDisplay,
-  isHarnessControl,
+  isNessControl,
   normalizeServerName,
   parseMcpToolName,
   prettyToolName
@@ -16,9 +16,9 @@ describe('parseMcpToolName', () => {
     })
   })
 
-  it('parses harness-control tools', () => {
-    expect(parseMcpToolName('mcp__harness-control__create_worktree')).toEqual({
-      server: 'harness-control',
+  it('parses ness-control tools', () => {
+    expect(parseMcpToolName('mcp__ness-control__create_worktree')).toEqual({
+      server: 'ness-control',
       tool: 'create_worktree'
     })
   })
@@ -57,15 +57,15 @@ describe('parseMcpToolName', () => {
   })
 })
 
-describe('isHarnessControl', () => {
-  it('recognises harness-control tools', () => {
-    expect(isHarnessControl('mcp__harness-control__create_worktree')).toBe(true)
+describe('isNessControl', () => {
+  it('recognises ness-control tools', () => {
+    expect(isNessControl('mcp__ness-control__create_worktree')).toBe(true)
   })
 
   it('rejects everything else', () => {
-    expect(isHarnessControl('Read')).toBe(false)
-    expect(isHarnessControl('mcp__claude_ai_Notion__notion-get-users')).toBe(false)
-    expect(isHarnessControl(undefined)).toBe(false)
+    expect(isNessControl('Read')).toBe(false)
+    expect(isNessControl('mcp__claude_ai_Notion__notion-get-users')).toBe(false)
+    expect(isNessControl(undefined)).toBe(false)
   })
 })
 
@@ -88,8 +88,8 @@ describe('getToolDisplay', () => {
     })
   })
 
-  it('formats harness-control as "Ness · Title Cased Action"', () => {
-    const display = getToolDisplay('mcp__harness-control__create_worktree')
+  it('formats ness-control as "Ness · Title Cased Action"', () => {
+    const display = getToolDisplay('mcp__ness-control__create_worktree')
     expect(display.label).toBe('Ness · Create Worktree')
     expect(display.icon).not.toBeNull()
   })
@@ -144,7 +144,7 @@ describe('getToolDisplay', () => {
 
 describe('prettyToolName back-compat', () => {
   it('returns the same label as getToolDisplay', () => {
-    expect(prettyToolName('mcp__harness-control__create_worktree')).toBe(
+    expect(prettyToolName('mcp__ness-control__create_worktree')).toBe(
       'Ness · Create Worktree'
     )
     expect(prettyToolName('Read')).toBe('Read')
@@ -158,7 +158,7 @@ describe('normalizeServerName', () => {
     expect(normalizeServerName('claude_ai_GitHub')).toBe('github')
     expect(normalizeServerName('Google_Drive')).toBe('googledrive')
     expect(normalizeServerName('claude_ai_Google_Drive')).toBe('googledrive')
-    expect(normalizeServerName('harness-control')).toBe('harnesscontrol')
+    expect(normalizeServerName('ness-control')).toBe('nesscontrol')
   })
 
   it('handles empty / separator-only strings', () => {
@@ -350,7 +350,7 @@ describe('compactLabel', () => {
       'Create Issue'
     )
     expect(
-      getToolDisplay('mcp__harness-control__create_worktree').compactLabel
+      getToolDisplay('mcp__ness-control__create_worktree').compactLabel
     ).toBe('Create Worktree')
     expect(
       getToolDisplay('mcp__claude_ai_Google_Drive__list_recent_files').compactLabel
