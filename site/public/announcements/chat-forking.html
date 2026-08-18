@@ -87,66 +87,125 @@
 
     /* ---------------------------------------------------------------
        Fork graph: a git-graph-shaped diagram, drawn in CSS.
-       A continuous trunk rail on the left, one card per turn of the
-       conversation, and branch rows whose elbow leaves the trunk and
-       lands flush against an indented, accent-coloured card. Vertical
-       on every viewport, so there's no layout to transpose on mobile.
+
+       Two half-width lanes side by side — the original on the left,
+       the fork on the right — each with its own vertical rail. Cards
+       are placed on an explicit grid row so a fork card sits between
+       the two trunk cards it branches from, and the empty half of each
+       row is what makes the two branches read as separate. An elbow
+       crosses the gap at the fork point. Both rails fade out at the
+       bottom rather than terminating, because both conversations keep
+       going after the diagram ends.
+
+       Under 700px the halves would be too narrow to hold a line of
+       mono text, so the lanes collapse to one column and the fork
+       falls back to an indented accent card carrying a "fork" tag.
        --------------------------------------------------------------- */
     .fork-fig { margin: 1.75rem 0; }
-    .fgraph { --rail: 2.5rem; --node-y: 1.35rem; }
-    .fg-row { display: flex; align-items: flex-start; }
-    .fg-row + .fg-row { margin-top: 0.625rem; }
-    .fg-rail {
-      position: relative;
-      flex: 0 0 var(--rail);
-      align-self: stretch;
+    .fgraph {
+      --rail: 1.75rem;
+      --gap: 1.5rem;
+      --node-y: 1.35rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      /* Explicit, so the rails' `grid-row: N / -1` resolves against
+         these four rows. Left implicit, -1 collapses to line 1 and the
+         fork rail draws itself above its own fork point. */
+      grid-template-rows: repeat(4, auto);
+      column-gap: var(--gap);
+      row-gap: 0.75rem;
+      align-items: start;
     }
-    /* Trunk. Bleeds 0.625rem past the row so the inter-row gap is bridged. */
+    .fg-a { grid-column: 1; }
+    .fg-b { grid-column: 2; }
+    .fg-r1 { grid-row: 1; }
+    .fg-r2 { grid-row: 2; }
+    .fg-r3 { grid-row: 3; }
+    .fg-r4 { grid-row: 4; }
+
+    .fg-head {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: #737373;
+      padding: 0 0 0.375rem var(--rail);
+      border-bottom: 1px solid #262626;
+    }
+    .fg-head--fork { color: #fbbf24; border-bottom-color: rgba(245, 158, 11, 0.3); }
+
+    /* Rails are grid items that span every row of their lane and
+       overlap the cards; the cards clear them via margin-left. */
+    .fg-rail { position: relative; align-self: stretch; pointer-events: none; }
+    .fg-rail--main { grid-column: 1; grid-row: 2 / -1; }
+    .fg-rail--fork { grid-column: 2; grid-row: 3 / -1; }
     .fg-rail::before {
       content: '';
       position: absolute;
-      left: 0.75rem;
+      left: calc(var(--rail) / 2);
       margin-left: -1px;
       width: 2px;
-      top: 0;
-      bottom: -0.625rem;
-      background: #303030;
+      top: var(--node-y);
+      bottom: 0;
+      background: linear-gradient(#303030 76%, rgba(48, 48, 48, 0));
     }
-    .fg-row:first-child .fg-rail::before { top: var(--node-y); }
-    .fg-row--tip .fg-rail::before { bottom: calc(100% - var(--node-y)); }
+    .fg-rail--fork::before {
+      background: linear-gradient(rgba(245, 158, 11, 0.55) 76%, rgba(245, 158, 11, 0));
+    }
+
+    /* Elbow: leaves the main rail, crosses the empty half of the fork
+       row, and lands on the fork rail exactly at its first node.
+       The rail/2 offsets cancel, so the width is just half the graph
+       plus half the column gap. */
+    .fg-conn { grid-column: 1 / -1; align-self: stretch; position: relative; pointer-events: none; }
+    .fg-conn::before {
+      content: '';
+      position: absolute;
+      left: calc(var(--rail) / 2);
+      margin-left: -1px;
+      top: -0.75rem;
+      height: calc(var(--node-y) + 0.75rem);
+      width: calc(50% + var(--gap) / 2);
+      border-left: 2px solid rgba(245, 158, 11, 0.55);
+      border-bottom: 2px solid rgba(245, 158, 11, 0.55);
+      border-bottom-left-radius: 0.875rem;
+    }
+
     .fg-node {
       position: absolute;
-      left: 0.75rem;
+      left: calc(var(--rail) / -2);
       top: var(--node-y);
       width: 0.625rem;
       height: 0.625rem;
       border-radius: 999px;
-      background: #f59e0b;
+      background: #525252;
       transform: translate(-50%, -50%);
       box-shadow: 0 0 0 3px #0a0a0a;
     }
-    .fg-node--hollow { background: #0a0a0a; border: 2px solid #525252; }
-    /* Elbow: down the trunk, round the corner, out to the branch card.
-       Width lands it flush on the indented card's left border. */
-    .fg-elbow {
-      position: absolute;
-      left: 0.75rem;
-      margin-left: -1px;
-      top: 0;
-      height: var(--node-y);
-      width: calc(var(--rail) + 0.5rem);
-      border-left: 2px solid #f59e0b;
-      border-bottom: 2px solid #f59e0b;
-      border-bottom-left-radius: 0.75rem;
+    .fg-node--fork { background: #f59e0b; }
+
+    .fg-tag {
+      display: none;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 0.3125rem;
+      padding: 0.0625rem 0.375rem;
+      margin-bottom: 0.5rem;
     }
-    .fg-body { flex: 1 1 auto; min-width: 0; }
-    .fg-row--branch .fg-body { padding-left: 1.25rem; }
+
     .fg-card {
       background: rgba(10, 10, 10, 0.6);
       border: 1px solid #262626;
       border-radius: 0.625rem;
       padding: 0.75rem 1rem;
     }
+    /* Lane cards only — .fg-card is reused unrailed in the before/after
+       panels further down. */
+    .fgraph .fg-card { position: relative; margin-left: var(--rail); }
     .fg-card--fork {
       border-color: rgba(245, 158, 11, 0.35);
       background: rgba(245, 158, 11, 0.05);
@@ -218,6 +277,17 @@
     @media (max-width: 640px) {
       .fork-compare { grid-template-columns: 1fr; }
     }
+    /* Half-width lanes can't hold a line of mono text on a phone, so
+       collapse to one column: rails and elbow go away, and the fork is
+       carried by the indent, the accent, and the tag instead. */
+    @media (max-width: 700px) {
+      .fgraph { grid-template-columns: 1fr; row-gap: 0.625rem; }
+      .fg-a, .fg-b { grid-column: 1; }
+      .fg-head, .fg-rail, .fg-conn, .fg-node { display: none; }
+      .fgraph .fg-card { margin-left: 0; }
+      .fgraph .fg-card--fork { margin-left: 1.25rem; }
+      .fg-tag { display: inline-block; }
+    }
   </style>
 </head>
 <body class="min-h-screen grid-bg">
@@ -285,40 +355,42 @@
     <!-- Figure 1: what a fork actually is -->
     <figure class="fork-fig" role="img" aria-label="Diagram: a conversation with four turns of history; a fork branches off it holding all of that history plus one new message, while the original conversation continues untouched.">
       <div class="fgraph">
-        <div class="fg-row">
-          <div class="fg-rail"><span class="fg-node"></span></div>
-          <div class="fg-body">
-            <div class="fg-card">
-              <div class="fg-t">The conversation so far</div>
-              <div class="fg-msgs">
-                <div class="fg-msg">you: here&#39;s the schema, let&#39;s plan the migration</div>
-                <div class="fg-msg">read 14 files &middot; ran the test suite</div>
-                <div class="fg-msg">you: no, don&#39;t add a new table</div>
-                <div class="fg-msg">agent: ok &mdash; backfilling in place instead</div>
-              </div>
+        <div class="fg-head fg-a fg-r1">original</div>
+        <div class="fg-head fg-head--fork fg-b fg-r1">fork</div>
+        <div class="fg-rail fg-rail--main"></div>
+        <div class="fg-rail fg-rail--fork"></div>
+
+        <div class="fg-a fg-r2">
+          <div class="fg-card">
+            <span class="fg-node"></span>
+            <div class="fg-t">The conversation so far</div>
+            <div class="fg-msgs">
+              <div class="fg-msg">you: here&#39;s the schema, let&#39;s plan the migration</div>
+              <div class="fg-msg">read 14 files &middot; ran the tests</div>
+              <div class="fg-msg">you: no, don&#39;t add a new table</div>
+              <div class="fg-msg">agent: ok &mdash; backfilling in place</div>
             </div>
           </div>
         </div>
-        <div class="fg-row fg-row--branch">
-          <div class="fg-rail"><span class="fg-elbow"></span></div>
-          <div class="fg-body">
-            <div class="fg-card fg-card--fork">
-              <div class="fg-t">The fork</div>
-              <div class="fg-s">A 2nd conversation that starts out holding all of that.</div>
-              <div class="fg-msgs">
-                <div class="fg-msg fg-msg--dim">&#8627; everything above, verbatim</div>
-                <div class="fg-msg fg-msg--new">you: unrelated &mdash; could we drop the nightly cron now?</div>
-              </div>
+
+        <div class="fg-conn fg-r3"></div>
+        <div class="fg-b fg-r3">
+          <div class="fg-card fg-card--fork">
+            <span class="fg-node fg-node--fork"></span>
+            <span class="fg-tag">fork</span>
+            <div class="fg-t">A 2nd conversation, starting from all of that</div>
+            <div class="fg-msgs">
+              <div class="fg-msg fg-msg--dim">&#8627; everything from the original, verbatim</div>
+              <div class="fg-msg fg-msg--new">you: unrelated &mdash; can we drop the cron?</div>
             </div>
           </div>
         </div>
-        <div class="fg-row fg-row--tip">
-          <div class="fg-rail"><span class="fg-node"></span></div>
-          <div class="fg-body">
-            <div class="fg-card">
-              <div class="fg-t">The original, untouched</div>
-              <div class="fg-s">Still running, still on the migration, with none of the tangent in its context.</div>
-            </div>
+
+        <div class="fg-a fg-r4">
+          <div class="fg-card">
+            <span class="fg-node"></span>
+            <div class="fg-t">The original, untouched</div>
+            <div class="fg-s">Still on the migration, with none of the tangent in its context.</div>
           </div>
         </div>
       </div>
@@ -361,34 +433,36 @@
       <!-- Figure 2: forking off a tangential question -->
       <figure class="fork-fig" role="img" aria-label="Diagram: a main chat implementing a feature branch; a fork splits off to ask a tangential question; the main chat keeps implementing below the split.">
         <div class="fgraph">
-          <div class="fg-row">
-            <div class="fg-rail"><span class="fg-node"></span></div>
-            <div class="fg-body">
-              <div class="fg-card">
-                <div class="fg-t">Main chat</div>
-                <div class="fg-s">Deep in a conversation about some big feature branch.</div>
-              </div>
+          <div class="fg-head fg-a fg-r1">main chat</div>
+          <div class="fg-head fg-head--fork fg-b fg-r1">fork</div>
+          <div class="fg-rail fg-rail--main"></div>
+          <div class="fg-rail fg-rail--fork"></div>
+
+          <div class="fg-a fg-r2">
+            <div class="fg-card">
+              <span class="fg-node"></span>
+              <div class="fg-t">Implementing some big feature branch</div>
+              <div class="fg-s">The agent has already read half the codebase to get here.</div>
             </div>
           </div>
-          <div class="fg-row fg-row--branch">
-            <div class="fg-rail"><span class="fg-elbow"></span></div>
-            <div class="fg-body">
-              <div class="fg-card fg-card--fork">
-                <div class="fg-t">Fork</div>
-                <div class="fg-msgs">
-                  <div class="fg-msg fg-msg--new">&ldquo;actually i was wondering, would this allow us to xyz&rdquo;</div>
-                </div>
-                <div class="fg-s">Asked against everything the agent already researched.</div>
+
+          <div class="fg-conn fg-r3"></div>
+          <div class="fg-b fg-r3">
+            <div class="fg-card fg-card--fork">
+              <span class="fg-node fg-node--fork"></span>
+              <span class="fg-tag">fork</span>
+              <div class="fg-msgs">
+                <div class="fg-msg fg-msg--new">&ldquo;actually i was wondering, would this allow us to xyz&rdquo;</div>
               </div>
+              <div class="fg-s">Asked against all of that research, on someone else&rsquo;s context window.</div>
             </div>
           </div>
-          <div class="fg-row fg-row--tip">
-            <div class="fg-rail"><span class="fg-node"></span></div>
-            <div class="fg-body">
-              <div class="fg-card">
-                <div class="fg-t">Main chat keeps implementing</div>
-                <div class="fg-s">And doesn&rsquo;t lose focus.</div>
-              </div>
+
+          <div class="fg-a fg-r4">
+            <div class="fg-card">
+              <span class="fg-node"></span>
+              <div class="fg-t">Main chat keeps implementing</div>
+              <div class="fg-s">And doesn&rsquo;t lose focus.</div>
             </div>
           </div>
         </div>
