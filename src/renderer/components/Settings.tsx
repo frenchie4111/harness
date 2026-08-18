@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, Moon, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, Moon, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import {
@@ -10,6 +10,7 @@ import {
   useHooks
 } from '../store'
 import { useBackend } from '../backend'
+import { LEGACY_REPO_CONFIG_FILENAME } from '../../shared/state/repo-configs'
 import type { UpdaterStatus, MergeStrategy, RepoConfig, AgentKind, SidebarDensity, SidebarDetailPrefs, Worktree, PRStatus } from '../types'
 import { SubtitleDetail } from './WorktreeSubtitleDetail'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, ACTION_CATEGORIES, bindingToString, eventToBinding, formatBindingGlyphs, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
@@ -2671,6 +2672,35 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       ? <>Editing <code className="bg-panel-raised px-1 rounded">{scopeConfigFilename}</code> in <span className="font-mono">{repoBasename(scopeRepoRoot)}</span>. Unset fields inherit from global. You can commit this file to share settings with teammates.</>
                       : 'Editing global settings. Individual repos can override these values via their .ness.json file.'}
                   </p>
+                  {scopeRepoRoot && scopeConfigFilename === LEGACY_REPO_CONFIG_FILENAME && (
+                    <div className="mt-2 flex items-start gap-2.5 bg-panel border border-border-strong rounded-lg p-3">
+                      <Sparkles className="icon-sm text-accent shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-fg-bright">
+                          Harness is now Ness — this repo still uses{' '}
+                          <code className="bg-panel-raised px-1 rounded">
+                            {LEGACY_REPO_CONFIG_FILENAME}
+                          </code>
+                          .
+                        </div>
+                        <div className="text-xs text-dim mt-0.5">
+                          Both names keep working. Converting renames the file to{' '}
+                          <code className="bg-panel-raised px-1 rounded">.ness.json</code>, which
+                          shows up as a rename in git — commit it so teammates pick it up, and make
+                          sure they&apos;re on a Ness build that reads the new name.
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void backend.migrateRepoConfigFilename(scopeRepoRoot)
+                        }}
+                        className="shrink-0 px-3 py-1.5 rounded-md bg-info text-white text-xs font-medium hover:bg-info/90 transition-colors cursor-pointer"
+                      >
+                        Convert
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               {scopeRepoRoot === null && (

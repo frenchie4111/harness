@@ -6,6 +6,7 @@ import {
   loadRepoConfig,
   saveRepoConfig,
   repoConfigFilename,
+  migrateRepoConfigFilename,
   invalidateRepoConfigCache
 } from './repo-config'
 
@@ -80,6 +81,16 @@ describe('saveRepoConfig', () => {
     expect(JSON.parse(readFileSync(join(repo, LEGACY), 'utf-8')).setupCommand).toBe('updated')
   })
 
+  it('writes to .ness.json again once the repo has been converted', () => {
+    write(LEGACY, { version: 1, setupCommand: 'old' })
+    invalidateRepoConfigCache()
+    migrateRepoConfigFilename(repo)
+    saveRepoConfig(repo, { setupCommand: 'after-convert' })
+
+    expect(existsSync(join(repo, LEGACY))).toBe(false)
+    expect(JSON.parse(readFileSync(join(repo, NEW), 'utf-8')).setupCommand).toBe('after-convert')
+  })
+
   it('clears both filenames so a stale legacy file cannot resurrect settings', () => {
     write(LEGACY, { version: 1, setupCommand: 'old' })
     write(NEW, { version: 1, setupCommand: 'new' })
@@ -91,5 +102,33 @@ describe('saveRepoConfig', () => {
     expect(existsSync(join(repo, LEGACY))).toBe(false)
     invalidateRepoConfigCache()
     expect(loadRepoConfig(repo)).toEqual({})
+  })
+})
+
+describe('migrateRepoConfigFilename', () => {
+  it('renames a legacy file and preserves its contents', () => {
+    write(LEGACY, { version: 1, setupCommand: 'keep-me' })
+    invalidateRepoConfigCache()
+
+    expect(migrateRepoConfigFilename(repo)).toBe(true)
+    expect(existsSync(join(repo, LEGACY))).toBe(false)
+    expect(repoConfigFilename(repo)).toBe(NEW)
+    expect(loadRepoConfig(repo).setupCommand).toBe('keep-me')
+  })
+
+  it('is a no-op when there is nothing to convert', () => {
+    expect(migrateRepoConfigFilename(repo)).toBe(false)
+    write(NEW, { version: 1 })
+    expect(migrateRepoConfigFilename(repo)).toBe(false)
+  })
+
+  it('drops the legacy file without clobbering an existing .ness.json', () => {
+    write(LEGACY, { version: 1, setupCommand: 'stale' })
+    write(NEW, { version: 1, setupCommand: 'current' })
+    invalidateRepoConfigCache()
+
+    expect(migrateRepoConfigFilename(repo)).toBe(true)
+    expect(existsSync(join(repo, LEGACY))).toBe(false)
+    expect(loadRepoConfig(repo).setupCommand).toBe('current')
   })
 })
