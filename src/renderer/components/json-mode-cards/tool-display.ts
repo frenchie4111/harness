@@ -84,6 +84,9 @@ import {
 } from './tool-icons'
 
 const NESS_CONTROL_PREFIX = 'mcp__ness-control__'
+// Tool calls already sitting in users' transcripts carry the pre-rename
+// prefix. Recognised for display so old cards keep their Ness chrome.
+const LEGACY_NESS_CONTROL_PREFIX = 'mcp__harness-control__'
 const MCP_PREFIX = 'mcp__'
 
 export interface ToolDisplay {
@@ -146,6 +149,8 @@ const MCP_BRANDS: Record<string, McpBrand> = {
   // Ness — kept here for completeness even though it's special-cased
   // (brand gradient implies it, so the label drops the "Ness · " bit).
   nesscontrol: { label: 'Ness', icon: HarnessIcon },
+  // Pre-rename spelling, still present in existing transcripts.
+  harnesscontrol: { label: 'Ness', icon: HarnessIcon },
 
   // Anthropic-hosted / first-party
   notion: { label: 'Notion', icon: NotionIcon },
@@ -240,7 +245,10 @@ export function parseMcpToolName(name: string | undefined): ParsedMcp | null {
 }
 
 export function isNessControl(name: string | undefined): boolean {
-  return !!name && name.startsWith(NESS_CONTROL_PREFIX)
+  if (!name) return false
+  return (
+    name.startsWith(NESS_CONTROL_PREFIX) || name.startsWith(LEGACY_NESS_CONTROL_PREFIX)
+  )
 }
 
 /** Collapse the many spellings the same brand can ship under (e.g.
