@@ -260,3 +260,109 @@ describe('JsonClaudeManager.forkAt', () => {
     expect(result.reason).toMatch(/assistant/)
   })
 })
+
+// Claude records a mid-turn interjection as a 'queued_command'
+// attachment rather than a `user` record, positioned at the agent-loop
+// boundary where it drained the input queue. Skipping attachments (as
+// the parser did) meant every message the user sent while the agent was
+// working vanished from the scrollback on reload.
+describe('JsonClaudeManager.seedFromTranscript — mid-turn messages', () => {
+  beforeEach(() => {
+    tmpHome = mkdtempSync(join(tmpdir(), 'harness-seed-'))
+  })
+
+  afterEach(() => {
+    rmSync(tmpHome, { recursive: true, force: true })
+    vi.clearAllMocks()
+  })
+
+  function writeTranscript(sessionId: string, worktree: string, lines: object[]): void {
+    const dir = transcriptDir(worktree)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, `${sessionId}.jsonl`),
+      lines.map((l) => JSON.stringify(l)).join('\n') + '\n',
+      'utf8'
+    )
+  }
+
+  it('seeds a queued_command attachment as a user entry at its transcript position', () => {
+    const store = new Store()
+    const mgr = makeManager(store)
+    const sessionId = '55555555-5555-5555-5555-555555555555'
+    const worktree = '/tmp/wt-seed-queued'
+
+    writeTranscript(sessionId, worktree, [
+      { type: 'user', sessionId, message: { content: 'first turn' } },
+      {
+        type: 'assistant',
+        sessionId,
+        message: { id: 'msg_a', content: [{ type: 'tool_use', id: 'tu1', name: 'Bash' }] }
+      },
+      // The interjection lands here — after the tool call it interrupted,
+      // before the reply that took it into account.
+      {
+        type: 'attachment',
+        sessionId,
+        attachment: {
+          type: 'queued_command',
+          prompt: 'actually, also check the logs',
+          commandMode: 'prompt'
+        }
+      },
+      {
+        type: 'assistant',
+        sessionId,
+        message: { id: 'msg_b', content: [{ type: 'text', text: 'on it' }] }
+      }
+    ])
+    store.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId, worktreePath: worktree }
+    })
+
+    mgr.seedFromTranscript(sessionId, worktree)
+
+    const entries = store.getSnapshot().state.jsonClaude.sessions[sessionId].entries
+    expect(entries.map((e) => e.kind)).toEqual([
+      'user',
+      'assistant',
+      'user',
+      'assistant'
+    ])
+    expect(entries[2].text).toBe('actually, also check the logs')
+    expect(entries[2].isQueued).toBeUndefined()
+  })
+
+  it('ignores bookkeeping attachments and prompt-less queued_commands', () => {
+    const store = new Store()
+    const mgr = makeManager(store)
+    const sessionId = '66666666-6666-6666-6666-666666666666'
+    const worktree = '/tmp/wt-seed-attachments'
+
+    writeTranscript(sessionId, worktree, [
+      { type: 'user', sessionId, message: { content: 'hello' } },
+      {
+        type: 'attachment',
+        sessionId,
+        attachment: { type: 'total_tokens_reminder', text: '<total_tokens>1</total_tokens>' }
+      },
+      {
+        type: 'attachment',
+        sessionId,
+        attachment: { type: 'deferred_tools_delta', addedNames: ['WebFetch'] }
+      },
+      { type: 'attachment', sessionId, attachment: { type: 'queued_command', prompt: '' } }
+    ])
+    store.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId, worktreePath: worktree }
+    })
+
+    mgr.seedFromTranscript(sessionId, worktree)
+
+    const entries = store.getSnapshot().state.jsonClaude.sessions[sessionId].entries
+    expect(entries).toHaveLength(1)
+    expect(entries[0].text).toBe('hello')
+  })
+})

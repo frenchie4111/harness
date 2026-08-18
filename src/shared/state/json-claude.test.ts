@@ -754,6 +754,73 @@ describe('jsonClaudeReducer', () => {
     expect(after[1].isQueued).toBeUndefined()
   })
 
+  it('userEntriesUnqueued moves queued entries to the tail, in order', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entriesSeeded',
+      payload: {
+        sessionId: SID,
+        entries: [
+          { entryId: 'u0', kind: 'user', text: 'first turn', timestamp: 1 },
+          // Two interjections typed mid-stream, so they landed in the
+          // array before the assistant content claude was already
+          // producing when the user hit enter.
+          {
+            entryId: 'q1',
+            kind: 'user',
+            text: 'queued one',
+            timestamp: 2,
+            isQueued: true
+          },
+          {
+            entryId: 'q2',
+            kind: 'user',
+            text: 'queued two',
+            timestamp: 3,
+            isQueued: true
+          },
+          { entryId: 'a1', kind: 'assistant', text: 'streamed', timestamp: 4 }
+        ]
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/userEntriesUnqueued',
+      payload: { sessionId: SID }
+    })
+    expect(state.sessions[SID].entries.map((e) => e.entryId)).toEqual([
+      'u0',
+      'a1',
+      'q1',
+      'q2'
+    ])
+    expect(state.sessions[SID].entries.every((e) => !e.isQueued)).toBe(true)
+  })
+
+  it('userEntriesUnqueued leaves order alone when queued entries are already last', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entriesSeeded',
+      payload: {
+        sessionId: SID,
+        entries: [
+          { entryId: 'a1', kind: 'assistant', text: 'done', timestamp: 1 },
+          {
+            entryId: 'q1',
+            kind: 'user',
+            text: 'queued',
+            timestamp: 2,
+            isQueued: true
+          }
+        ]
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/userEntriesUnqueued',
+      payload: { sessionId: SID }
+    })
+    expect(state.sessions[SID].entries.map((e) => e.entryId)).toEqual(['a1', 'q1'])
+  })
+
   it('entryRemoved drops the matching entry by id', () => {
     let state = seedSession(initialJsonClaude)
     state = jsonClaudeReducer(state, {

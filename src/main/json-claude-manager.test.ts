@@ -364,6 +364,44 @@ describe('JsonClaudeManager', () => {
       expect(store.getSnapshot().state.jsonClaude.sessions[sessionId]?.busy).toBe(true)
     })
 
+    it('repositions the message after the content it interrupted', () => {
+      const store = new Store()
+      const sessionId = 'sess-queued-reorder'
+      const { mgr, proc } = startBusySession(store, sessionId)
+
+      // The user interjects while claude is mid-stream, so the bubble is
+      // appended ahead of the assistant message that was already in
+      // flight — then claude finishes it.
+      mgr.send(sessionId, 'interjection')
+      proc.stdout.emit(
+        'data',
+        Buffer.from(
+          JSON.stringify({
+            type: 'assistant',
+            message: { id: 'msg_a', content: [{ type: 'text', text: 'still talking' }] }
+          }) + '\n'
+        )
+      )
+      // Assistant entries carry `blocks`, user entries carry `text`.
+      const order = (): Array<string | undefined> =>
+        (store.getSnapshot().state.jsonClaude.sessions[sessionId]?.entries ?? []).map(
+          (e) =>
+            e.kind === 'user'
+              ? e.text
+              : e.blocks?.map((b) => ('text' in b ? b.text : '')).join('')
+        )
+      expect(order()).toEqual(['first turn', 'interjection', 'still talking'])
+
+      proc.stdout.emit(
+        'data',
+        Buffer.from(
+          JSON.stringify({ type: 'system', subtype: 'status', status: 'requesting' }) +
+            '\n'
+        )
+      )
+      expect(order()).toEqual(['first turn', 'still talking', 'interjection'])
+    })
+
     it('leaves a message queued while a non-requesting status streams by', () => {
       const store = new Store()
       const sessionId = 'sess-queued-other-status'
