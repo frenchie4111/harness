@@ -63,7 +63,7 @@ jobs:
             echo "Release $TAG already exists — skipping create (re-run scenario)."
           else
             gh release create "$TAG" \
-              --title "Harness $TAG" \
+              --title "Ness $TAG" \
               --notes-file "$NOTES"
           fi
 
@@ -129,9 +129,9 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           gh release upload "$TAG" \
-            release/Harness-*.dmg \
-            release/Harness-*-mac.zip \
-            release/Harness-*.blockmap \
+            release/Ness-*.dmg \
+            release/Ness-*-mac.zip \
+            release/Ness-*.blockmap \
             release/latest-mac.yml \
             --clobber
 
@@ -174,8 +174,8 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           gh release upload "$TAG" \
-            release/Harness-*.AppImage \
-            release/Harness-*.deb \
+            release/Ness-*.AppImage \
+            release/Ness-*.deb \
             release/latest-linux.yml \
             --clobber
 

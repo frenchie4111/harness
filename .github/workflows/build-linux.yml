@@ -45,7 +45,7 @@ jobs:
         with:
           name: harness-linux
           path: |
-            release/Harness-*.AppImage
-            release/Harness-*.deb
+            release/Ness-*.AppImage
+            release/Ness-*.deb
             release/latest-linux.yml
           if-no-files-found: error

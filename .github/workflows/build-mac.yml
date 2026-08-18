@@ -56,8 +56,8 @@ jobs:
         with:
           name: harness-mac
           path: |
-            release/Harness-*.dmg
-            release/Harness-*-mac.zip
-            release/Harness-*.blockmap
+            release/Ness-*.dmg
+            release/Ness-*-mac.zip
+            release/Ness-*.blockmap
             release/latest-mac.yml
           if-no-files-found: error
