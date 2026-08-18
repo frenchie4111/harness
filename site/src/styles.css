@@ -13,9 +13,9 @@
   --color-ink-200: #e5e5e5;
   --color-ink-100: #f5f5f5;
 
-  --color-brand-amber: #f59e0b;
-  --color-brand-red: #ef4444;
-  --color-brand-purple: #a855f7;
+  --color-brand: #4ade80;
+  --color-brand-mid: #22c55e;
+  --color-brand-deep: #16a34a;
 
   /* Tokens lifted verbatim from the real Ness renderer theme so copied
    * JSX (Sidebar, WorktreeTab, Terminal header) renders with identical
@@ -36,7 +36,7 @@
   --color-warning: #fbbf24;
   --color-danger: #ef4444;
   --color-info: #60a5fa;
-  --color-accent: #c084fc;
+  --color-accent: #4ade80;
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -77,43 +77,39 @@
 
 .gradient-text,
 .brand-gradient-text {
-  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  color: transparent;
+  color: var(--color-brand);
 }
 
 .brand-gradient-bg {
-  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%);
+  background: var(--color-brand);
 }
 
-.brand-glow-amber {
-  box-shadow: 0 0 48px rgba(245, 158, 11, 0.18);
+.brand-glow {
+  box-shadow: 0 0 48px rgba(74, 222, 128, 0.18);
 }
 
 .brand-grid-bg {
   background-image:
-    radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.09), transparent 55%),
-    radial-gradient(circle at 0% 100%, rgba(168, 85, 247, 0.08), transparent 50%),
-    radial-gradient(circle at 100% 100%, rgba(239, 68, 68, 0.05), transparent 50%);
+    radial-gradient(circle at 50% 0%, rgba(74, 222, 128, 0.10), transparent 55%),
+    radial-gradient(circle at 0% 100%, rgba(34, 197, 94, 0.08), transparent 50%),
+    radial-gradient(circle at 100% 100%, rgba(22, 163, 74, 0.06), transparent 50%);
 }
 
-.glow-amber {
-  box-shadow: 0 0 60px rgba(245, 158, 11, 0.15);
+.glow {
+  box-shadow: 0 0 60px rgba(74, 222, 128, 0.15);
 }
 
 .grid-bg {
   background-image:
-    radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.08), transparent 50%),
-    radial-gradient(circle at 0% 100%, rgba(168, 85, 247, 0.06), transparent 50%);
+    radial-gradient(circle at 50% 0%, rgba(74, 222, 128, 0.09), transparent 50%),
+    radial-gradient(circle at 0% 100%, rgba(34, 197, 94, 0.06), transparent 50%);
 }
 
 .diorama-bg {
   background-image:
-    radial-gradient(circle at 85% 20%, rgba(245, 158, 11, 0.06), transparent 45%),
-    radial-gradient(circle at 15% 80%, rgba(168, 85, 247, 0.08), transparent 45%),
-    radial-gradient(circle at 80% 80%, rgba(239, 68, 68, 0.04), transparent 45%);
+    radial-gradient(circle at 85% 20%, rgba(74, 222, 128, 0.07), transparent 45%),
+    radial-gradient(circle at 15% 80%, rgba(34, 197, 94, 0.08), transparent 45%),
+    radial-gradient(circle at 80% 80%, rgba(22, 163, 74, 0.05), transparent 45%);
 }
 
 @keyframes brand-gradient-flow {
@@ -127,11 +123,11 @@
 .brand-gradient-flow-bar {
   background: linear-gradient(
     90deg,
-    #f59e0b 0%,
-    #ef4444 25%,
-    #a855f7 50%,
-    #ef4444 75%,
-    #f59e0b 100%
+    #22c55e 0%,
+    #4ade80 25%,
+    #86efac 50%,
+    #4ade80 75%,
+    #22c55e 100%
   );
   background-size: 200% 100%;
   animation: brand-gradient-flow 2.4s linear infinite;
@@ -140,11 +136,11 @@
 .brand-gradient-flow-text-active .brand-gradient-flow-text-hover {
   background: linear-gradient(
     90deg,
-    #f59e0b 0%,
-    #ef4444 25%,
-    #a855f7 50%,
-    #ef4444 75%,
-    #f59e0b 100%
+    #22c55e 0%,
+    #4ade80 25%,
+    #86efac 50%,
+    #4ade80 75%,
+    #22c55e 100%
   );
   background-size: 200% 100%;
   -webkit-background-clip: text;
@@ -274,7 +270,7 @@
 .logo-tip .link-card .link-preview .link-icon {
   width: 32px;
   height: 32px;
-  background: linear-gradient(135deg, #f59e0b, #ef4444, #a855f7);
+  background: var(--color-brand);
   border-radius: 8px;
   margin-bottom: 6px;
   display: flex;

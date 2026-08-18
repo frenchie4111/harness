@@ -31,7 +31,7 @@ import {
   GlobIcon,
   GmailIcon,
   GrepIcon,
-  HarnessIcon,
+  NessIcon,
   HubspotIcon,
   HuggingfaceIcon,
   IntercomIcon,
@@ -148,9 +148,9 @@ interface McpBrand {
 const MCP_BRANDS: Record<string, McpBrand> = {
   // Ness — kept here for completeness even though it's special-cased
   // (brand gradient implies it, so the label drops the "Ness · " bit).
-  nesscontrol: { label: 'Ness', icon: HarnessIcon },
+  nesscontrol: { label: 'Ness', icon: NessIcon },
   // Pre-rename spelling, still present in existing transcripts.
-  harnesscontrol: { label: 'Ness', icon: HarnessIcon },
+  harnesscontrol: { label: 'Ness', icon: NessIcon },
 
   // Anthropic-hosted / first-party
   notion: { label: 'Notion', icon: NotionIcon },

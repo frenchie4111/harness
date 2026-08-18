@@ -32,14 +32,7 @@ function ClaudeLoader() {
       <div className="claude-loader-pulser">
         <div className="claude-loader-rotator">
           <svg viewBox="0 0 56 56" width="56" height="56">
-            <defs>
-              <linearGradient id="claudeLoaderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#f59e0b" />
-                <stop offset="55%" stopColor="#ef4444" />
-                <stop offset="100%" stopColor="#a855f7" />
-              </linearGradient>
-            </defs>
-            <g fill="url(#claudeLoaderGrad)" transform="translate(28 28)">
+            <g fill="var(--color-brand)" transform="translate(28 28)">
               {[0, 45, 90, 135].map((deg) => (
                 <path
                   key={deg}

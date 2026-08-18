@@ -84,16 +84,6 @@ export function Sidebar({
 }: SidebarProps): JSX.Element {
   return (
     <div className="shrink-0 bg-panel flex flex-col h-full" style={{ width }}>
-      <svg width="0" height="0" className="absolute" aria-hidden="true">
-        <defs>
-          <linearGradient id="harness-add-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#f59e0b" />
-            <stop offset="50%" stopColor="#ef4444" />
-            <stop offset="100%" stopColor="#a855f7" />
-          </linearGradient>
-        </defs>
-      </svg>
-
       {/* Worktrees header */}
       <div className="px-3 py-3 flex items-center gap-2 shrink-0">
         <Tooltip label="Collapse sidebar" action="toggleSidebar" side="bottom">

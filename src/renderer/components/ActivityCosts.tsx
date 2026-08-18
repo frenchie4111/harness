@@ -232,7 +232,7 @@ export function ActivityCosts(): JSX.Element {
         <img
           src={iconUrl}
           alt="Ness"
-          className="w-9 h-9 rounded-xl brand-glow-amber shrink-0"
+          className="w-9 h-9 rounded-xl brand-glow shrink-0"
         />
         <div className="flex-1 min-w-0">
           <div className="text-xs sm:text-xs font-semibold uppercase tracking-[0.18em] text-dim">

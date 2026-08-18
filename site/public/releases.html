@@ -33,16 +33,16 @@
   <style>
     html, body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #e5e5e5; }
     code { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .gradient-text { background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .gradient-text { color: #4ade80; }
     .grid-bg {
       background-image:
-        radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.08), transparent 50%),
-        radial-gradient(circle at 0% 100%, rgba(168, 85, 247, 0.06), transparent 50%);
+        radial-gradient(circle at 50% 0%, rgba(74, 222, 128, 0.08), transparent 50%),
+        radial-gradient(circle at 0% 100%, rgba(34, 197, 94, 0.06), transparent 50%);
     }
     .release-section { border-bottom: 1px solid #1a1a1a; scroll-margin-top: 2rem; }
     .release-section:last-child { border-bottom: none; }
     .release-anchor { color: inherit; text-decoration: none; }
-    .release-anchor:hover { color: #f59e0b; }
+    .release-anchor:hover { color: #4ade80; }
     .release-anchor .anchor-icon { opacity: 0; margin-left: 0.4rem; font-size: 0.55em; vertical-align: middle; transition: opacity 0.15s; }
     .release-anchor:hover .anchor-icon, .release-anchor:focus .anchor-icon { opacity: 0.7; }
     .note-body ul { list-style: disc; padding-left: 1.25rem; }
@@ -58,7 +58,7 @@
   <!-- Nav -->
   <nav class="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between relative z-30">
     <a href="/" class="flex items-center gap-3">
-      <img src="icon.png" alt="Ness icon" class="w-9 h-9 rounded-lg" />
+      <img src="mark.svg" alt="Ness icon" class="w-9" />
       <span class="text-xl font-bold">Ness</span>
     </a>
     <div class="hidden sm:flex items-center gap-4 sm:gap-6 text-sm text-neutral-400">
@@ -1095,7 +1095,7 @@
   <footer class="border-t border-neutral-900 mt-20">
     <div class="max-w-6xl mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-neutral-600">
       <div class="flex items-center gap-2">
-        <img src="icon.png" alt="" class="w-5 h-5 rounded" />
+        <img src="mark.svg" alt="" class="w-5" />
         <span>Ness · Open source · MIT</span>
       </div>
       <div class="flex items-center gap-6">

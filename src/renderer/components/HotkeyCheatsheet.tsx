@@ -109,8 +109,8 @@ export function HotkeyCheatsheet({ resolvedHotkeys, onClose, onOpenCommandPalett
           <button
             className="mb-5 rounded-lg px-4 py-3.5 flex items-center justify-between w-full text-left cursor-pointer transition-opacity hover:opacity-80"
             style={{
-              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(239, 68, 68, 0.10) 50%, rgba(168, 85, 247, 0.12) 100%)',
-              border: '1px solid rgba(245, 158, 11, 0.2)',
+              background: 'rgba(74, 222, 128, 0.12)',
+              border: '1px solid rgba(74, 222, 128, 0.24)',
             }}
             onClick={() => {
               onClose()

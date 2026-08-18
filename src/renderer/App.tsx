@@ -1002,7 +1002,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
               <img
                 src={iconUrl}
                 alt="Ness"
-                className="w-16 h-16 mx-auto rounded-2xl mb-4 brand-glow-amber"
+                className="w-16 h-16 mx-auto rounded-2xl mb-4 brand-glow"
               />
               <h1 className="gradient-text text-3xl font-extrabold tracking-tight mb-2">Ness</h1>
               <p className="text-fg text-sm leading-relaxed max-w-md mx-auto">

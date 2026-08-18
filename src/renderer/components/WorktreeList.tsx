@@ -296,7 +296,7 @@ export function WorktreeList({
               }`}
             >
               <span className="absolute left-0 top-0 bottom-0 w-0.5 brand-gradient-flow-bar opacity-0 group-hover:opacity-100 transition-opacity" />
-              <Plus className="icon-sm shrink-0 text-dim group-hover:[stroke:url(#harness-add-gradient)] transition-colors" />
+              <Plus className="icon-sm shrink-0 text-dim group-hover:text-brand transition-colors" />
               <span className="text-sm font-medium brand-gradient-flow-text-hover">Add worktree</span>
               {!touch && (section.unified || !model.showRepoHeaders) && (
                 <HotkeyBadge action="newWorktree" className="ml-auto" />

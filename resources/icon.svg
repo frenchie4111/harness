@@ -1,0 +1,18 @@
+<!--
+  Ness app icon — master artwork. Every raster icon in the repo is generated
+  from this file by scripts/build-icons.sh; edit here, never the PNGs.
+
+  The three paths are the approved mark, in its own 64-unit space: two
+  deliberately unequal humps joined at the waterline, then a hooked neck with a
+  blunt snout, facing right. Their bounding box is x 7.6-56.8, y 10.4-38, so the
+  group transform below centres that box on the 1024 canvas rather than centring
+  the 64-unit viewBox (which would sit the creature low and left).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect x="96" y="96" width="832" height="832" rx="186" fill="#0a0a0a"/>
+  <g transform="translate(512,505) scale(11.5) translate(-32.2,-24.2)" fill="#4ade80">
+    <path d="M7.6 38C8.1 33.4 10.6 30.6 14.4 30.8C18.1 31 20.6 33.8 21.6 38Z"/>
+    <path d="M19.4 38C20.4 32.4 23.3 28.2 27.8 27.9C32.6 27.6 36 31.4 37.4 38Z"/>
+    <path d="M39.4 38C38.9 30.2 39 22.4 41 17.8C43.1 13 47.7 10.4 51.6 11.6C55 12.7 56.8 15.4 56.5 17.9C56.2 20.2 53.5 21.2 50.3 20.9C48 20.7 47 22.2 47.3 25.2C47.7 29.6 48.5 33.7 49.4 38Z"/>
+  </g>
+</svg>
