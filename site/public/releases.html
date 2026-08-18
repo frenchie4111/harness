@@ -102,6 +102,52 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.14.0 -->
+    <section id="v2.14.0" class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight"><a href="#v2.14.0" class="release-anchor">v2.14.0<span class="anchor-icon">🔗</span></a></h2>
+        <span class="text-sm text-neutral-500">August 17, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.14.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Chat gets @-mention tagging for worktrees, an auto permission mode toggle, PR CI-failure notifications, and conversation forking into a new worktree; mobile can now create worktrees and add tabs — plus SSH tunnel recovery and a wide set of reliability fixes.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Tag other worktrees from the @ menu in Chat</strong> — type <code>@</code> in a Chat tab to reference another worktree directly in your message.</li>
+          <li><strong>Auto permission mode in Chat</strong> — Claude Code's auto permission mode is now exposed as a toggle in Chat tabs.</li>
+          <li><strong>Open PRs in a Harness browser tab</strong> — a new setting opens pull requests inside a Harness browser tab instead of your external browser.</li>
+          <li><strong>Mobile: create worktrees and add tabs</strong> — the mobile client can now create worktrees and add tabs, with bigger, easier-to-tap approval buttons.</li>
+          <li><strong>CI-failure notifications in Chat</strong> — Chat now notifies you when a PR's CI checks go red.</li>
+          <li><strong>Fork a conversation into a new worktree</strong> — fork a Chat conversation into a brand-new worktree that continues from that point.</li>
+          <li><strong>Interrupt & send in Chat</strong> — send a new message to interrupt a response that's still streaming, instead of waiting for it to finish.</li>
+          <li><strong>Stale SSH remote upgrade prompt</strong> — Harness now offers an opt-in upgrade when a remote's <code>harness-server</code> is out of date.</li>
+          <li><strong>Better performance diagnostics</strong> — new renderer instrumentation catches GC pauses and rendering storms, making UI stutter easier to track down.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li><strong>Automated kickoff prompts are labeled</strong> — kickoff prompts sent by another agent now show as automated turns in Chat instead of looking like something you typed.</li>
+          <li><strong>Sidebar collapse state persists per repo</strong> — collapsed/expanded state for each repo's worktree group is now remembered across restarts.</li>
+          <li><strong>Unified worktree list</strong> — the desktop sidebar and mobile worktree picker now share the same list, for more consistent behavior across both.</li>
+          <li>Fixed a UI stutter in Chat caused by markdown re-rendering on every tool call.</li>
+          <li>The performance profiler and duplicate git status reads no longer cause the lag they were meant to help diagnose.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Browser tabs can now be screenshotted and inspected even when they aren't the currently visible tab.</li>
+          <li>Opening a worktree no longer resets its age, so it doesn't dodge cleanup by looking recently used.</li>
+          <li>Mobile: idle chat tabs now wake up and show their full history instead of appearing empty.</li>
+          <li>Sub-agents launched in the background now render correctly in Chat.</li>
+          <li>Dropped SSH tunnels now recover automatically instead of crashing Harness or going silently dead.</li>
+          <li>Worktrees no longer flash red while the auto-approver is still deciding on a tool call.</li>
+          <li>Background git polling no longer contends with other git operations for the index lock.</li>
+          <li>Fixed low-contrast code blocks in light theme.</li>
+          <li>Fixed a race where a new worktree's kickoff prompt could get silently dropped during pane setup.</li>
+          <li>Restarting Harness now resumes the correct Claude session after using <code>/clear</code>, instead of an old one.</li>
+          <li>Claude's clarifying questions in Chat are now answerable instead of silently going unanswered.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- v2.13.2 -->
     <section id="v2.13.2" class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
