@@ -13,7 +13,7 @@
 // Protocol boundaries:
 //   * stdio side: standard MCP JSON-RPC over NDJSON. We advertise a
 //     single tool named `approve` and handle tools/call by delegating to
-//     the Harness socket.
+//     the Ness socket.
 //   * socket side: NDJSON frames. We write
 //       {type: 'request', id, sessionId, tool_name, input, tool_use_id,
 //        timestamp}

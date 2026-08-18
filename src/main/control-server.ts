@@ -311,7 +311,7 @@ async function handleRequest(
     const aliasInput = typeof body.alias === 'string' ? body.alias : undefined
 
     // Every prompt arriving here was written by an agent, so it gets the same
-    // sentinel a worktree-to-worktree message does. Creation from the Harness
+    // sentinel a worktree-to-worktree message does. Creation from the Ness
     // UI goes through IPC, not this route, and stays unwrapped — that one
     // really was typed by the human.
     const kickoffSender = resolveScope(req, deps).scope

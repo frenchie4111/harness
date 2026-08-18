@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Harness MCP bridge — minimal MCP stdio server that forwards tool calls
-// to the Harness control HTTP server running inside the Electron main process.
+// Ness MCP bridge — minimal MCP stdio server that forwards tool calls
+// to the Ness control HTTP server running inside the Electron main process.
 // Spawned by Claude Code via `ELECTRON_RUN_AS_NODE=1 <electron-binary> <this>`.
 //
 // To debug issue #167: tail /tmp/harness-control-bridge.log while spawning
@@ -133,7 +133,7 @@ const TOOLS = [
   {
     name: 'create_worktree',
     description:
-      "Create a new git worktree in a Harness-managed repo. Either create a brand-new branch (set branchName) OR check out an existing GitHub PR for review (set prNumber). Harness will open a new agent chat tab inside the new worktree automatically. Defaults to the caller's current repo when repoRoot is omitted." +
+      "Create a new git worktree in a Ness-managed repo. Either create a brand-new branch (set branchName) OR check out an existing GitHub PR for review (set prNumber). Ness will open a new agent chat tab inside the new worktree automatically. Defaults to the caller's current repo when repoRoot is omitted." +
       FORK_DESCRIPTION_SENTENCE,
     inputSchema: {
       type: 'object',
@@ -147,7 +147,7 @@ const TOOLS = [
           type: 'integer',
           minimum: 1,
           description:
-            'GitHub PR number to check out for review. When set, Harness fetches refs/pull/<n>/head into a local branch named after the PR head (or `<headBranch>-pr-<n>` if taken locally) and opens a worktree against it. Useful for "review this PR" workflows.'
+            'GitHub PR number to check out for review. When set, Ness fetches refs/pull/<n>/head into a local branch named after the PR head (or `<headBranch>-pr-<n>` if taken locally) and opens a worktree against it. Useful for "review this PR" workflows.'
         },
         repoRoot: {
           type: 'string',
@@ -162,7 +162,7 @@ const TOOLS = [
         initialPrompt: {
           type: 'string',
           description:
-            'A prompt to automatically send to the agent chat tab when it opens in the new worktree. Useful for "review this PR for X" or "implement feature Y" prompts. When prNumber is set and this is omitted, Harness uses the configured PR review prompt (Settings → Worktrees → PR review prompt). Pass an empty string to explicitly suppress any kickoff prompt on the PR path.'
+            'A prompt to automatically send to the agent chat tab when it opens in the new worktree. Useful for "review this PR for X" or "implement feature Y" prompts. When prNumber is set and this is omitted, Ness uses the configured PR review prompt (Settings → Worktrees → PR review prompt). Pass an empty string to explicitly suppress any kickoff prompt on the PR path.'
         },
         agentKind: {
           type: 'string',
@@ -183,7 +183,7 @@ const TOOLS = [
         forkConversation: {
           type: 'boolean',
           description:
-            'Copy YOUR current conversation into the new worktree, so its agent resumes holding everything said here instead of starting blank. Only works when you are a Harness Chat tab with existing history; otherwise the call is rejected and you should retry without it. Cannot be combined with prNumber.\n\nFORK when the new worktree continues THIS thread of work. Strongest signal: the user asks for continuity — "pick up where we left off", "they should already know what we discussed", "carry on from here". Take that at face value; it is a request to fork, and answering it with a hand-written briefing instead is the wrong call. Also fork when the work leans on things that only exist in this conversation: what you already read and ruled out, why the user rejected an earlier approach, a design the two of you converged on over several turns.\n\nDO NOT FORK for a task that merely sits next to this one ("also fix the flaky test", "do the same on the other service"), for a clean retry after an approach failed, or for reviewing someone else\'s code. There the history is noise the new agent must read past.\n\nDeciding: do not ask yourself whether you COULD write a sufficient briefing — you almost always can, so that question always answers "no fork" and is useless. Ask instead what the briefing would have to contain. If it needs to relay specific findings, discarded options, or user decisions from this conversation, fork: the transcript already holds those, faithfully, and your summary of them will be lossier than you expect. If it would just be a task description someone could have written before this conversation started, do not fork.\n\nCost of forking, so you can weigh it: the transcript is full of your earlier file edits, but the new branch is cut from the base ref, so it does NOT contain your uncommitted work and may not contain your commits. Harness prepends a note telling the new agent where it now is and which of those changes actually survived, and it will spend a little effort re-verifying before it builds.\n\nWhen you fork, still pass initialPrompt — it lands right after that note and is what actually directs the new agent. Write it as a continuation ("now build the page we just planned, here") and do not re-explain what the conversation already contains.'
+            'Copy YOUR current conversation into the new worktree, so its agent resumes holding everything said here instead of starting blank. Only works when you are a Ness Chat tab with existing history; otherwise the call is rejected and you should retry without it. Cannot be combined with prNumber.\n\nFORK when the new worktree continues THIS thread of work. Strongest signal: the user asks for continuity — "pick up where we left off", "they should already know what we discussed", "carry on from here". Take that at face value; it is a request to fork, and answering it with a hand-written briefing instead is the wrong call. Also fork when the work leans on things that only exist in this conversation: what you already read and ruled out, why the user rejected an earlier approach, a design the two of you converged on over several turns.\n\nDO NOT FORK for a task that merely sits next to this one ("also fix the flaky test", "do the same on the other service"), for a clean retry after an approach failed, or for reviewing someone else\'s code. There the history is noise the new agent must read past.\n\nDeciding: do not ask yourself whether you COULD write a sufficient briefing — you almost always can, so that question always answers "no fork" and is useless. Ask instead what the briefing would have to contain. If it needs to relay specific findings, discarded options, or user decisions from this conversation, fork: the transcript already holds those, faithfully, and your summary of them will be lossier than you expect. If it would just be a task description someone could have written before this conversation started, do not fork.\n\nCost of forking, so you can weigh it: the transcript is full of your earlier file edits, but the new branch is cut from the base ref, so it does NOT contain your uncommitted work and may not contain your commits. Ness prepends a note telling the new agent where it now is and which of those changes actually survived, and it will spend a little effort re-verifying before it builds.\n\nWhen you fork, still pass initialPrompt — it lands right after that note and is what actually directs the new agent. Write it as a continuation ("now build the page we just planned, here") and do not re-explain what the conversation already contains.'
         }
       }
     }
@@ -191,7 +191,7 @@ const TOOLS = [
   {
     name: 'list_worktrees',
     description:
-      "List git worktrees currently managed by Harness, with the same status Harness groups the sidebar by. Each entry carries `status` + `statusLabel`: 'merged' (Merged / Closed — the work landed, treat it as finished), 'needs-attention' (open PR of yours with failing checks, conflicts, or changes requested), 'active' (Open PRs — yours, healthy, awaiting review), 'reviewing' (someone else's PR you're reviewing), 'no-pr' (labelled Active — a branch with no PR yet, i.e. work still in progress), 'snoozed' (deliberately parked). Note 'active' means \"has an open PR\" and 'no-pr' is the one labelled Active — read statusLabel, not the key. `prunable: true` means the directory was deleted and only a stale git ref remains. Entries also carry `alias` when the user has named the worktree — that's the name to pass to send_message, and the name a message from it will show. This describes PR/review state, NOT whether an agent is currently running there; Harness does not report agent liveness.",
+      "List git worktrees currently managed by Ness, with the same status Ness groups the sidebar by. Each entry carries `status` + `statusLabel`: 'merged' (Merged / Closed — the work landed, treat it as finished), 'needs-attention' (open PR of yours with failing checks, conflicts, or changes requested), 'active' (Open PRs — yours, healthy, awaiting review), 'reviewing' (someone else's PR you're reviewing), 'no-pr' (labelled Active — a branch with no PR yet, i.e. work still in progress), 'snoozed' (deliberately parked). Note 'active' means \"has an open PR\" and 'no-pr' is the one labelled Active — read statusLabel, not the key. `prunable: true` means the directory was deleted and only a stale git ref remains. Entries also carry `alias` when the user has named the worktree — that's the name to pass to send_message, and the name a message from it will show. This describes PR/review state, NOT whether an agent is currently running there; Ness does not report agent liveness.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -204,13 +204,13 @@ const TOOLS = [
   },
   {
     name: 'list_repos',
-    description: 'List the repo roots currently open in Harness.',
+    description: 'List the repo roots currently open in Ness.',
     inputSchema: { type: 'object', properties: {} }
   },
   {
     name: 'set_worktree_alias',
     description:
-      "Set a user-facing display alias for a worktree. The alias replaces the branch name wherever the worktree is shown in Harness (sidebar, window title, tab strip, palette) — a cosmetic rename that never touches git. Defaults to the caller's current worktree when worktreePath is omitted. Aliases are trimmed and clamped to 80 chars; an empty string clears the alias (prefer clear_worktree_alias for that).",
+      "Set a user-facing display alias for a worktree. The alias replaces the branch name wherever the worktree is shown in Ness (sidebar, window title, tab strip, palette) — a cosmetic rename that never touches git. Defaults to the caller's current worktree when worktreePath is omitted. Aliases are trimmed and clamped to 80 chars; an empty string clears the alias (prefer clear_worktree_alias for that).",
     inputSchema: {
       type: 'object',
       properties: {
@@ -231,7 +231,7 @@ const TOOLS = [
   {
     name: 'clear_worktree_alias',
     description:
-      "Remove the display alias for a worktree so it shows its branch name again in Harness. Defaults to the caller's current worktree when worktreePath is omitted. No-op if no alias was set.",
+      "Remove the display alias for a worktree so it shows its branch name again in Ness. Defaults to the caller's current worktree when worktreePath is omitted. No-op if no alias was set.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -246,7 +246,7 @@ const TOOLS = [
   {
     name: 'send_message',
     description:
-      "Send a message to the agent working in another Harness worktree. It arrives as a turn in that agent's chat, labelled with your worktree as the sender, and wakes the tab if it was asleep. Use it to hand off work (\"the API change landed, you can rebase now\"), ask a question, or report that something you were asked to do is finished.\n\nThere is no separate reply channel. If you want an answer, say so in the message and ask them to send_message back to you — name your own worktree so they know where to reply. Then end your turn: you'll be woken when their message arrives, so there is no need to poll or wait.\n\nDelivery is immediate or not at all — nothing is queued. If the target worktree has no agent chat tab the call fails and the message is lost, so report that to the user rather than assuming it landed. The recipient always sees which worktree you are; the sender name cannot be set by you.",
+      "Send a message to the agent working in another Ness worktree. It arrives as a turn in that agent's chat, labelled with your worktree as the sender, and wakes the tab if it was asleep. Use it to hand off work (\"the API change landed, you can rebase now\"), ask a question, or report that something you were asked to do is finished.\n\nThere is no separate reply channel. If you want an answer, say so in the message and ask them to send_message back to you — name your own worktree so they know where to reply. Then end your turn: you'll be woken when their message arrives, so there is no need to poll or wait.\n\nDelivery is immediate or not at all — nothing is queued. If the target worktree has no agent chat tab the call fails and the message is lost, so report that to the user rather than assuming it landed. The recipient always sees which worktree you are; the sender name cannot be set by you.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -651,8 +651,8 @@ async function handleToolCall(name, args) {
         ? ' It resumes a copy of this conversation, and has been told where it is and which of your earlier changes came along.'
         : ''
     return prNumber
-      ? `Created worktree ${r.path} on branch ${r.branch} for PR #${prNumber}${aliasSuffix}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
-      : `Created worktree ${r.path} on branch ${r.branch}${aliasSuffix}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.${forkSuffix}`
+      ? `Created worktree ${r.path} on branch ${r.branch} for PR #${prNumber}${aliasSuffix}. Ness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
+      : `Created worktree ${r.path} on branch ${r.branch}${aliasSuffix}. Ness will open a new ${agentLabel} chat tab in it${modelSuffix}.${forkSuffix}`
   }
   if (name === 'list_worktrees') {
     const q =

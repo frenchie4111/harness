@@ -2,7 +2,7 @@
 // Manual smoke test for the web-client HTTP server.
 //
 // Usage:
-//   1. Start Harness with the WS transport on:
+//   1. Start Ness with the WS transport on:
 //        HARNESS_WS_TRANSPORT=1 npm run dev
 //      (optionally also HARNESS_WS_HOST=0.0.0.0 to bind LAN-wide)
 //   2. Copy the URL the main process logs to stdout.
