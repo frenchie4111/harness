@@ -88,6 +88,7 @@ import {
   loadRepoConfig,
   saveRepoConfig,
   repoConfigFilename,
+  migrateRepoConfigFilename,
   type RepoConfig
 } from './repo-config'
 import { createNewProject, type GitignorePreset } from './repo-create'
@@ -2242,6 +2243,20 @@ function registerIpcHandlers(): void {
     }
     saveConfig(config)
     store.dispatch({ type: 'settings/cursorEnvVarsChanged', payload: config.cursorEnvVars || {} })
+    return true
+  })
+
+  transport.onRequest('repoConfig:migrateFilename', (_ctx, repoRoot: string) => {
+    if (!repoRoot) return false
+    if (!migrateRepoConfigFilename(repoRoot)) return false
+    store.dispatch({
+      type: 'repoConfigs/changed',
+      payload: {
+        repoRoot,
+        config: loadRepoConfig(repoRoot),
+        filename: repoConfigFilename(repoRoot)
+      }
+    })
     return true
   })
 

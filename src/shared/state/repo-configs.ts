@@ -82,6 +82,11 @@ export function effectiveHiddenRightPanels(config: RepoConfig | null | undefined
   return out
 }
 
+/** Per-repo config filename. `.harness.json` predates the Ness rename and
+ *  is still read; only brand-new files get `.ness.json`. */
+export const REPO_CONFIG_FILENAME = '.ness.json'
+export const LEGACY_REPO_CONFIG_FILENAME = '.harness.json'
+
 export interface RepoConfigsState {
   /** Per-repo config keyed by repoRoot. Hydrated at boot from each repo's
    * config file and updated whenever a setRepoConfig call commits. */

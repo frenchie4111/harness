@@ -1,7 +1,12 @@
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { log } from './debug'
-import { DEFAULT_HIDDEN_RIGHT_PANELS, type RepoConfig } from '../shared/state/repo-configs'
+import {
+  DEFAULT_HIDDEN_RIGHT_PANELS,
+  REPO_CONFIG_FILENAME,
+  LEGACY_REPO_CONFIG_FILENAME,
+  type RepoConfig
+} from '../shared/state/repo-configs'
 
 export type { RepoConfig }
 
@@ -10,8 +15,6 @@ export type { RepoConfig }
 // `.harness.json` is usually committed and shared with teammates, so
 // silently renaming it on the next write would show up as a rename in
 // everyone's git status for a change they didn't make.
-const REPO_CONFIG_FILENAME = '.ness.json'
-const LEGACY_REPO_CONFIG_FILENAME = '.harness.json'
 const cache = new Map<string, RepoConfig>()
 
 /** The config file this repo actually uses: the new name if present or if
@@ -92,6 +95,31 @@ export function saveRepoConfig(repoRoot: string, next: RepoConfig): RepoConfig {
   } catch (err) {
     log('repo-config', `failed to save ${path}: ${(err as Error).message}`)
     return cache.get(repoRoot) || {}
+  }
+}
+
+/** Opt-in rename of a repo's legacy `.harness.json` to `.ness.json`.
+ *  Deliberately user-triggered rather than automatic — the file is usually
+ *  committed, so the rename lands in the repo's history and teammates need
+ *  a version of Ness that reads the new name. No-op when there's nothing
+ *  to convert. Returns true when the file was renamed. */
+export function migrateRepoConfigFilename(repoRoot: string): boolean {
+  if (!repoRoot) return false
+  const legacyPath = join(repoRoot, LEGACY_REPO_CONFIG_FILENAME)
+  if (!existsSync(legacyPath)) return false
+  const nextPath = join(repoRoot, REPO_CONFIG_FILENAME)
+  try {
+    // Read-then-write rather than rename() so a pre-existing .ness.json
+    // (which already wins on load) isn't clobbered by the stale legacy copy.
+    if (!existsSync(nextPath)) {
+      writeFileSync(nextPath, readFileSync(legacyPath, 'utf-8'))
+    }
+    unlinkSync(legacyPath)
+    cache.delete(repoRoot)
+    return true
+  } catch (err) {
+    log('repo-config', `failed to migrate ${legacyPath}: ${(err as Error).message}`)
+    return false
   }
 }
 

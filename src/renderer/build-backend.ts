@@ -257,6 +257,8 @@ export function buildBackend(
       req('config:setWorktreeScripts', scripts),
     setRepoConfig: (repoRoot: string, next: Record<string, unknown>) =>
       req('repoConfig:set', repoRoot, next),
+    migrateRepoConfigFilename: (repoRoot: string) =>
+      req('repoConfig:migrateFilename', repoRoot),
     setClaudeEnvVars: (vars: Record<string, string>) => req('config:setClaudeEnvVars', vars),
     setDefaultAgent: (agent: string) => req('config:setDefaultAgent', agent),
     setCodexCommand: (command: string) => req('config:setCodexCommand', command),

@@ -425,6 +425,7 @@ export interface ElectronAPI {
   setOnboardingQuest(quest: QuestStep): Promise<boolean>
   setWorktreeScripts(scripts: { setup: string; teardown: string }): Promise<boolean>
   setRepoConfig(repoRoot: string, next: Partial<RepoConfig>): Promise<RepoConfig | null>
+  migrateRepoConfigFilename(repoRoot: string): Promise<boolean>
   setWorktreeBase(mode: 'remote' | 'local'): Promise<boolean>
   setMergeStrategy(strategy: MergeStrategy): Promise<boolean>
   setSidebarDensity(density: SidebarDensity): Promise<boolean>
