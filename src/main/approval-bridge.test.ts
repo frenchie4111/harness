@@ -92,7 +92,7 @@ describe('approval bridge — claude integration', () => {
 
     const mcpConfig = {
       mcpServers: {
-        'harness-permissions': {
+        'ness-permissions': {
           command: 'node',
           args: [mcpScript],
           env: {
@@ -113,7 +113,7 @@ describe('approval bridge — claude integration', () => {
       '--permission-mode',
       'default',
       '--permission-prompt-tool',
-      'mcp__harness-permissions__approve',
+      'mcp__ness-permissions__approve',
       '--mcp-config',
       JSON.stringify(mcpConfig),
       '--session-id',
@@ -246,7 +246,7 @@ describe('approval bridge — AskUserQuestion answers', () => {
 
     const mcpConfig = {
       mcpServers: {
-        'harness-permissions': {
+        'ness-permissions': {
           command: 'node',
           args: [mcpScript],
           env: {
@@ -265,7 +265,7 @@ describe('approval bridge — AskUserQuestion answers', () => {
         '--output-format', 'stream-json',
         '--verbose',
         '--permission-mode', 'default',
-        '--permission-prompt-tool', 'mcp__harness-permissions__approve',
+        '--permission-prompt-tool', 'mcp__ness-permissions__approve',
         '--mcp-config', JSON.stringify(mcpConfig),
         '--session-id', sessionId
       ],

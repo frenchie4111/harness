@@ -194,7 +194,7 @@ rl.on('line', (line) => {
     reply(id, {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
-      serverInfo: { name: 'harness-permissions', version: '1.0.0' }
+      serverInfo: { name: 'ness-permissions', version: '1.0.0' }
     })
     return
   }
