@@ -373,3 +373,15 @@ describe('compactLabel', () => {
     expect(getToolDisplay(undefined).compactLabel).toBe('Tool')
   })
 })
+
+describe('pre-rename harness-control tools in existing transcripts', () => {
+  it('still recognises the legacy prefix so old cards keep Ness chrome', () => {
+    expect(isNessControl('mcp__harness-control__create_worktree')).toBe(true)
+  })
+
+  it('still labels legacy tool calls as Ness', () => {
+    expect(getToolDisplay('mcp__harness-control__create_worktree').label).toBe(
+      'Ness · Create Worktree'
+    )
+  })
+})
