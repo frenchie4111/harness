@@ -109,10 +109,10 @@ function callControl(method, path, body) {
             try {
               resolve(chunks ? JSON.parse(chunks) : {})
             } catch (e) {
-              reject(new Error('bad json from harness: ' + chunks))
+              reject(new Error('bad json from Ness: ' + chunks))
             }
           } else {
-            reject(new Error('harness HTTP ' + res.statusCode + ': ' + chunks))
+            reject(new Error('Ness HTTP ' + res.statusCode + ': ' + chunks))
           }
         })
       }
