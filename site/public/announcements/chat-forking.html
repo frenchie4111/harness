@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Exploring chat forking | Harness</title>
+  <meta name="description" content="Chat forking means starting a 2nd conversation that has all of the history of the first one. Two places it's been useful: forking when I get distracted, and forking a chat straight into a new worktree." />
+
+  <!-- Open Graph -->
+  <meta property="og:site_name" content="Harness" />
+  <meta property="og:title" content="Exploring chat forking" />
+  <meta property="og:description" content="Chat forking means starting a 2nd conversation that has all of the history of the first one. Two places it's been useful: forking when I get distracted, and forking a chat straight into a new worktree." />
+  <meta property="og:image" content="https://harness.mikelyons.org/og-image.png?v=chat-forking" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:alt" content="Harness — manage multiple Claude Code sessions across git worktrees." />
+  <meta property="og:url" content="https://harness.mikelyons.org/announcements/chat-forking.html" />
+  <meta property="og:type" content="article" />
+  <meta property="article:published_time" content="2026-08-18" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Exploring chat forking" />
+  <meta name="twitter:description" content="Chat forking means starting a 2nd conversation that has all of the history of the first one. Two places it's been useful: forking when I get distracted, and forking a chat straight into a new worktree." />
+  <meta name="twitter:image" content="https://harness.mikelyons.org/og-image.png?v=chat-forking" />
+  <meta name="twitter:image:alt" content="Harness — manage multiple Claude Code sessions across git worktrees." />
+
+  <link rel="icon" type="image/png" href="/icon.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    html, body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #e5e5e5; }
+    code, pre { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .gradient-text { background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .grid-bg {
+      background-image:
+        radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.08), transparent 50%),
+        radial-gradient(circle at 0% 100%, rgba(168, 85, 247, 0.06), transparent 50%);
+    }
+    .prose-custom p { color: #a3a3a3; line-height: 1.75; margin-bottom: 1rem; }
+    .prose-custom p strong { color: #f5f5f5; font-weight: 600; }
+    .prose-custom code { background: #1f1f1f; color: #f5f5f5; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875em; }
+    .prose-custom ul, .prose-custom ol { color: #a3a3a3; line-height: 1.75; margin-bottom: 1rem; padding-left: 1.5rem; }
+    .prose-custom ul { list-style: disc; }
+    .prose-custom ol { list-style: decimal; }
+    .prose-custom li { margin-bottom: 0.5rem; }
+    .prose-custom li strong { color: #f5f5f5; font-weight: 600; }
+    .prose-custom a { color: #fbbf24; }
+    .prose-custom a:hover { color: #fcd34d; }
+
+    /* Inline aside: a <details> toggle for the worktree primer, so the
+       definition is one click away instead of interrupting the flow. */
+    .prose-custom details {
+      border: 1px solid #262626;
+      border-radius: 0.75rem;
+      background: rgba(10, 10, 10, 0.6);
+      padding: 0.875rem 1.125rem;
+      margin-bottom: 1rem;
+    }
+    .prose-custom details summary {
+      cursor: pointer;
+      color: #d4d4d4;
+      font-size: 0.9375rem;
+      list-style: none;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+    .prose-custom details summary::-webkit-details-marker { display: none; }
+    .prose-custom details summary::before {
+      content: '';
+      flex: none;
+      width: 0.5rem;
+      height: 0.5rem;
+      margin-top: 0.4rem;
+      border-right: 2px solid #737373;
+      border-bottom: 2px solid #737373;
+      transform: rotate(-45deg);
+      transition: transform 0.15s;
+    }
+    .prose-custom details[open] summary::before { transform: rotate(45deg); }
+    .prose-custom details summary:hover { color: #f5f5f5; }
+    .prose-custom details p { margin: 0.75rem 0 0; font-size: 0.9375rem; }
+
+    /* ---------------------------------------------------------------
+       Fork graph: a git-graph-shaped diagram, drawn in CSS.
+       A continuous trunk rail on the left, one card per turn of the
+       conversation, and branch rows whose elbow leaves the trunk and
+       lands flush against an indented, accent-coloured card. Vertical
+       on every viewport, so there's no layout to transpose on mobile.
+       --------------------------------------------------------------- */
+    .fork-fig { margin: 1.75rem 0; }
+    .fgraph { --rail: 2.5rem; --node-y: 1.35rem; }
+    .fg-row { display: flex; align-items: flex-start; }
+    .fg-row + .fg-row { margin-top: 0.625rem; }
+    .fg-rail {
+      position: relative;
+      flex: 0 0 var(--rail);
+      align-self: stretch;
+    }
+    /* Trunk. Bleeds 0.625rem past the row so the inter-row gap is bridged. */
+    .fg-rail::before {
+      content: '';
+      position: absolute;
+      left: 0.75rem;
+      margin-left: -1px;
+      width: 2px;
+      top: 0;
+      bottom: -0.625rem;
+      background: #303030;
+    }
+    .fg-row:first-child .fg-rail::before { top: var(--node-y); }
+    .fg-row--tip .fg-rail::before { bottom: calc(100% - var(--node-y)); }
+    .fg-node {
+      position: absolute;
+      left: 0.75rem;
+      top: var(--node-y);
+      width: 0.625rem;
+      height: 0.625rem;
+      border-radius: 999px;
+      background: #f59e0b;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 0 3px #0a0a0a;
+    }
+    .fg-node--hollow { background: #0a0a0a; border: 2px solid #525252; }
+    /* Elbow: down the trunk, round the corner, out to the branch card.
+       Width lands it flush on the indented card's left border. */
+    .fg-elbow {
+      position: absolute;
+      left: 0.75rem;
+      margin-left: -1px;
+      top: 0;
+      height: var(--node-y);
+      width: calc(var(--rail) + 0.5rem);
+      border-left: 2px solid #f59e0b;
+      border-bottom: 2px solid #f59e0b;
+      border-bottom-left-radius: 0.75rem;
+    }
+    .fg-body { flex: 1 1 auto; min-width: 0; }
+    .fg-row--branch .fg-body { padding-left: 1.25rem; }
+    .fg-card {
+      background: rgba(10, 10, 10, 0.6);
+      border: 1px solid #262626;
+      border-radius: 0.625rem;
+      padding: 0.75rem 1rem;
+    }
+    .fg-card--fork {
+      border-color: rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.05);
+    }
+    .fg-t { color: #f5f5f5; font-weight: 600; font-size: 0.875rem; line-height: 1.35; }
+    .fg-card--fork .fg-t { color: #fbbf24; }
+    .fg-s { color: #737373; font-size: 0.8125rem; line-height: 1.55; margin-top: 0.25rem; }
+    .fg-msgs { display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.625rem; }
+    .fg-msg {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 0.6875rem;
+      line-height: 1.5;
+      color: #a3a3a3;
+      background: #141414;
+      border: 1px solid #1f1f1f;
+      border-radius: 0.3125rem;
+      padding: 0.25rem 0.5rem;
+    }
+    .fg-msg--dim { color: #767676; border-style: dashed; }
+    .fg-msg--new {
+      color: #fbbf24;
+      background: rgba(245, 158, 11, 0.07);
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+    .fork-cap {
+      margin-top: 0.875rem;
+      font-size: 0.8125rem;
+      color: #737373;
+      line-height: 1.6;
+    }
+
+    /* ---------------------------------------------------------------
+       Before/after comparison: two stacked flows side by side, each a
+       column of steps joined by labelled arrows. Collapses to one
+       column under 640px.
+       --------------------------------------------------------------- */
+    .fork-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .fc-panel {
+      background: rgba(10, 10, 10, 0.6);
+      border: 1px solid #262626;
+      border-radius: 0.875rem;
+      padding: 1.25rem;
+    }
+    .fc-panel--after { border-color: rgba(245, 158, 11, 0.3); }
+    .fc-head {
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #737373;
+      margin-bottom: 0.875rem;
+    }
+    .fc-panel--after .fc-head { color: #fbbf24; }
+    .fc-arrow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.5rem 0;
+    }
+    .fc-arrow svg { color: #404040; display: block; }
+    .fc-panel--after .fc-arrow svg { color: #f59e0b; }
+    .fc-arrow span {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 0.65rem;
+      line-height: 1.4;
+      color: #737373;
+      text-align: center;
+    }
+    @media (max-width: 640px) {
+      .fork-compare { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body class="min-h-screen grid-bg">
+
+  <!-- Nav -->
+  <nav class="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between relative z-30">
+    <a href="/" class="flex items-center gap-3">
+      <img src="/icon.png" alt="Harness icon" class="w-9 h-9 rounded-lg" />
+      <span class="text-xl font-bold">Harness</span>
+    </a>
+    <div class="hidden sm:flex items-center gap-4 sm:gap-6 text-sm text-neutral-400">
+      <a href="/#features" class="hover:text-neutral-100 transition-colors">Features</a>
+      <a href="/guide.html" class="hover:text-neutral-100 transition-colors">Guide</a>
+      <a href="/announcements.html" class="text-neutral-100 transition-colors">Announcements</a>
+      <a href="/#install" class="hover:text-neutral-100 transition-colors">Install</a>
+      <a href="https://github.com/frenchie4111/harness" class="hover:text-neutral-100 transition-colors">GitHub</a>
+    </div>
+    <button
+      id="mobile-menu-toggle"
+      type="button"
+      aria-label="Open menu"
+      aria-expanded="false"
+      aria-controls="mobile-menu"
+      class="sm:hidden p-2 -mr-2 text-neutral-400 hover:text-neutral-100 transition-colors"
+    ></button>
+    <div
+      id="mobile-menu"
+      class="hidden sm:hidden absolute top-full left-0 right-0 mx-4 mt-1 bg-[#0a0a0a]/95 backdrop-blur border border-neutral-800 rounded-lg shadow-xl overflow-hidden"
+    >
+      <nav class="flex flex-col py-2 text-sm text-neutral-400">
+        <a href="/#features" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">Features</a>
+        <a href="/guide.html" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">Guide</a>
+        <a href="/announcements.html" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">Announcements</a>
+        <a href="/#install" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">Install</a>
+        <a href="https://github.com/frenchie4111/harness" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">GitHub</a>
+      </nav>
+    </div>
+  </nav>
+
+  <!-- Header -->
+  <section class="max-w-3xl mx-auto px-6 pt-12 pb-4">
+    <a href="/announcements.html" class="inline-flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-8">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      Announcements
+    </a>
+    <div class="text-xs uppercase tracking-widest text-neutral-500 mb-4">
+      Announcement · August 18, 2026
+    </div>
+    <h1 class="text-5xl md:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
+      Exploring <span class="gradient-text">chat forking.</span>
+    </h1>
+    <p class="text-lg text-neutral-400 leading-relaxed">
+      One of the big reasons I built Ness is that building my own
+      development environment allows me to explore deeper into what
+      agentic development could actually be like. Recently I have been
+      exploring the concept of &ldquo;chat forking&rdquo; which
+      basically means starting a 2nd conversation that has all of the
+      history of the first one.
+    </p>
+  </section>
+
+  <!-- Article -->
+  <article class="max-w-3xl mx-auto px-6 pb-24">
+
+    <!-- Figure 1: what a fork actually is -->
+    <figure class="fork-fig" role="img" aria-label="Diagram: a conversation with four turns of history; a fork branches off it holding all of that history plus one new message, while the original conversation continues untouched.">
+      <div class="fgraph">
+        <div class="fg-row">
+          <div class="fg-rail"><span class="fg-node"></span></div>
+          <div class="fg-body">
+            <div class="fg-card">
+              <div class="fg-t">The conversation so far</div>
+              <div class="fg-msgs">
+                <div class="fg-msg">you: here&#39;s the schema, let&#39;s plan the migration</div>
+                <div class="fg-msg">read 14 files &middot; ran the test suite</div>
+                <div class="fg-msg">you: no, don&#39;t add a new table</div>
+                <div class="fg-msg">agent: ok &mdash; backfilling in place instead</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="fg-row fg-row--branch">
+          <div class="fg-rail"><span class="fg-elbow"></span></div>
+          <div class="fg-body">
+            <div class="fg-card fg-card--fork">
+              <div class="fg-t">The fork</div>
+              <div class="fg-s">A 2nd conversation that starts out holding all of that.</div>
+              <div class="fg-msgs">
+                <div class="fg-msg fg-msg--dim">&#8627; everything above, verbatim</div>
+                <div class="fg-msg fg-msg--new">you: unrelated &mdash; could we drop the nightly cron now?</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="fg-row fg-row--tip">
+          <div class="fg-rail"><span class="fg-node"></span></div>
+          <div class="fg-body">
+            <div class="fg-card">
+              <div class="fg-t">The original, untouched</div>
+              <div class="fg-s">Still running, still on the migration, with none of the tangent in its context.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <figcaption class="fork-cap">
+        A fork copies the transcript up to a point and resumes it as a
+        new session. Nothing is taken away from the chat you forked.
+      </figcaption>
+    </figure>
+
+    <section class="mb-12">
+      <div class="prose-custom">
+        <p>
+          I have found this extremely useful in a few cases, and I
+          wanted to share those here. My request for you dear reader is
+          that if you find these useful or most importantly you have
+          other ideas on what we could do with this feature: please
+          share.
+        </p>
+      </div>
+    </section>
+
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-neutral-100 mb-4">Forking when I get distracted</h2>
+      <div class="prose-custom">
+        <p>
+          The place where I started (so maybe the most obvious place? I
+          guess at least it was the most obvious to me) was times when I
+          wanted to ask the agent about something tangentially related
+          to the work we are doing, but didn&rsquo;t really want to burn
+          context window on my random side idea.
+        </p>
+        <p>
+          This is especially useful when you know the agent has already
+          deeply researched some element of your codebase or some
+          framework, and you are interested in how you might be able to
+          use the new software in the future.
+        </p>
+      </div>
+
+      <!-- Figure 2: forking off a tangential question -->
+      <figure class="fork-fig" role="img" aria-label="Diagram: a main chat implementing a feature branch; a fork splits off to ask a tangential question; the main chat keeps implementing below the split.">
+        <div class="fgraph">
+          <div class="fg-row">
+            <div class="fg-rail"><span class="fg-node"></span></div>
+            <div class="fg-body">
+              <div class="fg-card">
+                <div class="fg-t">Main chat</div>
+                <div class="fg-s">Deep in a conversation about some big feature branch.</div>
+              </div>
+            </div>
+          </div>
+          <div class="fg-row fg-row--branch">
+            <div class="fg-rail"><span class="fg-elbow"></span></div>
+            <div class="fg-body">
+              <div class="fg-card fg-card--fork">
+                <div class="fg-t">Fork</div>
+                <div class="fg-msgs">
+                  <div class="fg-msg fg-msg--new">&ldquo;actually i was wondering, would this allow us to xyz&rdquo;</div>
+                </div>
+                <div class="fg-s">Asked against everything the agent already researched.</div>
+              </div>
+            </div>
+          </div>
+          <div class="fg-row fg-row--tip">
+            <div class="fg-rail"><span class="fg-node"></span></div>
+            <div class="fg-body">
+              <div class="fg-card">
+                <div class="fg-t">Main chat keeps implementing</div>
+                <div class="fg-s">And doesn&rsquo;t lose focus.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </figure>
+
+      <div class="prose-custom">
+        <p>
+          I&rsquo;ve used this probably 20 times in the last week. Most
+          of the examples are a bit too specific to my world but
+          I&rsquo;ll try to pull something specifically from Ness
+          development:
+        </p>
+        <p>
+          The existence of the separate command line tool
+          <a href="https://github.com/ness-dev/lochy">lochy</a> came
+          literally from a forked chat. I was talking to the agent about
+          building a feature that basically &ldquo;Sends Worktree to a
+          remote machine&rdquo; which will copy all of your work &amp;
+          Claude Code chats related to the work to a remote computer. As
+          part of that discussion I realized we don&rsquo;t really have
+          a standardized way of manipulating JSONL chat logs (the data
+          layer behind most of the code harnesses today). The prototype
+          lochy was started in the fork of the chat I made when I
+          realized the work we had to build to transfer chats to a
+          remote machine should be baked into its own CLI utility,
+          rather than being baked into the node monstrosity that is
+          Ness&rsquo; server runtime.
+        </p>
+      </div>
+    </section>
+
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-neutral-100 mb-4">Forking chats to make worktrees</h2>
+      <div class="prose-custom">
+        <p>
+          The other hugely useful situation I figured out for forking
+          was &ldquo;Forking chats to start new worktrees&rdquo;. This
+          is best explained by talking through how things worked before,
+          and how forking is so much better.
+        </p>
+        <p>
+          Ness is built around the idea that every change to your
+          codebase should happen in its own worktree.
+        </p>
+        <details>
+          <summary>For the uninitiated, a worktree is basically a git branch, but it&rsquo;s in its own folder</summary>
+          <p>
+            So instead of <code>git checkout &lt;branch&gt;</code> which
+            changes your current folder to track a target branch, a
+            worktree would make a new folder, and then target the
+            branch, allowing you to work on the code and keep your other
+            work around.
+          </p>
+        </details>
+        <p>
+          A very common use-pattern in Ness is to have agent chats in
+          your main (the artist previously known as master) branch where
+          you discuss issues you are seeing, the agent will research the
+          issue for you, and then spin up a worktree on your behalf.
+          (This is one of the awesome things that the Ness MCP server
+          gives you, the agent itself can spin up a new worktree right
+          in Ness). This is very useful because the agent can turn
+          something like &ldquo;hey for some reason this page won&rsquo;t
+          load when I am logged in as mike&rdquo; into a fully
+          researched ticket, and spin up a worktree immediately.
+        </p>
+        <p>
+          This, however, breaks down when the conversation to figure out
+          a bug or to scope out a new feature grows far longer than a
+          message or two. In the same pattern I will find myself
+          speccing out entire PRDs or running a bunch of devops queries
+          against Datadog or the database, collecting a ton of context
+          that is useful to a bug. When it finally comes time to spin up
+          the worktree (or worktrees) the agent does its best to write a
+          prompt, but will often fail to collect all of the information
+          necessary.
+        </p>
+        <p>
+          That&rsquo;s where forking comes in. In the 2.14 launch of
+          Ness we added the ability for the <code>create_worktree</code>
+          command to bring with it a conversation fork. Now instead of
+          starting a worktree from a single prompt, you can just copy
+          the entire past conversation into the new worktree. Agents
+          will have the full context of what they are working on,
+          instead of trying to play a game of telephone to figure out
+          what exactly they are supposed to be doing.
+        </p>
+      </div>
+
+      <!-- Figure 3: prompt-writing vs. conversation fork -->
+      <figure class="fork-fig">
+        <div class="fork-compare">
+          <div class="fc-panel" role="img" aria-label="Diagram, before: a long conversation is compressed by the agent into a one-paragraph kickoff prompt, and the new worktree starts from only that paragraph.">
+            <div class="fc-head">Before</div>
+            <div class="fg-card">
+              <div class="fg-t">A long conversation</div>
+              <div class="fg-msgs">
+                <div class="fg-msg">a PRD, hashed out over 40 turns</div>
+                <div class="fg-msg">a dozen Datadog queries</div>
+                <div class="fg-msg">two schema dumps from prod</div>
+                <div class="fg-msg">an approach you already rejected</div>
+              </div>
+            </div>
+            <div class="fc-arrow">
+              <svg width="16" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="3" x2="12" y2="20"/><polyline points="6 14 12 20 18 14"/></svg>
+              <span>agent writes a<br />kickoff prompt</span>
+            </div>
+            <div class="fg-card">
+              <div class="fg-msgs">
+                <div class="fg-msg">&ldquo;Fix the login flash. See auth.ts.&rdquo;</div>
+              </div>
+              <div class="fg-s">Everything else stays behind.</div>
+            </div>
+            <div class="fc-arrow">
+              <svg width="16" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="3" x2="12" y2="20"/><polyline points="6 14 12 20 18 14"/></svg>
+              <span>new worktree</span>
+            </div>
+            <div class="fg-card">
+              <div class="fg-t">A new agent, briefed</div>
+              <div class="fg-s">Starts from one paragraph and re-derives the rest.</div>
+            </div>
+          </div>
+
+          <div class="fc-panel fc-panel--after" role="img" aria-label="Diagram, after: the whole conversation is forked into the new worktree, so the new agent resumes holding all of it plus a note about the move.">
+            <div class="fc-head">After</div>
+            <div class="fg-card">
+              <div class="fg-t">A long conversation</div>
+              <div class="fg-msgs">
+                <div class="fg-msg">a PRD, hashed out over 40 turns</div>
+                <div class="fg-msg">a dozen Datadog queries</div>
+                <div class="fg-msg">two schema dumps from prod</div>
+                <div class="fg-msg">an approach you already rejected</div>
+              </div>
+            </div>
+            <div class="fc-arrow">
+              <svg width="16" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="3" x2="12" y2="20"/><polyline points="6 14 12 20 18 14"/></svg>
+              <span>create_worktree(<br />forkConversation)</span>
+            </div>
+            <div class="fg-card fg-card--fork">
+              <div class="fg-t">A new agent, resuming</div>
+              <div class="fg-msgs">
+                <div class="fg-msg fg-msg--dim">&#8627; the whole conversation, verbatim</div>
+                <div class="fg-msg fg-msg--new">[Harness] You have been moved to a new git worktree&hellip;</div>
+              </div>
+              <div class="fg-s">
+                Holds the context instead of being told about it, plus a
+                note on where it moved and which of its earlier changes
+                came along.
+              </div>
+            </div>
+          </div>
+        </div>
+        <figcaption class="fork-cap">
+          The fork ships in 2.14 behind Settings &rarr; Experimental
+          &rarr; Conversation fork. Turning it on adds
+          &ldquo;Fork into new worktree&hellip;&rdquo; to the Chat tab
+          menu and a <code>forkConversation</code> option to the
+          <code>create_worktree</code> MCP tool.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-neutral-100 mb-4">In conclusion forks are cool, idk how I feel about spoons yet</h2>
+      <div class="prose-custom">
+        <p>
+          If you talked to me anytime in the last year (and you were a
+          software engineer, and you specifically cared about devex, and
+          I was a little tipsy) I would have talked your ear off about
+          how exciting it is to explore what software engineering is
+          becoming.
+        </p>
+        <p>
+          We are all trying to figure out how to still build good
+          software in an era where you don&rsquo;t even really have to
+          read the code much anymore. Ness is one of many projects that
+          is on the forefront of figuring out what it even means to be a
+          software engineer anymore. If you are interested in helping me
+          find out:
+          <a href="/#install">download the app</a>, come by the
+          <a href="https://github.com/frenchie4111/harness">GitHub repo</a>,
+          or
+          <a href="https://join.slack.com/t/harness-chat/shared_invite/zt-43w6xg34i-mGXrSEKVO0wGC7r_SiePwA">join the Slack</a>,
+          or shoot me an email at
+          <a href="mailto:mdl0394@gmail.com">mdl0394@gmail.com</a>.
+          I&rsquo;d love to chat.
+        </p>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <div class="mt-20 p-8 bg-neutral-950 border border-neutral-800 rounded-2xl text-center">
+      <h3 class="text-2xl font-bold text-neutral-100 mb-3">Get the latest Harness</h3>
+      <p class="text-neutral-500 mb-6 max-w-md mx-auto">
+        Conversation forking ships in the current release. Free, open
+        source, macOS for now.
+      </p>
+      <a href="/#install" class="inline-block px-8 py-3 bg-white text-black rounded-lg font-semibold hover:bg-neutral-200 transition-colors">
+        Download for macOS
+      </a>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t border-neutral-900 mt-20">
+    <div class="max-w-6xl mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-neutral-600">
+      <div class="flex items-center gap-2">
+        <img src="/icon.png" alt="" class="w-5 h-5 rounded" />
+        <span>Harness · Open source · MIT</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href="/guide.html" class="hover:text-neutral-300 transition-colors">Guide</a>
+        <a href="/announcements.html" class="hover:text-neutral-300 transition-colors">Announcements</a>
+        <a href="https://github.com/frenchie4111/harness" class="hover:text-neutral-300 transition-colors">GitHub</a>
+        <a href="/releases.html" class="hover:text-neutral-300 transition-colors">Release notes</a>
+        <a href="https://github.com/frenchie4111/harness/releases" class="hover:text-neutral-300 transition-colors">Downloads</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var btn = document.getElementById('mobile-menu-toggle');
+      var menu = document.getElementById('mobile-menu');
+      if (!btn || !menu) return;
+      var iconMenu = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+      var iconX = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M6 18L18 6"/></svg>';
+      btn.innerHTML = iconMenu;
+      var open = false;
+      function setOpen(next) {
+        open = next;
+        menu.classList.toggle('hidden', !open);
+        btn.innerHTML = open ? iconX : iconMenu;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+        document.body.classList.toggle('overflow-hidden', open);
+      }
+      btn.addEventListener('click', function (e) { e.stopPropagation(); setOpen(!open); });
+      document.addEventListener('mousedown', function (e) {
+        if (!open) return;
+        if (!menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
+      });
+      document.addEventListener('keydown', function (e) {
+        if (open && e.key === 'Escape') setOpen(false);
+      });
+      menu.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', function () { setOpen(false); });
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,6 +1,13 @@
 {
   "announcements": [
     {
+      "id": "chat-forking-2026-08",
+      "title": "Exploring chat forking",
+      "href": "https://getness.dev/announcements/chat-forking.html",
+      "publishedAt": "2026-08-19",
+      "summary": "Starting a 2nd conversation that has all of the history of the first one. Two places it's been useful: forking when I get distracted, and forking a chat straight into a new worktree."
+    },
+    {
       "id": "ness-rename-2026-08",
       "title": "Harness is now Ness",
       "href": "https://getness.dev/announcements/ness-rename.html",
