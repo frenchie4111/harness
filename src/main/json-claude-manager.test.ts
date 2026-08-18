@@ -658,7 +658,7 @@ describe('JsonClaudeManager', () => {
 
     it('still sends the sentinel to claude so the model sees it is automated', () => {
       const { stdin } = sendAndRead(wrapAutomatedMessage('ci-failure', 'body'))
-      expect(stdin).toContain('harness-automated-message')
+      expect(stdin).toContain('ness-automated-message')
     })
 
     it('leaves a human-typed turn untouched', () => {

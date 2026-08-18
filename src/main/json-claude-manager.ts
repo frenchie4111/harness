@@ -5,7 +5,7 @@
 // store path.
 //
 // Permissions: we pass --permission-mode default and
-// --permission-prompt-tool mcp__harness-permissions__approve, where that
+// --permission-prompt-tool mcp__ness-permissions__approve, where that
 // MCP server is the bundled out/main/permission-prompt-mcp.js (see
 // ApprovalBridge for the socket side of that).
 //
@@ -563,7 +563,7 @@ export class JsonClaudeManager {
     // MCP config — two stdio servers, both spawned via
     // ELECTRON_RUN_AS_NODE=1 against the Electron binary so we don't
     // need a separate Node install in packaged builds.
-    //   * harness-permissions: receives the per-tool approval requests
+    //   * ness-permissions: receives the per-tool approval requests
     //     Claude raises via --permission-prompt-tool. Tool is 'approve'.
     //   * ness-control: the same MCP bridge used by xterm-backed
     //     Claude tabs, exposing ness-control tools (worktree mgmt,
@@ -573,7 +573,7 @@ export class JsonClaudeManager {
       string,
       { command: string; args: string[]; env: Record<string, string> }
     > = {
-      'harness-permissions': {
+      'ness-permissions': {
         command: process.execPath,
         args: [resolveBundledMcpScript('permission-prompt-mcp.js')],
         env: {
@@ -629,7 +629,7 @@ export class JsonClaudeManager {
       '--permission-mode',
       permissionMode,
       '--permission-prompt-tool',
-      'mcp__harness-permissions__approve',
+      'mcp__ness-permissions__approve',
       '--mcp-config',
       JSON.stringify(mcpConfig),
       ...resumeOrSet
