@@ -5,11 +5,26 @@ import { DEFAULT_HIDDEN_RIGHT_PANELS, type RepoConfig } from '../shared/state/re
 
 export type { RepoConfig }
 
-const REPO_CONFIG_FILENAME = '.harness.json'
+// Repo config was `.harness.json` before the product became Ness. Both
+// names are read; only brand-new files get the new one. An existing
+// `.harness.json` is usually committed and shared with teammates, so
+// silently renaming it on the next write would show up as a rename in
+// everyone's git status for a change they didn't make.
+const REPO_CONFIG_FILENAME = '.ness.json'
+const LEGACY_REPO_CONFIG_FILENAME = '.harness.json'
 const cache = new Map<string, RepoConfig>()
 
+/** The config file this repo actually uses: the new name if present or if
+ *  the repo has no config yet, otherwise the legacy one it already has. */
+export function repoConfigFilename(repoRoot: string): string {
+  if (!repoRoot) return REPO_CONFIG_FILENAME
+  if (existsSync(join(repoRoot, REPO_CONFIG_FILENAME))) return REPO_CONFIG_FILENAME
+  if (existsSync(join(repoRoot, LEGACY_REPO_CONFIG_FILENAME))) return LEGACY_REPO_CONFIG_FILENAME
+  return REPO_CONFIG_FILENAME
+}
+
 function configPath(repoRoot: string): string {
-  return join(repoRoot, REPO_CONFIG_FILENAME)
+  return join(repoRoot, repoConfigFilename(repoRoot))
 }
 
 export function loadRepoConfig(repoRoot: string): RepoConfig {
@@ -62,7 +77,12 @@ export function saveRepoConfig(repoRoot: string, next: RepoConfig): RepoConfig {
   const path = configPath(repoRoot)
   try {
     if (!hasAny) {
-      if (existsSync(path)) unlinkSync(path)
+      // Clear both names — unlinking only the active one would let a
+      // leftover legacy file resurrect the settings on the next load.
+      for (const name of [REPO_CONFIG_FILENAME, LEGACY_REPO_CONFIG_FILENAME]) {
+        const p = join(repoRoot, name)
+        if (existsSync(p)) unlinkSync(p)
+      }
       cache.set(repoRoot, {})
       return {}
     }

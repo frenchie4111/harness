@@ -97,7 +97,7 @@ src/
 │   ├── onboarding.ts              # quest step
 │   ├── hooks.ts                   # consent + justInstalled
 │   ├── updater.ts                 # status (checking/available/downloading/…)
-│   ├── repo-configs.ts            # byRepo: per-repo .harness.json contents
+│   ├── repo-configs.ts            # byRepo: per-repo .ness.json contents
 │   └── *.test.ts                  # vitest reducer tests, one per slice
 │
 ├── main/
@@ -112,7 +112,7 @@ src/
 │   ├── hooks.ts                   # Installs Claude Code hooks, dispatches statuses to store
 │   ├── worktree.ts                # git worktree CRUD primitives
 │   ├── github.ts                  # GitHub REST API calls
-│   ├── repo-config.ts             # Per-repo .harness.json read/write
+│   ├── repo-config.ts             # Per-repo .ness.json read/write (reads legacy .harness.json)
 │   ├── persistence.ts             # JSON config at userData/config.json
 │   ├── secrets.ts                 # safeStorage-encrypted secrets
 │   └── debug.ts                   # File-based debug logger

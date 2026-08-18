@@ -1,0 +1,95 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import {
+  loadRepoConfig,
+  saveRepoConfig,
+  repoConfigFilename,
+  invalidateRepoConfigCache
+} from './repo-config'
+
+const NEW = '.ness.json'
+const LEGACY = '.harness.json'
+
+let repo: string
+
+beforeEach(() => {
+  repo = mkdtempSync(join(tmpdir(), 'repo-config-'))
+  invalidateRepoConfigCache()
+})
+
+afterEach(() => {
+  rmSync(repo, { recursive: true, force: true })
+  invalidateRepoConfigCache()
+})
+
+function write(name: string, body: unknown): void {
+  writeFileSync(join(repo, name), JSON.stringify(body))
+}
+
+describe('repoConfigFilename', () => {
+  it('uses the new name when the repo has no config yet', () => {
+    expect(repoConfigFilename(repo)).toBe(NEW)
+  })
+
+  it('keeps the legacy name when only that exists', () => {
+    write(LEGACY, { version: 1 })
+    expect(repoConfigFilename(repo)).toBe(LEGACY)
+  })
+
+  it('prefers the new name when both exist', () => {
+    write(LEGACY, { version: 1 })
+    write(NEW, { version: 1 })
+    expect(repoConfigFilename(repo)).toBe(NEW)
+  })
+})
+
+describe('loadRepoConfig', () => {
+  it('reads a legacy .harness.json', () => {
+    write(LEGACY, { version: 1, setupCommand: 'legacy-setup' })
+    expect(loadRepoConfig(repo).setupCommand).toBe('legacy-setup')
+  })
+
+  it('reads a new .ness.json', () => {
+    write(NEW, { version: 1, setupCommand: 'new-setup' })
+    expect(loadRepoConfig(repo).setupCommand).toBe('new-setup')
+  })
+
+  it('prefers .ness.json over .harness.json when both exist', () => {
+    write(LEGACY, { version: 1, setupCommand: 'legacy-setup' })
+    write(NEW, { version: 1, setupCommand: 'new-setup' })
+    expect(loadRepoConfig(repo).setupCommand).toBe('new-setup')
+  })
+})
+
+describe('saveRepoConfig', () => {
+  it('creates .ness.json for a repo with no existing config', () => {
+    saveRepoConfig(repo, { setupCommand: 'x' })
+    expect(existsSync(join(repo, NEW))).toBe(true)
+    expect(existsSync(join(repo, LEGACY))).toBe(false)
+  })
+
+  it('keeps writing .harness.json for a repo that already has one', () => {
+    write(LEGACY, { version: 1, setupCommand: 'old' })
+    invalidateRepoConfigCache()
+    saveRepoConfig(repo, { setupCommand: 'updated' })
+
+    // The committed, git-tracked file is updated in place — not renamed.
+    expect(existsSync(join(repo, NEW))).toBe(false)
+    expect(JSON.parse(readFileSync(join(repo, LEGACY), 'utf-8')).setupCommand).toBe('updated')
+  })
+
+  it('clears both filenames so a stale legacy file cannot resurrect settings', () => {
+    write(LEGACY, { version: 1, setupCommand: 'old' })
+    write(NEW, { version: 1, setupCommand: 'new' })
+    invalidateRepoConfigCache()
+
+    saveRepoConfig(repo, {})
+
+    expect(existsSync(join(repo, NEW))).toBe(false)
+    expect(existsSync(join(repo, LEGACY))).toBe(false)
+    invalidateRepoConfigCache()
+    expect(loadRepoConfig(repo)).toEqual({})
+  })
+})

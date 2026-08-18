@@ -84,17 +84,28 @@ export function effectiveHiddenRightPanels(config: RepoConfig | null | undefined
 
 export interface RepoConfigsState {
   /** Per-repo config keyed by repoRoot. Hydrated at boot from each repo's
-   * .harness.json file and updated whenever a setRepoConfig call commits. */
+   * config file and updated whenever a setRepoConfig call commits. */
   byRepo: Record<string, RepoConfig>
+  /** Which filename each repo actually uses — `.ness.json` for anything
+   * new, `.harness.json` for repos that already had one. Keyed by
+   * repoRoot; absent means the repo hasn't been seeded yet. */
+  filenameByRepo: Record<string, string>
 }
 
 export type RepoConfigsEvent =
-  | { type: 'repoConfigs/loaded'; payload: Record<string, RepoConfig> }
-  | { type: 'repoConfigs/changed'; payload: { repoRoot: string; config: RepoConfig } }
+  | {
+      type: 'repoConfigs/loaded'
+      payload: { byRepo: Record<string, RepoConfig>; filenameByRepo: Record<string, string> }
+    }
+  | {
+      type: 'repoConfigs/changed'
+      payload: { repoRoot: string; config: RepoConfig; filename: string }
+    }
   | { type: 'repoConfigs/removed'; payload: string }
 
 export const initialRepoConfigs: RepoConfigsState = {
-  byRepo: {}
+  byRepo: {},
+  filenameByRepo: {}
 }
 
 export function repoConfigsReducer(
@@ -103,17 +114,29 @@ export function repoConfigsReducer(
 ): RepoConfigsState {
   switch (event.type) {
     case 'repoConfigs/loaded':
-      return { ...state, byRepo: event.payload }
+      return {
+        ...state,
+        byRepo: event.payload.byRepo,
+        filenameByRepo: event.payload.filenameByRepo
+      }
     case 'repoConfigs/changed':
       return {
         ...state,
-        byRepo: { ...state.byRepo, [event.payload.repoRoot]: event.payload.config }
+        byRepo: { ...state.byRepo, [event.payload.repoRoot]: event.payload.config },
+        filenameByRepo: {
+          ...state.filenameByRepo,
+          [event.payload.repoRoot]: event.payload.filename
+        }
       }
     case 'repoConfigs/removed': {
-      if (!(event.payload in state.byRepo)) return state
+      if (!(event.payload in state.byRepo) && !(event.payload in state.filenameByRepo)) {
+        return state
+      }
       const { [event.payload]: _dropped, ...rest } = state.byRepo
+      const { [event.payload]: _droppedName, ...restNames } = state.filenameByRepo
       void _dropped
-      return { ...state, byRepo: rest }
+      void _droppedName
+      return { ...state, byRepo: rest, filenameByRepo: restNames }
     }
     default: {
       const _exhaustive: never = event

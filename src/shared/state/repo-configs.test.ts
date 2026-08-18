@@ -12,14 +12,19 @@ import {
 describe('repoConfigsReducer', () => {
   it('loaded replaces the whole map', () => {
     const start: RepoConfigsState = {
-      byRepo: { '/old': { setupCommand: 'old' } }
+      byRepo: { '/old': { setupCommand: 'old' } },
+      filenameByRepo: { '/old': '.harness.json' }
     }
     const next = repoConfigsReducer(start, {
       type: 'repoConfigs/loaded',
-      payload: { '/a': { setupCommand: 'a' }, '/b': {} }
+      payload: {
+        byRepo: { '/a': { setupCommand: 'a' }, '/b': {} },
+        filenameByRepo: { '/a': '.ness.json', '/b': '.harness.json' }
+      }
     })
     expect(Object.keys(next.byRepo).sort()).toEqual(['/a', '/b'])
     expect(next.byRepo['/a']).toEqual({ setupCommand: 'a' })
+    expect(next.filenameByRepo).toEqual({ '/a': '.ness.json', '/b': '.harness.json' })
   })
 
   it('changed merges a single repo without disturbing others', () => {
@@ -27,7 +32,8 @@ describe('repoConfigsReducer', () => {
       byRepo: {
         '/a': { setupCommand: 'a' },
         '/b': { mergeStrategy: 'squash' }
-      }
+      },
+      filenameByRepo: { '/a': '.harness.json', '/b': '.ness.json' }
     }
     const updated: RepoConfig = {
       setupCommand: 'a-updated',
@@ -35,25 +41,32 @@ describe('repoConfigsReducer', () => {
     }
     const next = repoConfigsReducer(start, {
       type: 'repoConfigs/changed',
-      payload: { repoRoot: '/a', config: updated }
+      payload: { repoRoot: '/a', config: updated, filename: '.harness.json' }
     })
     expect(next.byRepo['/a']).toEqual(updated)
     expect(next.byRepo['/b']).toBe(start.byRepo['/b'])
+    expect(next.filenameByRepo['/a']).toBe('.harness.json')
+    expect(next.filenameByRepo['/b']).toBe('.ness.json')
   })
 
   it('removed drops the matching entry', () => {
     const start: RepoConfigsState = {
-      byRepo: { '/a': {}, '/b': {} }
+      byRepo: { '/a': {}, '/b': {} },
+      filenameByRepo: { '/a': '.ness.json', '/b': '.harness.json' }
     }
     const next = repoConfigsReducer(start, {
       type: 'repoConfigs/removed',
       payload: '/a'
     })
     expect(Object.keys(next.byRepo)).toEqual(['/b'])
+    expect(next.filenameByRepo).toEqual({ '/b': '.harness.json' })
   })
 
   it('removed on a missing key is a no-op (returns same reference)', () => {
-    const start: RepoConfigsState = { byRepo: { '/a': {} } }
+    const start: RepoConfigsState = {
+      byRepo: { '/a': {} },
+      filenameByRepo: { '/a': '.ness.json' }
+    }
     const next = repoConfigsReducer(start, {
       type: 'repoConfigs/removed',
       payload: '/missing'
@@ -167,7 +180,7 @@ describe('repoConfigsReducer', () => {
   it('returns a new object reference on real changes', () => {
     const next = repoConfigsReducer(initialRepoConfigs, {
       type: 'repoConfigs/changed',
-      payload: { repoRoot: '/a', config: {} }
+      payload: { repoRoot: '/a', config: {}, filename: '.ness.json' }
     })
     expect(next).not.toBe(initialRepoConfigs)
   })
