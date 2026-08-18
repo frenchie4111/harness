@@ -209,10 +209,12 @@ export interface JsonClaudeChatEntry {
    *  blinking cursor at the end of the text. */
   isPartial?: boolean
   /** True for a user entry that was typed while busy=true and has
-   *  been written to stdin but not yet resolved by claude (i.e.,
-   *  no `result` boundary has fired since it was queued). The
+   *  been written to stdin but claude hasn't picked it up yet. The
    *  renderer styles these as dashed/muted "queued" bubbles with
-   *  a cancel affordance. Cleared on the next `result`. */
+   *  a cancel affordance. Cleared as soon as claude drains its
+   *  input queue into the next API request (the `system/status:
+   *  requesting` boundary), which is when the message genuinely
+   *  enters the conversation — not at the end of the whole turn. */
   isQueued?: boolean
   /** For kind === 'user'. Set when Ness injected the turn itself rather
    *  than the human typing it, so the renderer can style the bubble as an
