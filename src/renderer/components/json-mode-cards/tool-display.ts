@@ -83,7 +83,7 @@ import {
   type ToolIcon
 } from './tool-icons'
 
-const HARNESS_CONTROL_PREFIX = 'mcp__harness-control__'
+const NESS_CONTROL_PREFIX = 'mcp__ness-control__'
 const MCP_PREFIX = 'mcp__'
 
 export interface ToolDisplay {
@@ -145,7 +145,7 @@ interface McpBrand {
 const MCP_BRANDS: Record<string, McpBrand> = {
   // Ness — kept here for completeness even though it's special-cased
   // (brand gradient implies it, so the label drops the "Ness · " bit).
-  harnesscontrol: { label: 'Ness', icon: HarnessIcon },
+  nesscontrol: { label: 'Ness', icon: HarnessIcon },
 
   // Anthropic-hosted / first-party
   notion: { label: 'Notion', icon: NotionIcon },
@@ -239,8 +239,8 @@ export function parseMcpToolName(name: string | undefined): ParsedMcp | null {
   return { server: rest.slice(0, sep), tool: rest.slice(sep + 2) }
 }
 
-export function isHarnessControl(name: string | undefined): boolean {
-  return !!name && name.startsWith(HARNESS_CONTROL_PREFIX)
+export function isNessControl(name: string | undefined): boolean {
+  return !!name && name.startsWith(NESS_CONTROL_PREFIX)
 }
 
 /** Collapse the many spellings the same brand can ship under (e.g.

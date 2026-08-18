@@ -4685,7 +4685,7 @@ async function runBoot(): Promise<void> {
   // so this call resolves immediately and doesn't block boot.
   void sweepWorktreeTrashOnBoot()
 
-  // Local HTTP control server for the bundled harness-control MCP bridge.
+  // Local HTTP control server for the bundled ness-control MCP bridge.
   startControlServer({
     getRepoRoots: () => config.repoRoots,
     getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,

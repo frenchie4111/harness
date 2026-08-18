@@ -731,7 +731,7 @@ function RateLimitErrorCard({
   )
 }
 
-/** `brand` picks the gradient chrome the harness-control tool cards use.
+/** `brand` picks the gradient chrome the ness-control tool cards use.
  *  A CI failure keeps the warning tone — it's a problem report, not a
  *  Ness feature showing off. */
 function automationLabel(

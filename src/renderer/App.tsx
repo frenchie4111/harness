@@ -665,7 +665,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
   }, [])
 
   // All worktree + repo + pending-creation handlers. Also subscribes to
-  // external-create events from the harness-control MCP and routes focus
+  // external-create events from the ness-control MCP and routes focus
   // to the new path.
   const {
     handleAddRepo,

@@ -15,14 +15,14 @@ import type {
 import {
   extractArgs,
   getToolDisplay,
-  isHarnessControl,
+  isNessControl,
   prettyToolName,
   type ArgEntry
 } from './tool-display'
 import type { ToolIcon } from './tool-icons'
 import { HighlightedText, useFind } from '../JsonModeChatFind'
 
-export { extractArgs, getToolDisplay, isHarnessControl, prettyToolName }
+export { extractArgs, getToolDisplay, isNessControl, prettyToolName }
 export type { ArgEntry }
 
 export interface ToolCardProps {

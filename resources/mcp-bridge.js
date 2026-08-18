@@ -884,7 +884,7 @@ async function handle(msg) {
         result: {
           protocolVersion: '2024-11-05',
           capabilities: { tools: {} },
-          serverInfo: { name: 'harness-control', version: '1.0.0' }
+          serverInfo: { name: 'ness-control', version: '1.0.0' }
         }
       }
     }
