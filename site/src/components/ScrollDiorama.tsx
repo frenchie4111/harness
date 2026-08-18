@@ -142,14 +142,14 @@ function StackedDiorama() {
                 : sectionFourState(0.8)
         return (
           <div key={i} className="mx-auto max-w-xl px-5 py-10">
-            <div className="text-[11px] uppercase tracking-[0.2em] text-amber-400/80 font-semibold mb-3">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-brand/80 font-semibold mb-3">
               {s.eyebrow}
             </div>
             <h2 className="text-3xl font-bold tracking-tight mb-3 leading-[1.15]">{s.title}</h2>
             <p className="text-base text-ink-400 leading-relaxed mb-2">{s.body}</p>
             {s.bonus && (
               <p className="text-sm text-ink-500 leading-relaxed mb-6">
-                <span className="text-amber-400/80 font-semibold">Bonus:</span>{' '}
+                <span className="text-brand/80 font-semibold">Bonus:</span>{' '}
                 {s.bonus.replace(/^Bonus:\s*/, '')}
               </p>
             )}
@@ -185,7 +185,7 @@ function CopyStack({ activeSection }: { activeSection: SectionIndex }) {
                 zIndex: active ? 2 : 1
               }}
             >
-              <div className="text-xs uppercase tracking-[0.2em] text-amber-400/80 font-semibold mb-5">
+              <div className="text-xs uppercase tracking-[0.2em] text-brand/80 font-semibold mb-5">
                 {s.eyebrow}
               </div>
               <h2 className="text-4xl lg:text-5xl font-bold tracking-tight leading-[1.08] mb-6">
@@ -194,7 +194,7 @@ function CopyStack({ activeSection }: { activeSection: SectionIndex }) {
               <p className="text-lg text-ink-400 leading-relaxed max-w-xl">{s.body}</p>
               {s.bonus && (
                 <p className="text-sm text-ink-500 leading-relaxed max-w-xl mt-4">
-                  <span className="text-amber-400/80 font-semibold">Bonus:</span>{' '}
+                  <span className="text-brand/80 font-semibold">Bonus:</span>{' '}
                   {s.bonus.replace(/^Bonus:\s*/, '')}
                 </p>
               )}
@@ -213,7 +213,7 @@ function ProgressRail({ section }: { section: SectionIndex }) {
         <div
           key={i}
           className={`w-1.5 h-8 rounded-full transition-colors ${
-            i === section ? 'bg-amber-500' : 'bg-ink-800'
+            i === section ? 'bg-brand' : 'bg-ink-800'
           }`}
         />
       ))}

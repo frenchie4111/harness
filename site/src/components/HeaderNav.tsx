@@ -40,9 +40,9 @@ export function HeaderNav() {
     <nav className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-between gap-4 relative z-30">
       <a href="/" className="flex items-center gap-3 min-w-0 group">
         <img
-          src="/icon.png"
+          src="/mark.svg"
           alt="Ness icon"
-          className="w-9 h-9 rounded-lg flex-shrink-0 transition-transform group-hover:scale-105"
+          className="w-9 flex-shrink-0 transition-transform group-hover:scale-105"
         />
         <span className="text-xl font-bold tracking-tight">Ness</span>
       </a>

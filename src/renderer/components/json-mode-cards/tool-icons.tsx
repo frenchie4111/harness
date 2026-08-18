@@ -1,7 +1,7 @@
 // Icon components for tool cards. Built-in Claude tools (Read, Edit, …)
 // reuse lucide; MCP brand logos come from react-icons/si (the Simple
 // Icons family). The Ness mark is hand-drawn since Ness isn't in
-// Simple Icons — replicates the dot grid from resources/icon.png.
+// Simple Icons — it is the mark from resources/icon.svg.
 
 import type { ComponentType } from 'react'
 import {
@@ -189,32 +189,24 @@ export const XIcon = brand(SiX)
 export const BlueskyIcon = brand(SiBluesky, '#0285FF')
 export const CloudinaryIcon = brand(SiCloudinary, '#3448C5')
 
-// Ness mark — 3×3 dot grid, Simple-Icons-style silhouette (no
-// background rect) so it sits next to the other brand logos without
-// reading as a miniature app icon. Pre-sampled diagonal interpolation
-// of the brand-gradient stops (amber → red → purple) — five solid
-// fills mapped across the 3×3 grid. The earlier <linearGradient> +
-// url(#id) version rendered blank in packaged Electron builds because
-// Chromium resolves SVG fragment refs against the document base URI,
-// which differs between dev (http://localhost) and prod (file://) and
-// can fail silently.
-const H_AMBER = '#f59e0b'
-const H_AMBER_RED = '#f27128'
-const H_RED = '#ef4444'
-const H_RED_PURPLE = '#cb4c9e'
-const H_PURPLE = '#a855f7'
-
-export const HarnessIcon: ToolIcon = ({ className }) => (
+// Ness mark — the creature, Simple-Icons-style silhouette (no background
+// rect) so it sits next to the other brand logos without reading as a
+// miniature app icon. One flat fill, and deliberately NOT a
+// <linearGradient> + url(#id): Chromium resolves SVG fragment refs against
+// the document base URI, which differs between dev (http://localhost) and
+// prod (file://), and the gradient version of this icon rendered blank in
+// packaged builds because of it. Keep it single-fill.
+//
+// The paths are the master mark from resources/icon.svg in its own 64-unit
+// space; the transform maps that bounding box (x 7.6–56.8, y 10.4–38) onto
+// the 24-unit viewBox the rest of this file uses.
+export const NessIcon: ToolIcon = ({ className }) => (
   <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-    <circle cx="5" cy="5" r="2.3" fill={H_AMBER} />
-    <circle cx="12" cy="5" r="2.3" fill={H_AMBER_RED} />
-    <circle cx="19" cy="5" r="2.3" fill={H_RED} />
-    <circle cx="5" cy="12" r="2.3" fill={H_AMBER_RED} />
-    <circle cx="12" cy="12" r="2.3" fill={H_RED} />
-    <circle cx="19" cy="12" r="2.3" fill={H_RED_PURPLE} />
-    <circle cx="5" cy="19" r="2.3" fill={H_RED} />
-    <circle cx="12" cy="19" r="2.3" fill={H_RED_PURPLE} />
-    <circle cx="19" cy="19" r="2.3" fill={H_PURPLE} />
+    <g transform="translate(12,12) scale(0.42) translate(-32.2,-24.2)" fill="#4ade80">
+      <path d="M7.6 38C8.1 33.4 10.6 30.6 14.4 30.8C18.1 31 20.6 33.8 21.6 38Z" />
+      <path d="M19.4 38C20.4 32.4 23.3 28.2 27.8 27.9C32.6 27.6 36 31.4 37.4 38Z" />
+      <path d="M39.4 38C38.9 30.2 39 22.4 41 17.8C43.1 13 47.7 10.4 51.6 11.6C55 12.7 56.8 15.4 56.5 17.9C56.2 20.2 53.5 21.2 50.3 20.9C48 20.7 47 22.2 47.3 25.2C47.7 29.6 48.5 33.7 49.4 38Z" />
+    </g>
   </svg>
 )
 

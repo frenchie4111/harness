@@ -34,7 +34,16 @@
   --color-warning: #fbbf24;
   --color-danger: #ef4444;
   --color-info: #60a5fa;
-  --color-accent: #c084fc;
+  --color-accent: #4ade80;
+
+  /* Brand ramp. --color-brand-mid is deliberately the same value as
+   * --color-success: the mark and a passing PR are the same green by
+   * decision, not by accident. Don't "fix" the duplication by aliasing one
+   * to the other — they're separate meanings that happen to agree today,
+   * and a theme is free to move one without the other. */
+  --color-brand: #4ade80;
+  --color-brand-mid: #22c55e;
+  --color-brand-deep: #16a34a;
 }
 
 /* --- Syntax tokens ---
@@ -541,13 +550,10 @@ mark.find-hit-current {
   to { transform: rotate(360deg); }
 }
 
-/* Branded gradient text — matches the marketing site (amber → red → purple) */
+/* Branded text — matches the marketing site. Flat brand green now; the class
+   name is kept because it has ~22 callsites across app and site. */
 .gradient-text {
-  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  color: transparent;
+  color: var(--color-brand);
 }
 
 /* Settings search: brief highlight applied to the scroll target after a
@@ -557,8 +563,8 @@ mark.find-hit-current {
   border-radius: 6px;
 }
 @keyframes harness-settings-flash {
-  0%   { box-shadow: 0 0 0 4px var(--color-accent, #f59e0b); background-color: color-mix(in srgb, var(--color-accent, #f59e0b) 25%, transparent); }
-  100% { box-shadow: 0 0 0 0  var(--color-accent, #f59e0b); background-color: transparent; }
+  0%   { box-shadow: 0 0 0 4px var(--color-accent, #4ade80); background-color: color-mix(in srgb, var(--color-accent, #4ade80) 25%, transparent); }
+  100% { box-shadow: 0 0 0 0  var(--color-accent, #4ade80); background-color: transparent; }
 }
 
 /* All buttons and clickable elements get pointer cursor */
@@ -581,33 +587,32 @@ button, [role="button"], a[href], [onclick] {
   padding-left: 0;
 }
 
-/* Brand accents — mirrors harness.mikelyons.org hero styling */
+/* Brand accents — mirrors the marketing site hero styling */
 .brand-grid-bg {
   background-image:
-    radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.09), transparent 55%),
-    radial-gradient(circle at 0% 100%, rgba(168, 85, 247, 0.08), transparent 50%),
-    radial-gradient(circle at 100% 100%, rgba(239, 68, 68, 0.05), transparent 50%);
+    radial-gradient(circle at 50% 0%, rgba(74, 222, 128, 0.10), transparent 55%),
+    radial-gradient(circle at 0% 100%, rgba(34, 197, 94, 0.08), transparent 50%),
+    radial-gradient(circle at 100% 100%, rgba(22, 163, 74, 0.06), transparent 50%);
 }
 .brand-gradient-text {
-  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
+  color: var(--color-brand);
 }
 .brand-gradient-bg {
-  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%);
+  background: var(--color-brand);
 }
-.brand-glow-amber {
-  box-shadow: 0 0 60px rgba(245, 158, 11, 0.15);
+.brand-glow {
+  box-shadow: 0 0 60px rgba(74, 222, 128, 0.15);
 }
 
+/* The two flow effects are the one place a gradient survives: they animate
+   background-position, so they structurally need more than one stop. Tonal
+   green rather than the old amber → red → purple sweep. */
 @keyframes brand-gradient-flow {
   0%   { background-position: 0% 50%; }
   100% { background-position: 200% 50%; }
 }
 .group:hover .brand-gradient-flow-text-hover {
-  background: linear-gradient(90deg, #f59e0b 0%, #ef4444 25%, #a855f7 50%, #ef4444 75%, #f59e0b 100%);
+  background: linear-gradient(90deg, #22c55e 0%, #4ade80 25%, #86efac 50%, #4ade80 75%, #22c55e 100%);
   background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -616,7 +621,7 @@ button, [role="button"], a[href], [onclick] {
   animation: brand-gradient-flow 2.4s linear infinite;
 }
 .brand-gradient-flow-bar {
-  background: linear-gradient(90deg, #f59e0b 0%, #ef4444 25%, #a855f7 50%, #ef4444 75%, #f59e0b 100%);
+  background: linear-gradient(90deg, #22c55e 0%, #4ade80 25%, #86efac 50%, #4ade80 75%, #22c55e 100%);
   background-size: 200% 100%;
   animation: brand-gradient-flow 2.4s linear infinite;
 }
@@ -634,8 +639,8 @@ button, [role="button"], a[href], [onclick] {
   to   { transform: rotate(360deg); }
 }
 @keyframes claude-loader-pulse {
-  0%, 100% { transform: scale(0.88); opacity: 0.85; filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.35)); }
-  50%      { transform: scale(1.08); opacity: 1;    filter: drop-shadow(0 0 18px rgba(239, 68, 68, 0.55)); }
+  0%, 100% { transform: scale(0.88); opacity: 0.85; filter: drop-shadow(0 0 6px rgba(74, 222, 128, 0.35)); }
+  50%      { transform: scale(1.08); opacity: 1;    filter: drop-shadow(0 0 18px rgba(34, 197, 94, 0.55)); }
 }
 @keyframes claude-loader-halo {
   0%, 100% { opacity: 0.15; transform: scale(0.9); }
@@ -655,7 +660,7 @@ button, [role="button"], a[href], [onclick] {
   position: absolute;
   inset: 4px;
   border-radius: 9999px;
-  background: radial-gradient(circle, rgba(245, 158, 11, 0.55) 0%, rgba(239, 68, 68, 0.35) 45%, transparent 70%);
+  background: radial-gradient(circle, rgba(74, 222, 128, 0.55) 0%, rgba(34, 197, 94, 0.35) 45%, transparent 70%);
   animation: claude-loader-halo 2.4s ease-in-out infinite;
 }
 .claude-loader-rotator {

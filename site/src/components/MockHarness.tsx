@@ -141,23 +141,13 @@ function MockSidebar({ state }: { state: MockHarnessState }) {
     <motion.div
       animate={{
         boxShadow: sidebarGlow
-          ? 'inset 0 0 0 1px rgba(245, 158, 11, 0.55), inset 0 0 48px rgba(245, 158, 11, 0.10)'
-          : 'inset 0 0 0 0px rgba(245, 158, 11, 0)'
+          ? 'inset 0 0 0 1px rgba(74, 222, 128, 0.55), inset 0 0 48px rgba(74, 222, 128, 0.10)'
+          : 'inset 0 0 0 0px rgba(74, 222, 128, 0)'
       }}
       transition={{ type: 'spring', stiffness: 200, damping: 30 }}
       className="shrink-0 bg-panel flex flex-col h-full relative"
       style={{ width: 240 }}
     >
-      <svg width="0" height="0" className="absolute" aria-hidden="true">
-        <defs>
-          <linearGradient id="harness-add-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#f59e0b" />
-            <stop offset="50%" stopColor="#ef4444" />
-            <stop offset="100%" stopColor="#a855f7" />
-          </linearGradient>
-        </defs>
-      </svg>
-
       <div className="h-10 relative shrink-0">
         <span className="gradient-text text-xs font-semibold absolute left-20 top-[11px]">
           Ness
@@ -283,8 +273,8 @@ function NewWorktreeRow({ highlighted }: { highlighted: boolean }) {
     <motion.div
       animate={{
         boxShadow: highlighted
-          ? '0 0 24px rgba(168, 85, 247, 0.30)'
-          : '0 0 0px rgba(168, 85, 247, 0)'
+          ? '0 0 24px rgba(74, 222, 128, 0.30)'
+          : '0 0 0px rgba(74, 222, 128, 0)'
       }}
       transition={{ type: 'spring', stiffness: 220, damping: 24 }}
       className={`group relative w-full flex items-center gap-2 px-3 py-2 mt-1 text-dim hover:bg-panel-raised overflow-hidden cursor-pointer transition-colors ${
@@ -299,7 +289,7 @@ function NewWorktreeRow({ highlighted }: { highlighted: boolean }) {
       <Plus
         size={13}
         className="shrink-0 transition-colors"
-        style={highlighted ? { stroke: 'url(#harness-add-gradient)' } : undefined}
+        style={highlighted ? { stroke: 'var(--color-brand)' } : undefined}
       />
       <span className="text-sm font-medium brand-gradient-flow-text-hover">Add worktree</span>
       <span className="ml-auto text-[10px] font-mono text-faint border border-border-strong rounded px-1 py-[1px]">
@@ -318,7 +308,7 @@ function MockWorktreeTab({
   isActive: boolean
   highlighted: boolean
 }) {
-  const glowColor = worktree.status === 'needs-approval' ? '239, 68, 68' : '245, 158, 11'
+  const glowColor = worktree.status === 'needs-approval' ? '239, 68, 68' : '74, 222, 128'
   return (
     <motion.div
       animate={{
@@ -364,8 +354,8 @@ function MockTerminalPanel({ state }: { state: MockHarnessState }) {
       <motion.div
         animate={{
           boxShadow: terminalGlow
-            ? 'inset 0 0 0 1px rgba(245, 158, 11, 0.4)'
-            : 'inset 0 0 0 0px rgba(245, 158, 11, 0)'
+            ? 'inset 0 0 0 1px rgba(74, 222, 128, 0.4)'
+            : 'inset 0 0 0 0px rgba(74, 222, 128, 0)'
         }}
         transition={{ type: 'spring', stiffness: 200, damping: 30 }}
         className="flex-1 min-w-0 flex flex-col bg-app relative"
@@ -409,8 +399,8 @@ function MockTerminalPanel({ state }: { state: MockHarnessState }) {
           <motion.button
             animate={{
               boxShadow: rightColumnGlow
-                ? '0 0 0 2px rgba(245, 158, 11, 0.6), 0 0 18px rgba(245, 158, 11, 0.35)'
-                : '0 0 0 0px rgba(245, 158, 11, 0)',
+                ? '0 0 0 2px rgba(74, 222, 128, 0.6), 0 0 18px rgba(74, 222, 128, 0.35)'
+                : '0 0 0 0px rgba(74, 222, 128, 0)',
               scale: rightColumnGlow ? 1.08 : 1
             }}
             transition={{ type: 'spring', stiffness: 220, damping: 22 }}
@@ -466,7 +456,7 @@ function ClaudeTUI({ active }: { active: MockWorktree }) {
       <div className="flex gap-3 shrink-0">
         <pre
           className="leading-[1.1] text-[11px] m-0"
-          style={{ color: '#f59e0b' }}
+          style={{ color: 'var(--color-brand)' }}
         >
 {` ▐▛███▜▌
 ▝▜█████▛▘
@@ -786,7 +776,7 @@ function MockNewWorktreeScreen() {
             <img
               src="/icon.png"
               alt="Ness"
-              className="w-14 h-14 mx-auto rounded-2xl mb-3 brand-glow-amber"
+              className="w-14 h-14 mx-auto rounded-2xl mb-3 brand-glow"
             />
             <h1 className="text-3xl font-extrabold tracking-tight mb-1">
               New <span className="brand-gradient-text">worktree</span>

@@ -41,7 +41,7 @@ import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
 import { JsonClaudeQuestionCard } from './JsonClaudeQuestionCard'
 import { Tooltip } from './Tooltip'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
-import { HarnessIcon } from './json-mode-cards/tool-icons'
+import { NessIcon } from './json-mode-cards/tool-icons'
 import { ToolGroup } from './json-mode-cards/ToolGroup'
 import { TaskCard } from './json-mode-cards/TaskCard'
 import { buildChildrenMap, isSubAgentToolName } from './json-mode-cards/grouping'
@@ -772,7 +772,7 @@ function AutomatedTurnCard({
   onCancelQueued: () => void
 }): JSX.Element {
   const { label, note, brand } = automationLabel(source, from)
-  const Icon = brand ? HarnessIcon : Bot
+  const Icon = brand ? NessIcon : Bot
   return (
     <div className="flex justify-end">
       <div

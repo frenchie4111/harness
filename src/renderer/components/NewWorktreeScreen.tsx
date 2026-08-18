@@ -487,7 +487,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
             <img
               src={iconUrl}
               alt="Ness"
-              className="w-20 h-20 mx-auto rounded-3xl mb-5 brand-glow-amber"
+              className="w-20 h-20 mx-auto rounded-3xl mb-5 brand-glow"
             />
             <h1 className="text-3xl font-extrabold tracking-tight mb-2">
               New <span className="brand-gradient-text">worktree</span>

@@ -1,0 +1,14 @@
+<!--
+  Ness mark, no container. Same three paths as resources/icon.svg but without
+  the black rounded square, for use directly on the site's dark background —
+  a boxed icon inside a page that is already dark reads as a sticker.
+
+  viewBox is the mark's own bounding box (x 7.6-56.8, y 10.4-38) with a little
+  air, so the art fills the element it is sized into instead of floating in the
+  dead space a 0 0 64 64 viewBox would leave above and below it.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="5.6 8.4 53.2 31.6" fill="#4ade80">
+  <path d="M7.6 38C8.1 33.4 10.6 30.6 14.4 30.8C18.1 31 20.6 33.8 21.6 38Z"/>
+  <path d="M19.4 38C20.4 32.4 23.3 28.2 27.8 27.9C32.6 27.6 36 31.4 37.4 38Z"/>
+  <path d="M39.4 38C38.9 30.2 39 22.4 41 17.8C43.1 13 47.7 10.4 51.6 11.6C55 12.7 56.8 15.4 56.5 17.9C56.2 20.2 53.5 21.2 50.3 20.9C48 20.7 47 22.2 47.3 25.2C47.7 29.6 48.5 33.7 49.4 38Z"/>
+</svg>

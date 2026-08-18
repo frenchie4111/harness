@@ -3,18 +3,16 @@ import React from 'react'
 export function Hero() {
   return (
     <section className="max-w-6xl mx-auto px-6 pt-12 pb-20 text-center">
-      <img
-        src="/icon.png"
-        alt="Ness"
-        className="w-28 h-28 mx-auto rounded-3xl mb-8 glow-amber"
-      />
+      {/* The bare mark, not the boxed app icon — the page is already dark, so
+          a black rounded square around it just reads as a sticker. */}
+      <img src="/mark.svg" alt="Ness" className="w-40 mx-auto mb-8" />
       <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6">
         Run a team
         <br />
         <span className="gradient-text">of agents.</span>
       </h1>
       <p className="text-lg md:text-xl text-ink-400 max-w-2xl mx-auto mb-3">
-        Run ten Claudes<sup className="text-amber-400/80">*</sup> at once without losing your mind.
+        Run ten Claudes<sup className="text-brand/80">*</sup> at once without losing your mind.
         Ship more, faster, with every session at your fingertips.
       </p>
       <p className="text-xs text-ink-500 mb-10">*or Codexes, if you prefer</p>
@@ -111,7 +109,7 @@ export function Hero() {
       <div className="mt-8 flex justify-center">
         <a
           href="https://github.com/frenchie4111/harness/stargazers"
-          className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold text-amber-200 border border-amber-400/40 bg-amber-400/10 hover:bg-amber-400/20 hover:border-amber-400/60 hover:text-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 transition-colors"
+          className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold text-green-200 border border-brand/40 bg-brand/10 hover:bg-brand/20 hover:border-brand/60 hover:text-green-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 transition-colors"
         >
           <StarIcon />
           Please star us on GitHub
