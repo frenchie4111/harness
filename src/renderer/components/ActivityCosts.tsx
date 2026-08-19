@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { NessMark } from './NessMark'
 import { Loader2, ChevronDown, ChevronRight, ChevronUp, Sparkles } from 'lucide-react'
 import type { ClaudeAuthInfo, SessionCostSummary, SubscriptionTier } from '../types'
 import {
@@ -9,7 +10,6 @@ import {
 } from '../../shared/state/costs'
 import { useWorktrees, useAliasForPath } from '../store'
 import { useBackend } from '../backend'
-import iconUrl from '../../../resources/icon.png'
 
 type Range = '24h' | '7d' | '30d' | 'all'
 
@@ -229,11 +229,7 @@ export function ActivityCosts(): JSX.Element {
   return (
     <div className="max-w-5xl mx-auto px-8 py-8">
       <div className="flex items-center gap-3 mb-6">
-        <img
-          src={iconUrl}
-          alt="Ness"
-          className="w-9 h-9 rounded-xl brand-glow shrink-0"
-        />
+        <NessMark className="h-7 w-auto shrink-0 text-brand" />
         <div className="flex-1 min-w-0">
           <div className="text-xs sm:text-xs font-semibold uppercase tracking-[0.18em] text-dim">
             Costs

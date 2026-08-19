@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { NessMark } from './components/NessMark'
 import { useAppState, useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useAnnouncements, useAssignedPRs, useConfigLoadError, useAliasForPath } from './store'
 import { useBackend } from './backend'
 import { useTailLineBuffer } from './hooks/useTailLineBuffer'
@@ -48,7 +49,6 @@ import { ReportIssueScreen, onOpenReportIssue, type OpenReportIssueDetail } from
 import { AddBackendModal } from './components/AddBackendModal'
 import { InvalidConfigModal } from './components/InvalidConfigModal'
 import { MonacoWorkerFailedBanner } from './components/MonacoWorkerFailedBanner'
-import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
 import { GitHubApiLogPanel } from './components/GitHubApiLogPanel'
 import { HoldToQuitOverlay } from './components/HoldToQuitOverlay'
@@ -1002,11 +1002,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-xl w-full px-6 py-6">
             <div className="text-center mb-6">
-              <img
-                src={iconUrl}
-                alt="Ness"
-                className="w-16 h-16 mx-auto rounded-2xl mb-4 brand-glow"
-              />
+              <NessMark className="h-14 w-auto mx-auto mb-4 text-brand" />
               <h1 className="gradient-text text-3xl font-extrabold tracking-tight mb-2">Ness</h1>
               <p className="text-fg text-sm leading-relaxed max-w-md mx-auto">
                 Run many coding agents in parallel — one window, isolated git worktrees,
