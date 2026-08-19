@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useAnnouncements, useAssignedPRs, useConfigLoadError, useAliasForPath } from './store'
+import { useAppState, useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useAnnouncements, useAssignedPRs, useConfigLoadError, useAliasForPath } from './store'
 import { useBackend } from './backend'
 import { useTailLineBuffer } from './hooks/useTailLineBuffer'
 import { useTabHandlers } from './hooks/useTabHandlers'
@@ -83,10 +83,13 @@ const SIDEBAR_MAX_PX = 400
 export default function App(): JSX.Element {
   const { isMobile } = useViewport()
   const active = useActiveTheme()
+  // Narrow selector, not useSettings() — App re-rendering re-renders the whole
+  // tree beneath it, so it must not subscribe to the entire settings slice.
+  const nessieColor = useAppState((s) => s.settings.nessieColor)
   useEffect(() => {
-    applyTheme(active)
+    applyTheme(active, nessieColor)
     getBackend().setLastEffectiveAppBg(effectiveAppBg(active))
-  }, [active])
+  }, [active, nessieColor])
   if (isMobile) return <MobileApp />
   return <DesktopApp />
 }

@@ -287,6 +287,8 @@ export interface Config {
   // root font-size). 'x-small' = 14px, 'medium' = 18px, 'large' = 20px,
   // 'x-large' = 22px.
   uiScale?: 'x-small' | 'small' | 'medium' | 'large' | 'x-large'
+  /** Id of the active Nessie colour preset. Absent = the default. */
+  nessieColor?: string
   // When true, plain Enter sends a message in the JSON-mode chat
   // composer (Shift+Enter inserts a newline). Default off — preserves
   // the historical Cmd/Ctrl+Enter-to-send behavior.

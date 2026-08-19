@@ -1,0 +1,86 @@
+import { describe, it, expect, beforeEach } from 'vitest'
+import { applyTheme, SEMANTIC_KEYS } from './theme-apply'
+import type { ResolvedTheme } from './hooks/useActiveTheme'
+
+const builtIn = (id = 'dark'): ResolvedTheme =>
+  ({ kind: 'built-in', id, swatches: ['#0a0a0a'] }) as unknown as ResolvedTheme
+
+const custom = (colors: Record<string, string>): ResolvedTheme =>
+  ({ kind: 'custom', id: 'c', name: 'C', mode: 'dark', colors }) as unknown as ResolvedTheme
+
+// This repo's vitest runs in the node environment and jsdom isn't a
+// dependency, so stub the only two DOM surfaces applyTheme touches rather
+// than pull one in for a handful of assertions.
+const props = new Map<string, string>()
+const dataset: Record<string, string | undefined> = {}
+
+const read = (prop: string): string => props.get(prop) ?? ''
+
+beforeEach(() => {
+  props.clear()
+  delete dataset.theme
+  ;(globalThis as unknown as { document: unknown }).document = {
+    documentElement: {
+      dataset,
+      style: {
+        setProperty: (k: string, v: string) => props.set(k, v),
+        removeProperty: (k: string) => props.delete(k)
+      }
+    }
+  }
+})
+
+describe('applyTheme', () => {
+
+  it('lays the Nessie preset down for a built-in theme', () => {
+    applyTheme(builtIn(), 'loch')
+    expect(read('--color-brand')).toBe('#4ade80')
+    expect(read('--color-accent')).toBe('#4ade80')
+    expect(read('--brand-gradient')).toContain('gradient(')
+    expect(dataset.theme).toBe('dark')
+  })
+
+  it('gives legacy the accent Harness shipped, not its first gradient stop', () => {
+    applyTheme(builtIn(), 'legacy')
+    expect(read('--color-brand')).toBe('#f59e0b')
+    expect(read('--color-accent')).toBe('#c084fc')
+    expect(read('--brand-gradient')).toContain('#ef4444')
+  })
+
+  it('lets a custom theme override the brand ramp and accent', () => {
+    // The question this answers: yes, these are reachable from theme JSON.
+    applyTheme(custom({ brand: '#ff00ff', 'brand-mid': '#cc00cc', accent: '#00ffff' }), 'loch')
+    expect(read('--color-brand')).toBe('#ff00ff')
+    expect(read('--color-brand-mid')).toBe('#cc00cc')
+    expect(read('--color-accent')).toBe('#00ffff')
+  })
+
+  it('repaints the gradient forms when a custom theme sets brand', () => {
+    // Regression: --brand-gradient is what the gradient classes read, so a
+    // theme setting only --color-brand left flat and gradient surfaces
+    // disagreeing with each other.
+    applyTheme(custom({ brand: '#ff00ff' }), 'loch')
+    expect(read('--brand-gradient')).toContain('#ff00ff')
+    expect(read('--brand-flow')).toContain('#ff00ff')
+  })
+
+  it('keeps the Nessie colour for brand keys the custom theme does not set', () => {
+    applyTheme(custom({ app: '#111111' }), 'legacy')
+    expect(read('--color-brand')).toBe('#f59e0b')
+    expect(read('--color-accent')).toBe('#c084fc')
+  })
+
+  it('clears a previous custom theme when switching back to a built-in', () => {
+    applyTheme(custom({ app: '#111111', brand: '#ff00ff' }), 'loch')
+    expect(read('--color-app')).toBe('#111111')
+    applyTheme(builtIn(), 'loch')
+    expect(read('--color-app')).toBe('')
+    expect(read('--color-brand')).toBe('#4ade80')
+  })
+
+  it('exposes the brand ramp as settable semantic keys', () => {
+    for (const k of ['brand', 'brand-mid', 'brand-deep', 'accent']) {
+      expect(SEMANTIC_KEYS.has(k)).toBe(true)
+    }
+  })
+})

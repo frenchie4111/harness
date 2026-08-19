@@ -13,6 +13,19 @@ export const NESS_MARK_PATHS = [
   'M39.4 38C38.9 30.2 39 22.4 41 17.8C43.1 13 47.7 10.4 51.6 11.6C55 12.7 56.8 15.4 56.5 17.9C56.2 20.2 53.5 21.2 50.3 20.9C48 20.7 47 22.2 47.3 25.2C47.7 29.6 48.5 33.7 49.4 38Z'
 ]
 
+/** The mark as a CSS mask data-URI.
+ *
+ *  Lets a swatch paint an arbitrary background *through* the creature's
+ *  silhouette — which is the only way the `legacy` preset can preview as its
+ *  real three-stop gradient, since an SVG `fill` can't take a CSS gradient.
+ *  Flat presets go through the identical path, so there's no branch. */
+const MASK_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="5.6 8.4 53.2 31.6">' +
+  NESS_MARK_PATHS.map((d) => `<path d="${d}"/>`).join('') +
+  '</svg>'
+
+export const NESS_MARK_MASK = `url("data:image/svg+xml,${encodeURIComponent(MASK_SVG)}")`
+
 // viewBox is the mark's own bounding box (x 7.6–56.8, y 10.4–38) plus a little
 // air, not the 0 0 64 64 the paths were authored in — otherwise the art floats
 // in the dead space above and below the creature and sizing it by height gets
