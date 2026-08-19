@@ -347,7 +347,7 @@ export function ActivityCosts(): JSX.Element {
           <Sparkles className="icon-xs text-amber-400/70" />
           <span>
             Tracked locally by Ness{' '}
-            <span className="text-faint">– https://harness.mikelyons.org/</span>
+            <span className="text-faint">– https://getness.dev/</span>
           </span>
         </div>
       </div>

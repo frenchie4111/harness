@@ -1398,7 +1398,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         )}
 
       {/* Remote announcements banner — fetched in main from
-          harness.mikelyons.org/announcements.json, filtered down to the
+          getness.dev/announcements.json, filtered down to the
           single newest entry the user hasn't dismissed and that hasn't
           expired. Muted globally via the kebab menu. */}
       {activeAnnouncement && (

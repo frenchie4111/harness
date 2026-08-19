@@ -1,8 +1,9 @@
 import { log, formatErr } from './debug'
 import type { Store } from './store'
 import type { Announcement } from '../shared/state/announcements'
+import { HARNESS_SITE_URL } from '../shared/constants'
 
-const FEED_URL = 'https://harness.mikelyons.org/announcements.json'
+const FEED_URL = `${HARNESS_SITE_URL}/announcements.json`
 const POLL_INTERVAL_MS = 6 * 60 * 60 * 1000
 const FETCH_TIMEOUT_MS = 10_000
 const MAX_SUMMARY_LEN = 240
