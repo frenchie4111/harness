@@ -172,6 +172,24 @@ if [[ -n "${VERCEL_PROJECT_ID:-}" && "$VERCEL_PROJECT_ID" != "$EXPECTED_PROJECT_
   die "VERCEL_PROJECT_ID is '$VERCEL_PROJECT_ID' but this script only deploys to project '$VERCEL_PROJECT_NAME' ($EXPECTED_PROJECT_ID). Refusing to continue."
 fi
 
+# Prove the credentials work before building. Without this the first
+# real API call is `vercel deploy`, so a bad VERCEL_TOKEN surfaces two
+# minutes into the job as "Not able to load user because of unexpected
+# error: User not found. (404)" — which reads like a Vercel outage
+# rather than a bad secret. Failing here instead costs one API call and
+# names the actual cause.
+step "Checking credentials"
+
+if ! WHOAMI=$(vercel_cli whoami 2>&1); then
+  printf '%s\n' "$WHOAMI" >&2
+  if [[ -n "${VERCEL_TOKEN:-}" ]]; then
+    die "the vercel CLI rejected VERCEL_TOKEN (see above). Check the token at https://vercel.com/account/tokens — it must be valid, unexpired, and scoped to the '$VERCEL_SCOPE' team. Verify it locally with: vercel whoami --scope $VERCEL_SCOPE --token <token>"
+  fi
+  die "not authenticated to Vercel (see above). Run 'vercel login', or set VERCEL_TOKEN."
+fi
+
+echo "Authenticated as ${WHOAMI##*$'\n'}"
+
 assert_linked_project() {
   local file="$REPO_ROOT/.vercel/project.json"
   [[ -f "$file" ]] || die "expected $file to exist after linking, but it does not."
