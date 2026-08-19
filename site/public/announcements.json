@@ -6,7 +6,7 @@
       "href": "https://harness.mikelyons.org/announcements/ness-rename.html",
       "publishedAt": "2026-08-19",
       "expiresAt": "2026-11-19",
-      "summary": "Same app, same data, new name and a new green mark. Auto-update carries you over — your settings, token, worktrees and pane layout all come with you."
+      "summary": "We've decided to rename harness to ness. In theory you shouldn't have to do anything — the rename is backwards compatible."
     },
     {
       "id": "remote-backends-2026-07",
