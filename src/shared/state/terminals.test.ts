@@ -11,9 +11,11 @@ import {
   findLeafByTabId,
   findTabById,
   hasAnyTabs,
+  isClaudeBackedTab,
   mapLeaves,
   replaceNode,
-  removeLeaf
+  removeLeaf,
+  type TerminalTab
 } from './terminals'
 
 function apply(state: TerminalsState, event: TerminalsEvent): TerminalsState {
@@ -1068,5 +1070,41 @@ describe('terminalsReducer', () => {
         payload: { terminalId: 'agent-1', sessionId: 'sess-abc' }
       })
     ).toBe(start)
+  })
+})
+
+describe('isClaudeBackedTab', () => {
+  const tab = (over: Partial<TerminalTab>): TerminalTab =>
+    ({ id: 't', type: 'agent', label: 'Agent', ...over }) as TerminalTab
+
+  it('accepts a json-claude chat tab', () => {
+    expect(isClaudeBackedTab(tab({ type: 'json-claude' }))).toBe(true)
+  })
+
+  it('accepts a claude agent tab', () => {
+    expect(isClaudeBackedTab(tab({ type: 'agent', agentKind: 'claude' }))).toBe(true)
+  })
+
+  it('treats a missing agentKind as claude', () => {
+    // Tabs created before agentKind existed, plus PanesFSM's default.
+    expect(isClaudeBackedTab(tab({ type: 'agent', agentKind: undefined }))).toBe(true)
+  })
+
+  it('rejects codex and cursor agent tabs', () => {
+    // They write their own transcript formats; reading those as Claude
+    // jsonl would produce confident nonsense.
+    expect(isClaudeBackedTab(tab({ type: 'agent', agentKind: 'codex' }))).toBe(false)
+    expect(isClaudeBackedTab(tab({ type: 'agent', agentKind: 'cursor' }))).toBe(false)
+  })
+
+  it('rejects non-agent tab types', () => {
+    for (const type of ['shell', 'diff', 'file', 'browser', 'review'] as const) {
+      expect(isClaudeBackedTab(tab({ type }))).toBe(false)
+    }
+  })
+
+  it('rejects null and undefined', () => {
+    expect(isClaudeBackedTab(null)).toBe(false)
+    expect(isClaudeBackedTab(undefined)).toBe(false)
   })
 })

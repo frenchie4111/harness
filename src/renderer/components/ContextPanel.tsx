@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { RightPanel } from './RightPanel'
-import { useContextWindow } from '../store'
+import { useContextWindow, usePanes } from '../store'
 import { useBackend } from '../backend'
+import { findTabById, isClaudeBackedTab } from '../../shared/state/terminals'
 import type { ContextSnapshot } from '../../shared/state/context-window'
 
 interface ContextPanelProps {
@@ -117,10 +118,23 @@ function buildRows(snapshot: ContextSnapshot): Row[] {
 
 export function ContextPanel({ focusedTabId }: ContextPanelProps): JSX.Element | null {
   const backend = useBackend()
+  const panes = usePanes()
   const snapshot = useContextWindow(focusedTabId)
   const [showDiscoverable, setShowDiscoverable] = useState(false)
 
+  // Codex and Cursor never produce a snapshot, so a "no data yet"
+  // message would promise something that is never coming.
+  const supported = useMemo(
+    () => isClaudeBackedTab(focusedTabId ? findTabById(panes, focusedTabId) : null),
+    [panes, focusedTabId]
+  )
+
   const rows = useMemo(() => (snapshot ? buildRows(snapshot) : []), [snapshot])
+
+  // Hide the panel outright rather than render an empty shell — same
+  // pattern as JsonClaudeTodosPanel. Shell / diff / browser tabs take
+  // this path too.
+  if (!supported) return null
 
   const body = (): JSX.Element => {
     if (!snapshot) {

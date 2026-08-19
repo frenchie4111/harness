@@ -26,7 +26,12 @@ import { join } from 'path'
 import type { Store } from './store'
 import type { StateEvent } from '../shared/state'
 import { onStopEvent, type StopEvent } from './hooks'
-import { findLeafByTabId, getLeaves } from '../shared/state/terminals'
+import {
+  findLeafByTabId,
+  findTabById,
+  getLeaves,
+  isClaudeBackedTab
+} from '../shared/state/terminals'
 import type { ContextSnapshot } from '../shared/state/context-window'
 import { analyzeContext } from './context-window'
 import { latestSessionId } from './agents/claude'
@@ -95,9 +100,25 @@ export class ContextTracker {
   }
 
   private handleStop(ev: StopEvent): void {
+    // Codex and Cursor fire Stop hooks too, but `transcript_path` then
+    // points at their own format — analyzeContext would read it as Claude
+    // jsonl and produce confident nonsense. Drop it before it's recorded,
+    // so backfillAll can't resurrect it later either.
+    if (!this.isClaudeBacked(ev.terminalId)) return
     this.lastStops.set(ev.terminalId, ev)
     if (this.interestedClients.size === 0) return
-    this.analyzeAndDispatch(ev.terminalId, ev.sessionId, ev.transcriptPath, this.worktreeForTerminal(ev.terminalId))
+    this.analyzeAndDispatch(
+      ev.terminalId,
+      ev.sessionId,
+      ev.transcriptPath,
+      this.worktreeForTerminal(ev.terminalId)
+    )
+  }
+
+  private isClaudeBacked(terminalId: string): boolean {
+    return isClaudeBackedTab(
+      findTabById(this.store.getSnapshot().state.terminals.panes, terminalId)
+    )
   }
 
   private handleStoreEvent(event: StateEvent): void {
@@ -213,6 +234,11 @@ export class ContextTracker {
       for (const leaf of getLeaves(tree)) {
         for (const tab of leaf.tabs) {
           if (tab.type !== 'agent') continue
+          // Without this, a Codex or Cursor tab in a worktree that also
+          // has Claude history would adopt Claude's transcript via the
+          // latestSessionId fallback below and show another agent's
+          // numbers as its own.
+          if (!isClaudeBackedTab(tab)) continue
           if (this.lastStops.has(tab.id)) continue
           const cwd = tab.cwd || worktreePath
           // Prefer the tab's own session id, but fall back to the most
