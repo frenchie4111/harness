@@ -131,6 +131,19 @@ export function findTabById(
   return null
 }
 
+/** Whether a tab talks to Claude, and so writes a session jsonl under
+ *  ~/.claude/projects. Codex and Cursor agent tabs write their own
+ *  formats, so anything reading Claude transcripts must exclude them
+ *  rather than assume every agent tab is Claude.
+ *
+ *  A missing `agentKind` means Claude — tabs created before the field
+ *  existed, and the default in PanesFSM.addTab. */
+export function isClaudeBackedTab(tab: TerminalTab | null | undefined): boolean {
+  if (!tab) return false
+  if (tab.type === 'json-claude') return true
+  return tab.type === 'agent' && (tab.agentKind ?? 'claude') === 'claude'
+}
+
 export function hasAnyTabs(node: PaneNode): boolean {
   if (node.type === 'leaf') return node.tabs.length > 0
   return hasAnyTabs(node.children[0]) || hasAnyTabs(node.children[1])

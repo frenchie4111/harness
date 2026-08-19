@@ -744,6 +744,13 @@ export function useCosts() {
   return useAppState((s) => s.costs)
 }
 
+/** Context-window occupancy for one tab. Per-id rather than whole-slice
+ *  so a snapshot landing for one agent doesn't re-render every consumer —
+ *  see CLAUDE.md "Anti-patterns to avoid in slices and derivers" #4. */
+export function useContextWindow(terminalId: string | null) {
+  return useAppState((s) => (terminalId ? s.contextWindow.byTerminal[terminalId] : undefined))
+}
+
 export function useSnooze() {
   return useAppState((s) => s.snooze)
 }

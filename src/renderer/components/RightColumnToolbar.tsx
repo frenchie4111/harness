@@ -11,6 +11,7 @@ const LABELS: Record<RightPanelKey, string> = {
   changedFiles: 'Changed Files',
   allFiles: 'All Files',
   cost: 'Cost',
+  context: 'Context',
   scratchpad: 'Scratchpad'
 }
 

@@ -7,6 +7,7 @@ import { initialTerminals } from '../shared/state/terminals'
 import { initialUpdater } from '../shared/state/updater'
 import { initialRepoConfigs } from '../shared/state/repo-configs'
 import { initialCosts } from '../shared/state/costs'
+import { initialContextWindow } from '../shared/state/context-window'
 import { initialBrowser } from '../shared/state/browser'
 import {
   initialJsonClaude,
@@ -82,6 +83,9 @@ export function buildInitialAppState(
     updater: initialUpdater,
     repoConfigs: initialRepoConfigs,
     costs: config.costs ? { ...initialCosts, ...config.costs } : initialCosts,
+    // Not persisted — occupancy is recomputed from the transcript on the
+    // first turn boundary after a client opens the panel.
+    contextWindow: initialContextWindow,
     browser: initialBrowser,
     jsonClaude: initialJsonClaude,
     snooze: config.snooze ? { byPath: { ...config.snooze } } : initialSnooze,
