@@ -183,7 +183,21 @@ step "Checking credentials"
 if ! WHOAMI=$(vercel_cli whoami 2>&1); then
   printf '%s\n' "$WHOAMI" >&2
   if [[ -n "${VERCEL_TOKEN:-}" ]]; then
-    die "the vercel CLI rejected VERCEL_TOKEN (see above). Check the token at https://vercel.com/account/tokens — it must be valid, unexpired, and scoped to the '$VERCEL_SCOPE' team. Verify it locally with: vercel whoami --scope $VERCEL_SCOPE --token <token>"
+    die "the vercel CLI rejected VERCEL_TOKEN (see above).
+
+The most likely cause is a token scoped to a single PROJECT. The CLI
+resolves the acting user before anything else, and a project-restricted
+token isn't authorized for that account-level lookup — it fails with
+'Not able to load user ... User not found. (404)'. Issue the token
+against the '$VERCEL_SCOPE' team scope instead.
+
+Deploying anywhere other than $VERCEL_SCOPE/$VERCEL_PROJECT_NAME is
+already prevented by the ID assertions above, so the team-scoped token
+does not widen what this script can touch.
+
+Otherwise the token may be revoked, expired, or damaged in transit — a
+trailing newline pasted into a CI secret is enough. Verify with:
+  vercel whoami --scope $VERCEL_SCOPE --token <token>"
   fi
   die "not authenticated to Vercel (see above). Run 'vercel login', or set VERCEL_TOKEN."
 fi
