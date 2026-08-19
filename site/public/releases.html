@@ -102,6 +102,38 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.15.0 -->
+    <section id="v2.15.0" class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight"><a href="#v2.15.0" class="release-anchor">v2.15.0<span class="anchor-icon">🔗</span></a></h2>
+        <span class="text-sm text-neutral-500">August 19, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.15.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Harness is now Ness: a new green identity across the app, site, and icons, plus a setting to pick the app's own accent color and automatic migration of legacy config files.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Harness is now Ness</strong> — the app has a new name and a new green identity across the app, site, and icons.</li>
+          <li><strong>Pick the app's accent color</strong> — a new Appearance setting lets you choose Nessie's colour, the app's primary color.</li>
+          <li><strong>Legacy config migration</strong> — Ness now offers to convert a repo's old <code>.harness.json</code> to <code>.ness.json</code>, and reads either file so existing per-repo configs keep working.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li><strong>Wordmark lockup polish</strong> — the app mark now sits before the wordmark, with pixel-fixed titlebar clearance.</li>
+          <li>The bundled MCP server is now named <code>ness-control</code> (previously <code>harness-control</code>); update any MCP client config that references it by name.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Existing installs keep decrypting saved tokens and secrets after the rename.</li>
+          <li>Darkened the brand color ramp so it stays legible on light themes.</li>
+          <li>The closed Quake-style terminal no longer casts a shadow over the app.</li>
+          <li>The theme's accent color no longer gets overridden by Nessie's colour — they're independent settings again.</li>
+          <li>Chat now keeps consistent Ness-branded chrome on tool calls from before the rename, even in old transcripts.</li>
+          <li>Insight callouts no longer let long list content spill outside the card.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- v2.14.0 -->
     <section id="v2.14.0" class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
