@@ -157,7 +157,7 @@ function LinkCard({ body }: { body: string }) {
       <div className="link-preview">
         <div className="link-icon">H</div>
         <div className="link-title">Ness — run a team of agents</div>
-        <div className="link-domain">harness.mikelyons.org</div>
+        <div className="link-domain">getness.dev</div>
       </div>
       <div className="link-body">{body}</div>
     </div>

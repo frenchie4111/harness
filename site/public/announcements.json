@@ -3,7 +3,7 @@
     {
       "id": "ness-rename-2026-08",
       "title": "Harness is now Ness",
-      "href": "https://harness.mikelyons.org/announcements/ness-rename.html",
+      "href": "https://getness.dev/announcements/ness-rename.html",
       "publishedAt": "2026-08-19",
       "expiresAt": "2026-11-19",
       "summary": "We've decided to rename harness to ness. In theory you shouldn't have to do anything — the rename is backwards compatible."
@@ -11,14 +11,14 @@
     {
       "id": "remote-backends-2026-07",
       "title": "Run your agents on any machine",
-      "href": "https://harness.mikelyons.org/announcements/remote-backends.html",
+      "href": "https://getness.dev/announcements/remote-backends.html",
       "publishedAt": "2026-07-16",
       "summary": "Connect the Ness desktop app to a headless server on another machine. One-click SSH setup, switch backends with a keystroke, notifications from every machine."
     },
     {
       "id": "introducing-chat-mode-2026-05",
       "title": "Introducing Chat mode",
-      "href": "https://harness.mikelyons.org/announcements/introducing-chat-mode.html",
+      "href": "https://getness.dev/announcements/introducing-chat-mode.html",
       "publishedAt": "2026-05-25",
       "summary": "A modern chat interface for Claude Code, built into Ness. Same agent, same auth, same MCP setup."
     }
