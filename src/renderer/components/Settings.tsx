@@ -1575,12 +1575,13 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <fieldset className="mt-6 mb-6">
                 <legend className="text-sm font-semibold text-fg-bright mb-1">Nessie&rsquo;s colour</legend>
                 <p className="text-sm text-dim mb-3">
-                  The primary colour used across the whole app — the mark, highlights, and accents.
-                  A custom theme can override it with{' '}
+                  Colours the mark, the wordmark, and Ness&rsquo;s own tool cards. Your theme still
+                  owns everything else — message bubbles, links and focus rings stay on its
+                  secondary colour, so this doesn&rsquo;t flatten the palette. A custom theme can
+                  override it with{' '}
                   <code className="bg-app/50 px-1 rounded">brand</code>,{' '}
-                  <code className="bg-app/50 px-1 rounded">brand-mid</code>,{' '}
-                  <code className="bg-app/50 px-1 rounded">brand-deep</code> or{' '}
-                  <code className="bg-app/50 px-1 rounded">accent</code>.
+                  <code className="bg-app/50 px-1 rounded">brand-mid</code> or{' '}
+                  <code className="bg-app/50 px-1 rounded">brand-deep</code>.
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   {NESSIE_COLORS.map((c) => {

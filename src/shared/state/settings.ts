@@ -148,10 +148,15 @@ export const EMPTY_CUSTOM_THEMES: CustomTheme[] = []
 export const DEFAULT_LIGHT_THEME = 'solarized-light'
 export const DEFAULT_DARK_THEME = 'dark'
 
-/** A Nessie colour preset — the app's primary/brand colour.
+/** A Nessie colour preset — the app's *brand* colour.
  *
- *  `brand`/`mid`/`deep` fill the `--color-brand*` ramp, which every branded
- *  surface reads: the mark, brand text and backgrounds, glows, the accent.
+ *  Deliberately scoped narrower than "the primary colour". It fills the
+ *  `--color-brand*` ramp, which is the mark, the wordmark and the Ness tool
+ *  cards. It does NOT touch `--color-accent`: that is the theme's secondary
+ *  (purple on Dracula), and it owns user message bubbles, links, focus rings
+ *  and the caret. Folding the two together made the app monotone and cost the
+ *  contrast the old two-colour scheme had.
+ *
  *  `gradient` and `flow` are the painted forms — flat presets simply repeat
  *  their own colour, so the gradient classes need no special case and
  *  `legacy` (a real three-stop gradient) drops straight in.
@@ -165,11 +170,6 @@ export interface NessieColor {
   brand: string
   mid: string
   deep: string
-  /** What --color-accent becomes. Its own field rather than an alias of
-   *  `brand` because `legacy` needs the accent Harness actually shipped
-   *  (purple) — taking the gradient's first stop instead turns every
-   *  accent surface, user message bubbles included, amber. */
-  accent: string
   gradient: string
   flow: string
 }
@@ -189,7 +189,6 @@ const flat = (
   brand,
   mid,
   deep,
-  accent: brand,
   gradient: `linear-gradient(135deg, ${brand} 0%, ${brand} 100%)`,
   flow: `linear-gradient(90deg, ${mid} 0%, ${brand} 25%, ${light} 50%, ${brand} 75%, ${mid} 100%)`
 })
@@ -207,7 +206,6 @@ export const NESSIE_COLORS: readonly NessieColor[] = [
     brand: '#f59e0b',
     mid: '#ef4444',
     deep: '#a855f7',
-    accent: '#c084fc',
     gradient: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%)',
     flow: 'linear-gradient(90deg, #f59e0b 0%, #ef4444 25%, #a855f7 50%, #ef4444 75%, #f59e0b 100%)'
   }

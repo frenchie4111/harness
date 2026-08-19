@@ -614,18 +614,6 @@ describe('settingsReducer', () => {
     expect(nessieColorById('legacy').id).toBe('legacy')
   })
 
-  it('legacy keeps the accent Harness actually shipped, not its first stop', () => {
-    // Regression: accent was aliased to `brand`, which made every accent
-    // surface (user message bubbles, links, the caret) amber under legacy.
-    const legacy = nessieColorById('legacy')
-    expect(legacy.brand).toBe('#f59e0b')
-    expect(legacy.accent).toBe('#c084fc')
-    // Flat presets have nothing to disambiguate, so accent tracks brand.
-    for (const c of NESSIE_COLORS.filter((x) => x.id !== 'legacy')) {
-      expect(c.accent).toBe(c.brand)
-    }
-  })
-
   it('every Nessie preset supplies a paintable gradient and flow', () => {
     // The gradient classes always paint background-image, so a preset with a
     // bare hex here would silently render nothing.
