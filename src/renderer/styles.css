@@ -628,6 +628,7 @@ button, [role="button"], a[href], [onclick] {
 }
 
 /* Brand accents — mirrors the marketing site hero styling */
+/* Ambient brand wash — top centre plus both bottom corners, as before. */
 .brand-grid-bg {
   background-image:
     radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--color-brand) 10%, transparent), transparent 55%),
@@ -644,10 +645,6 @@ button, [role="button"], a[href], [onclick] {
 .brand-gradient-bg {
   background-image: var(--brand-gradient);
 }
-.brand-glow {
-  box-shadow: 0 0 60px color-mix(in srgb, var(--color-brand) 15%, transparent);
-}
-
 /* The flow effects animate background-position, so they need a multi-stop
    image regardless of preset — --brand-flow supplies one for every preset. */
 @keyframes brand-gradient-flow {

@@ -179,8 +179,17 @@ export function QuakeTerminal({ worktreePath, open, onClose, leftPx, rightPx, to
         className="absolute z-40 overflow-hidden"
         style={{ left: leftPx, right: rightPx, top: topPx, bottom: 0, pointerEvents: 'none' }}
       >
+        {/* The shadow is conditional, not decoration-by-default. Closed, the
+            panel sits fully above this wrapper's top edge — but a drop shadow
+            casts DOWNWARD from its bottom edge, which lands inside the wrapper
+            and is therefore not clipped by the overflow-hidden. The result was
+            a permanent dark band fading down from the top of the workspace
+            area, and because the wrapper is z-40 it painted over full-screen
+            views like New Worktree too. */}
         <div
-          className="absolute inset-x-0 top-0 flex flex-col bg-panel border-b-2 border-accent/60 shadow-2xl transition-transform duration-200 ease-out"
+          className={`absolute inset-x-0 top-0 flex flex-col bg-panel border-b-2 border-accent/60 transition-transform duration-200 ease-out${
+            open ? ' shadow-2xl' : ''
+          }`}
           style={{
             height,
             transform: open ? 'translateY(0)' : 'translateY(-100%)',

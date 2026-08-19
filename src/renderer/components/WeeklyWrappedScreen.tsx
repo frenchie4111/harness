@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
+import { NessMark } from './NessMark'
 import { ArrowLeft, Loader2, GitCommit, GitPullRequest, GitBranch, Timer, Sparkles } from 'lucide-react'
 import type { WeeklyStats } from '../types'
-import iconUrl from '../../../resources/icon.png'
 import { useBackend } from '../backend'
 
 interface WeeklyWrappedScreenProps {
@@ -102,7 +102,7 @@ function WrappedPoster({ stats }: { stats: WeeklyStats }): JSX.Element {
   if (!hasActivity) {
     return (
       <div className="max-w-md text-center">
-        <img src={iconUrl} alt="Ness" className="w-14 h-14 mx-auto rounded-2xl brand-glow mb-6" />
+        <NessMark className="h-12 w-auto mx-auto mb-6 text-brand" />
         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-dim mb-2">
           Your week · {formatRange(stats.since, stats.until)}
         </div>
@@ -118,7 +118,7 @@ function WrappedPoster({ stats }: { stats: WeeklyStats }): JSX.Element {
     <div className="w-full max-w-3xl flex flex-col gap-4 sm:gap-5">
       {/* Header strip */}
       <div className="flex items-center gap-3">
-        <img src={iconUrl} alt="Ness" className="w-9 h-9 rounded-xl brand-glow shrink-0" />
+        <NessMark className="h-7 w-auto shrink-0 text-brand" />
         <div className="flex-1 min-w-0">
           <div className="text-xs sm:text-xs font-semibold uppercase tracking-[0.18em] text-dim">
             Your week

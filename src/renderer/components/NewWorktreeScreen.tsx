@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { NessMark } from './NessMark'
 import { Sparkles, Loader2, X, Map as MapIcon, ListChecks, BookOpen, Radio, GitPullRequest, GitBranch, ChevronRight, ChevronDown, Check } from 'lucide-react'
-import iconUrl from '../../../resources/icon.png'
 import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
 import { RepoIcon } from './RepoIcon'
 import { useBackend } from '../backend'
@@ -484,11 +484,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 sm:px-8 py-8">
           <div className="text-center mb-8">
-            <img
-              src={iconUrl}
-              alt="Ness"
-              className="w-20 h-20 mx-auto rounded-3xl mb-5 brand-glow"
-            />
+            <NessMark className="h-16 w-auto mx-auto mb-5 text-brand" />
             <h1 className="text-3xl font-extrabold tracking-tight mb-2">
               New <span className="brand-gradient-text">worktree</span>
             </h1>
