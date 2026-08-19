@@ -589,7 +589,7 @@ These are how the user wants Claude to behave when working on this repo:
    on the user's behalf, not the user themselves:
 
    ```
-   _Comment left on behalf of @<github-username> by <agent-name> via [Ness](https://github.com/frenchie4111/harness)._
+   _Comment left on behalf of @<github-username> by <agent-name> via [Ness](https://github.com/ness-dev/ness)._
    ```
 
    - `<github-username>` is the user's GitHub login — run
@@ -621,9 +621,9 @@ These are how the user wants Claude to behave when working on this repo:
     - `git push` with no args fails ("no upstream") — fine, it just
       makes you stop and think.
     - `git push -u origin <branch>` *silently succeeds* by creating a
-      new branch on the **upstream repo** (e.g. `frenchie4111/harness`),
+      new branch on the **upstream repo** (e.g. `ness-dev/ness`),
       because the reviewer has write access there. The PR — which
-      references `contributor:<branch>`, not `frenchie4111:<branch>` —
+      references `contributor:<branch>`, not `ness-dev:<branch>` —
       does **not** update. This is the most common failure mode.
     - Creating a new branch like `review-fix/foo` on the reviewer's own
       fork and opening a parallel PR is also wrong: fragments the

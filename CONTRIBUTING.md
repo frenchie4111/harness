@@ -10,7 +10,7 @@ I am also definitely interested in growing the team of people who can review/acc
 
 I am also specifically interested in people who want to own big forward looking features. The ones I have in mind are:
 
- 1. A much better change review process. This is discussed a bit in [High Level Roadmap](https://github.com/frenchie4111/harness/issues/31). The goal is to unify PR reviews and agent reviews into one awesome interface
+ 1. A much better change review process. This is discussed a bit in [High Level Roadmap](https://github.com/ness-dev/ness/issues/31). The goal is to unify PR reviews and agent reviews into one awesome interface
  2. A better workflow from Ticket/Issue -> Worktree -> PR. I want to be able to be able to spin up a worktree in one click from my issue tracker and have an agent build it
 
 ## Development setup
@@ -18,8 +18,8 @@ I am also specifically interested in people who want to own big forward looking 
 See the [Setup, building, and running locally](README.md#setup-building-and-running-locally) section of the README for the canonical setup steps. Short version:
 
 ```sh
-git clone https://github.com/frenchie4111/harness.git
-cd harness
+git clone https://github.com/ness-dev/ness.git
+cd ness
 npm install --legacy-peer-deps
 npm run dev
 ```
@@ -137,7 +137,7 @@ If you're touching the Chat interface specifically (internally referred to as "j
 
 ## Code style
 
-We don't run a strict formatter on every PR [yet](https://github.com/frenchie4111/harness/issues/48), but informally the codebase prefers:
+We don't run a strict formatter on every PR [yet](https://github.com/ness-dev/ness/issues/48), but informally the codebase prefers:
 
 - **Don't add comments that just restate the code.** Comments are for *why* something is non-obvious, not *what* the code does. Identifier names and types should carry the *what*. If you find yourself describing the code in English, ask whether the code itself could be clearer.
 - **No backwards-compatibility shims for removed code.** If something is unused, delete it cleanly — don't leave `// removed` comments or re-export shims.
@@ -154,6 +154,6 @@ For larger review comments then the standard comments & PR discussion process sh
 
 ## Questions
 
-If you're stuck or unsure about how to approach something, please open a [discussion](https://github.com/frenchie4111/harness/discussions) or just put a question in an issue. We'd rather answer questions early than have a contributor build something in a direction that doesn't quite fit.
+If you're stuck or unsure about how to approach something, please open a [discussion](https://github.com/ness-dev/ness/discussions) or just put a question in an issue. We'd rather answer questions early than have a contributor build something in a direction that doesn't quite fit.
 
 Thanks again for being here.

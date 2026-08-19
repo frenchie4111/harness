@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/frenchie4111/harness/stargazers">
-    <img src="https://img.shields.io/github/stars/frenchie4111/harness?style=for-the-badge&logo=github&logoColor=white&color=f59e0b&labelColor=18181b&label=Please%20star%20us%20on%20GitHub" alt="Please star us on GitHub" />
+  <a href="https://github.com/ness-dev/ness/stargazers">
+    <img src="https://img.shields.io/github/stars/ness-dev/ness?style=for-the-badge&logo=github&logoColor=white&color=f59e0b&labelColor=18181b&label=Please%20star%20us%20on%20GitHub" alt="Please star us on GitHub" />
   </a>
   <a href="https://join.slack.com/t/harness-chat/shared_invite/zt-43w6xg34i-mGXrSEKVO0wGC7r_SiePwA">
     <img src="https://img.shields.io/badge/Slack-Join%20the%20chat-4A154B?style=for-the-badge&logo=slack&logoColor=white&labelColor=18181b" alt="Join the Ness Slack" />
@@ -20,7 +20,7 @@
 
 <p align="center">
   <a href="https://getness.dev/">Website</a> ·
-  <a href="https://github.com/frenchie4111/harness/releases/latest">Download</a> ·
+  <a href="https://github.com/ness-dev/ness/releases/latest">Download</a> ·
   <a href="https://getness.dev/guide.html">Guide</a> ·
   <a href="https://join.slack.com/t/harness-chat/shared_invite/zt-43w6xg34i-mGXrSEKVO0wGC7r_SiePwA">Slack</a>
 </p>
@@ -46,10 +46,10 @@
 
 ## Download
 
-Grab the latest release from the [releases page](https://github.com/frenchie4111/harness/releases/latest).
+Grab the latest release from the [releases page](https://github.com/ness-dev/ness/releases/latest).
 
-- **Apple Silicon (M1/M2/M3/M4):** [Ness-2.15.0-arm64.dmg](https://github.com/frenchie4111/harness/releases/download/v2.15.0/Ness-2.15.0-arm64.dmg)
-- **Intel Mac:** [Ness-2.15.0.dmg](https://github.com/frenchie4111/harness/releases/download/v2.15.0/Ness-2.15.0.dmg)
+- **Apple Silicon (M1/M2/M3/M4):** [Ness-2.15.0-arm64.dmg](https://github.com/ness-dev/ness/releases/download/v2.15.0/Ness-2.15.0-arm64.dmg)
+- **Intel Mac:** [Ness-2.15.0.dmg](https://github.com/ness-dev/ness/releases/download/v2.15.0/Ness-2.15.0.dmg)
 
 ## Installation
 
@@ -65,7 +65,7 @@ Grab the latest release from the [releases page](https://github.com/frenchie4111
 
 ### Linux
 
-Grab `Ness-<version>.deb` or `Ness-<version>.AppImage` from the [releases page](https://github.com/frenchie4111/harness/releases/latest).
+Grab `Ness-<version>.deb` or `Ness-<version>.AppImage` from the [releases page](https://github.com/ness-dev/ness/releases/latest).
 
 **Ubuntu / Debian (.deb)** — the recommended option:
 
@@ -75,7 +75,7 @@ sudo apt install ./Ness-<version>.deb
 
 The postinstall script handles the `chrome-sandbox` SUID bit automatically, so this works on Ubuntu 24.04+ out of the box.
 
-`.deb` users get an in-app banner when a new version is available, but updates are manual — re-download the new `.deb` from [GitHub Releases](https://github.com/frenchie4111/harness/releases/latest) and `sudo apt install ./Ness-<version>.deb`. (AppImage / macOS users get auto-updates.)
+`.deb` users get an in-app banner when a new version is available, but updates are manual — re-download the new `.deb` from [GitHub Releases](https://github.com/ness-dev/ness/releases/latest) and `sudo apt install ./Ness-<version>.deb`. (AppImage / macOS users get auto-updates.)
 
 **AppImage** — for distros without `dpkg`:
 
@@ -110,7 +110,7 @@ Run Ness on a remote dev box and connect from a local browser, mobile phone, or 
 Install with one command:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/frenchie4111/harness/main/scripts/install-headless.sh | sh
+curl -fsSL https://raw.githubusercontent.com/ness-dev/ness/main/scripts/install-headless.sh | sh
 ```
 
 This downloads the right tarball for your platform (`darwin-arm64`, `linux-x64`, or `linux-arm64`), verifies its sha256, and extracts to `~/.harness-server/`. Intel Macs are not currently shipped — GitHub's macos-13 runner queue is too unreliable to keep in CI. If `/usr/local/bin/` is writable a `harness-server` symlink is dropped there; otherwise you add `~/.harness-server/bin` to your `PATH`.
@@ -128,7 +128,7 @@ The tarballs are not Apple-signed. On macOS you may need to `xattr -d com.apple.
 To pin a specific version:
 
 ```sh
-HARNESS_SERVER_VERSION=2.6.1 sh -c 'curl -fsSL https://raw.githubusercontent.com/frenchie4111/harness/main/scripts/install-headless.sh | sh'
+HARNESS_SERVER_VERSION=2.6.1 sh -c 'curl -fsSL https://raw.githubusercontent.com/ness-dev/ness/main/scripts/install-headless.sh | sh'
 ```
 
 Re-running the install script bumps the version. The server never self-updates. Backends you connected over SSH are the exception: when the remote's version doesn't match your Ness, the backend's chip shows an upgrade badge that re-runs the installer and restarts the server for you — restarting ends every session on that machine, so it's always an explicit click.
@@ -210,15 +210,15 @@ It will create a worktree directory at `../<your repo folder>-worktree` and star
 
 # Roadmap
 
-The high-level roadmap has been moved here: https://github.com/frenchie4111/harness/issues/31
+The high-level roadmap has been moved here: https://github.com/ness-dev/ness/issues/31
 
 # Setup, building, and running locally
 
 Clone the repo and install dependencies:
 
 ```sh
-git clone https://github.com/frenchie4111/harness.git
-cd harness
+git clone https://github.com/ness-dev/ness.git
+cd ness
 npm install --legacy-peer-deps
 ```
 
