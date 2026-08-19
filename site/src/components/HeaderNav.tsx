@@ -61,7 +61,7 @@ export function HeaderNav() {
           Install
         </a>
         <a
-          href="https://github.com/frenchie4111/harness"
+          href="https://github.com/ness-dev/ness"
           className="hover:text-ink-100 transition-colors"
         >
           GitHub
@@ -116,7 +116,7 @@ export function HeaderNav() {
               Install
             </a>
             <a
-              href="https://github.com/frenchie4111/harness"
+              href="https://github.com/ness-dev/ness"
               onClick={close}
               className="px-4 py-3 hover:bg-ink-800/50 hover:text-ink-100 transition-colors"
             >

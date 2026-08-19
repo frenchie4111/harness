@@ -11,7 +11,7 @@ export function Install() {
       </p>
 
       <a
-        href={`https://github.com/frenchie4111/harness/releases/latest/download/Ness-${VERSION}-arm64.dmg`}
+        href={`https://github.com/ness-dev/ness/releases/latest/download/Ness-${VERSION}-arm64.dmg`}
         className="block p-8 bg-white hover:bg-ink-200 text-ink-950 rounded-xl transition-colors group text-center"
       >
         <div className="text-xs text-ink-500 mb-2 uppercase tracking-wider">M1 / M2 / M3 / M4</div>
@@ -21,7 +21,7 @@ export function Install() {
 
       <div className="mt-4 text-center">
         <a
-          href={`https://github.com/frenchie4111/harness/releases/latest/download/Ness-${VERSION}.dmg`}
+          href={`https://github.com/ness-dev/ness/releases/latest/download/Ness-${VERSION}.dmg`}
           className="text-sm text-ink-500 hover:text-ink-300 underline transition-colors"
         >
           On an Intel Mac? Download the x86_64 build
@@ -30,7 +30,7 @@ export function Install() {
 
       <div className="mt-8 text-center">
         <a
-          href="https://github.com/frenchie4111/harness/releases"
+          href="https://github.com/ness-dev/ness/releases"
           className="text-sm text-ink-500 hover:text-ink-300 underline transition-colors"
         >
           Browse all releases on GitHub

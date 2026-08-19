@@ -23,7 +23,7 @@ export function OpenSource() {
         Contributions welcome — bug reports, PRs, feature ideas, all of it.
       </p>
       <a
-        href="https://github.com/frenchie4111/harness"
+        href="https://github.com/ness-dev/ness"
         className="inline-flex items-center gap-2 px-6 py-2.5 border border-ink-700 hover:border-ink-600 rounded-lg font-semibold transition-colors"
       >
         <svg
