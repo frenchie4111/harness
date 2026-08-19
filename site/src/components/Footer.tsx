@@ -8,13 +8,13 @@ export function Footer() {
         </div>
         <div className="flex items-center gap-6">
           <a
-            href="https://github.com/frenchie4111/harness"
+            href="https://github.com/ness-dev/ness"
             className="hover:text-ink-300 transition-colors"
           >
             GitHub
           </a>
           <a
-            href="https://github.com/frenchie4111/harness/issues"
+            href="https://github.com/ness-dev/ness/issues"
             className="hover:text-ink-300 transition-colors"
           >
             Issues
@@ -23,7 +23,7 @@ export function Footer() {
             Release notes
           </a>
           <a
-            href="https://github.com/frenchie4111/harness/releases"
+            href="https://github.com/ness-dev/ness/releases"
             className="hover:text-ink-300 transition-colors"
           >
             Downloads

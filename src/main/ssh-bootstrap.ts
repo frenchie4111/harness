@@ -21,6 +21,7 @@ import type {
   BootstrapError,
   BootstrapPhase
 } from '../shared/state/ssh-bootstrap'
+import { HARNESS_REPO_OWNER, HARNESS_REPO_NAME } from '../shared/constants'
 
 const dynamicRequire = createRequire(__filename)
 function loadNodeSsh(): { NodeSSH: typeof NodeSSH } {
@@ -201,7 +202,7 @@ const REMOTE_LOG_FILE = `${REMOTE_INSTALL_DIR}/log`
 function installScriptUrl(): string {
   const fork = process.env.HARNESS_INSTALL_SCRIPT_URL
   if (fork) return fork
-  return 'https://raw.githubusercontent.com/frenchie4111/harness/main/scripts/install-headless.sh'
+  return `https://raw.githubusercontent.com/${HARNESS_REPO_OWNER}/${HARNESS_REPO_NAME}/main/scripts/install-headless.sh`
 }
 
 function installerEnvPrefix(): string {

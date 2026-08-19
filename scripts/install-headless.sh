@@ -6,14 +6,14 @@
 # Override the source with environment variables:
 #   HARNESS_SERVER_VERSION  pinned version tag (default: latest)
 #   HARNESS_SERVER_BASE_URL base URL serving the tarball + .sha256
-#                           (default: GitHub releases for frenchie4111/harness)
+#                           (default: GitHub releases for ness-dev/ness)
 #
 # POSIX-only — runs under dash, ash, busybox sh in addition to bash/zsh.
 
 set -eu
 
-OWNER="frenchie4111"
-REPO="harness"
+OWNER="ness-dev"
+REPO="ness"
 INSTALL_DIR="${HARNESS_SERVER_INSTALL_DIR:-$HOME/.harness-server}"
 TMP_DIR="$INSTALL_DIR.tmp"
 

@@ -25,7 +25,7 @@ export function Hero() {
           Download for macOS
         </a>
         <a
-          href="https://github.com/frenchie4111/harness"
+          href="https://github.com/ness-dev/ness"
           className="inline-flex items-center gap-2 px-8 py-3 border border-ink-700 hover:border-ink-600 rounded-lg font-semibold transition-colors"
         >
           <GitHubIcon />
@@ -108,7 +108,7 @@ export function Hero() {
 
       <div className="mt-8 flex justify-center">
         <a
-          href="https://github.com/frenchie4111/harness/stargazers"
+          href="https://github.com/ness-dev/ness/stargazers"
           className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold text-green-200 border border-brand/40 bg-brand/10 hover:bg-brand/20 hover:border-brand/60 hover:text-green-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 transition-colors"
         >
           <StarIcon />

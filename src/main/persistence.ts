@@ -196,7 +196,7 @@ export interface Config {
   onboarding?: {
     quest?: QuestStep
   }
-  // True once we've auto-starred frenchie4111/harness on behalf of a
+  // True once we've auto-starred ness-dev/ness on behalf of a
   // gh-cli-detected user. Sticky — if they later unstar manually, we
   // don't re-star on next boot.
   harnessAutoStarred?: boolean
