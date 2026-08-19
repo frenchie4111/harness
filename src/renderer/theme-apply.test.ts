@@ -3,10 +3,10 @@ import { applyTheme, SEMANTIC_KEYS } from './theme-apply'
 import type { ResolvedTheme } from './hooks/useActiveTheme'
 
 const builtIn = (id = 'dark'): ResolvedTheme =>
-  ({ kind: 'built-in', id, swatches: ['#0a0a0a'] }) as unknown as ResolvedTheme
+  ({ kind: 'built-in', id, mode: 'dark', swatches: ['#0a0a0a'] }) as unknown as ResolvedTheme
 
-const custom = (colors: Record<string, string>): ResolvedTheme =>
-  ({ kind: 'custom', id: 'c', name: 'C', mode: 'dark', colors }) as unknown as ResolvedTheme
+const custom = (colors: Record<string, string>, mode: 'light' | 'dark' = 'dark'): ResolvedTheme =>
+  ({ kind: 'custom', id: 'c', name: 'C', mode, colors }) as unknown as ResolvedTheme
 
 // This repo's vitest runs in the node environment and jsdom isn't a
 // dependency, so stub the only two DOM surfaces applyTheme touches rather
@@ -83,6 +83,16 @@ describe('applyTheme', () => {
     expect(read('--color-app')).toBe('#111111')
     applyTheme(builtIn(), 'loch')
     expect(read('--color-app')).toBe('')
+    expect(read('--color-brand')).toBe('#4ade80')
+  })
+
+  it('takes the ramp a rung darker on light themes', () => {
+    // #4ade80 on a pale background is close to unreadable, and the mark and
+    // wordmark are exactly what --color-brand paints.
+    applyTheme(custom({ app: '#fdf6e3' }, 'light'), 'loch')
+    expect(read('--color-brand')).toBe('#16a34a')
+    expect(read('--brand-gradient')).toContain('#16a34a')
+    applyTheme(builtIn(), 'loch')
     expect(read('--color-brand')).toBe('#4ade80')
   })
 

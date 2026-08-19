@@ -65,12 +65,27 @@ export function applyTheme(theme: ResolvedTheme, nessieColorId: string): void {
     inlineKeysApplied.add(prop)
   }
 
+  // Light themes take the ramp a rung darker. The presets are tuned for a
+  // near-black background, so on a pale one (#fdf6e3 and friends) the top
+  // rung is far too washed out for the thing it's mostly used on — the mark
+  // and the wordmark, which are the two elements that can least afford to be
+  // hard to read. `deep` is the same hue, just legible on paper.
   const nessie = nessieColorById(nessieColorId)
-  setInline('--color-brand', nessie.brand)
-  setInline('--color-brand-mid', nessie.mid)
+  const light = theme.mode === 'light'
+  const brand = light ? nessie.deep : nessie.brand
+  setInline('--color-brand', brand)
+  setInline('--color-brand-mid', light ? nessie.deep : nessie.mid)
   setInline('--color-brand-deep', nessie.deep)
-  setInline('--brand-gradient', nessie.gradient)
-  setInline('--brand-flow', nessie.flow)
+  setInline(
+    '--brand-gradient',
+    light ? `linear-gradient(135deg, ${brand} 0%, ${brand} 100%)` : nessie.gradient
+  )
+  setInline(
+    '--brand-flow',
+    light
+      ? `linear-gradient(90deg, ${nessie.mid} 0%, ${brand} 25%, ${nessie.deep} 50%, ${brand} 75%, ${nessie.mid} 100%)`
+      : nessie.flow
+  )
 
   if (theme.kind === 'built-in') {
     // Built-ins pull every remaining value from the CSS file via the
@@ -92,13 +107,13 @@ export function applyTheme(theme: ResolvedTheme, nessieColorId: string): void {
   // gradient classes read --brand-gradient / --brand-flow, not --color-brand,
   // so without this the flat brand surfaces would follow the theme while the
   // gradient ones stayed on the Nessie preset.
-  const brand = theme.colors.brand
-  if (brand) {
-    const mid = theme.colors['brand-mid'] ?? brand
-    setInline('--brand-gradient', `linear-gradient(135deg, ${brand} 0%, ${brand} 100%)`)
+  const themeBrand = theme.colors.brand
+  if (themeBrand) {
+    const themeMid = theme.colors['brand-mid'] ?? themeBrand
+    setInline('--brand-gradient', `linear-gradient(135deg, ${themeBrand} 0%, ${themeBrand} 100%)`)
     setInline(
       '--brand-flow',
-      `linear-gradient(90deg, ${mid} 0%, ${brand} 25%, color-mix(in srgb, ${brand} 45%, white) 50%, ${brand} 75%, ${mid} 100%)`
+      `linear-gradient(90deg, ${themeMid} 0%, ${themeBrand} 25%, color-mix(in srgb, ${themeBrand} 45%, white) 50%, ${themeBrand} 75%, ${themeMid} 100%)`
     )
   }
 }
