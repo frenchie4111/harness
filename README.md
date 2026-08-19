@@ -48,8 +48,8 @@
 
 Grab the latest release from the [releases page](https://github.com/frenchie4111/harness/releases/latest).
 
-- **Apple Silicon (M1/M2/M3/M4):** [Ness-2.15.0-arm64.dmg](https://github.com/frenchie4111/harness/releases/download/v2.15.0/Ness-2.15.0-arm64.dmg)
-- **Intel Mac:** [Ness-2.15.0.dmg](https://github.com/frenchie4111/harness/releases/download/v2.15.0/Ness-2.15.0.dmg)
+- **Apple Silicon (M1/M2/M3/M4):** [Ness-2.16.0-arm64.dmg](https://github.com/frenchie4111/harness/releases/download/v2.16.0/Ness-2.16.0-arm64.dmg)
+- **Intel Mac:** [Ness-2.16.0.dmg](https://github.com/frenchie4111/harness/releases/download/v2.16.0/Ness-2.16.0.dmg)
 
 ## Installation
 
