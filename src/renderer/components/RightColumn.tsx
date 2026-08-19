@@ -10,6 +10,7 @@ import { BranchCommitsPanel } from './BranchCommitsPanel'
 import { ChangedFilesPanel } from './ChangedFilesPanel'
 import { AllFilesPanel } from './AllFilesPanel'
 import { CostPanel } from './CostPanel'
+import { ContextPanel } from './ContextPanel'
 import { JsonClaudeTodosPanel } from './JsonClaudeTodosPanel'
 import { ScratchpadPanel } from './ScratchpadPanel'
 import { RightColumnToolbar } from './RightColumnToolbar'
@@ -142,6 +143,8 @@ export function RightColumn({
         )
       case 'cost':
         return <CostPanel key="cost" worktreePath={activeWorktreeId} />
+      case 'context':
+        return <ContextPanel key="context" focusedTabId={focusedTabId} />
       case 'scratchpad':
         return <ScratchpadPanel key="scratchpad" worktreePath={activeWorktreeId} />
     }

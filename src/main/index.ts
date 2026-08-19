@@ -127,6 +127,7 @@ import { buildClaudeLaunchSettings } from './claude-launch'
 import { HARNESS_REPO_OWNER, HARNESS_REPO_NAME } from '../shared/constants'
 import { readRecentDebugLog } from './debug'
 import { CostTracker } from './cost-tracker'
+import { ContextTracker } from './context-tracker'
 import { getAllSessionCosts } from './cost-aggregator'
 import { getClaudeAuthStatus } from './claude-auth'
 import { listDir as fsListDir, resolveHome as fsResolveHome } from './fs-listing'
@@ -569,6 +570,7 @@ transport.onClientDisconnect((clientId) => {
     payload: { clientId }
   })
   costTracker.removeClient(clientId)
+  contextTracker.removeClient(clientId)
 })
 
 if (webHttpServer && wsTransport) {
@@ -645,6 +647,20 @@ transport.onRequest(
     return getAllSessionCosts({ sinceMs })
   }
 )
+
+// Point-in-time context-window occupancy for both terminal and chat
+// tabs. See src/main/context-tracker.ts and
+// src/shared/state/context-window.ts.
+const contextTracker = new ContextTracker(store)
+contextTracker.start()
+
+// Same collapsed-by-default gating as the cost panel — analyzing a
+// multi-megabyte transcript per turn is only worth it while someone is
+// looking at the result.
+transport.onRequest('contextWindow:setInterest', (ctx, expanded: boolean) => {
+  contextTracker.setClientInterested(ctx.clientId, expanded)
+  return true
+})
 
 transport.onRequest('claude:getAuthStatus', async () => {
   return getClaudeAuthStatus()

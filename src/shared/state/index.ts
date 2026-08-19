@@ -66,6 +66,12 @@ import {
   type CostsState
 } from './costs'
 import {
+  initialContextWindow,
+  contextWindowReducer,
+  type ContextWindowEvent,
+  type ContextWindowState
+} from './context-window'
+import {
   initialBrowser,
   browserReducer,
   type BrowserEvent,
@@ -153,6 +159,17 @@ export {
   emptyBreakdown
 } from './costs'
 export type {
+  ContextWindowState,
+  ContextWindowEvent,
+  ContextSnapshot,
+  ContextCategories
+} from './context-window'
+export {
+  emptyCategories,
+  cloneCategories,
+  totalCategories
+} from './context-window'
+export type {
   TerminalsState,
   TerminalsEvent,
   PtyStatus,
@@ -218,6 +235,7 @@ export interface AppState {
   updater: UpdaterState
   repoConfigs: RepoConfigsState
   costs: CostsState
+  contextWindow: ContextWindowState
   browser: BrowserState
   jsonClaude: JsonClaudeState
   snooze: SnoozeState
@@ -240,6 +258,7 @@ export type StateEvent =
   | UpdaterEvent
   | RepoConfigsEvent
   | CostsEvent
+  | ContextWindowEvent
   | BrowserEvent
   | JsonClaudeEvent
   | SnoozeEvent
@@ -260,6 +279,7 @@ export const initialState: AppState = {
   updater: initialUpdater,
   repoConfigs: initialRepoConfigs,
   costs: initialCosts,
+  contextWindow: initialContextWindow,
   browser: initialBrowser,
   jsonClaude: initialJsonClaude,
   snooze: initialSnooze,
@@ -314,6 +334,15 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
   }
   if (event.type.startsWith('costs/')) {
     return { ...state, costs: costsReducer(state.costs, event as CostsEvent) }
+  }
+  if (event.type.startsWith('contextWindow/')) {
+    return {
+      ...state,
+      contextWindow: contextWindowReducer(
+        state.contextWindow,
+        event as ContextWindowEvent
+      )
+    }
   }
   if (event.type.startsWith('browser/')) {
     return { ...state, browser: browserReducer(state.browser, event as BrowserEvent) }
@@ -409,6 +438,7 @@ export function mergeWireSnapshot(state: WireSnapshotState): AppState {
     updater: { ...initialState.updater, ...state.updater },
     repoConfigs: { ...initialState.repoConfigs, ...state.repoConfigs },
     costs: { ...initialState.costs, ...state.costs },
+    contextWindow: { ...initialState.contextWindow, ...state.contextWindow },
     browser: { ...initialState.browser, ...state.browser },
     jsonClaude: { ...initialState.jsonClaude, ...state.jsonClaude },
     snooze: { ...initialState.snooze, ...state.snooze },

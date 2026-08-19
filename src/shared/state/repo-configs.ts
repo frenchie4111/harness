@@ -6,6 +6,7 @@ export type RightPanelKey =
   | 'changedFiles'
   | 'allFiles'
   | 'cost'
+  | 'context'
   | 'scratchpad'
 
 export const DEFAULT_RIGHT_PANEL_ORDER: RightPanelKey[] = [
@@ -16,6 +17,7 @@ export const DEFAULT_RIGHT_PANEL_ORDER: RightPanelKey[] = [
   'allFiles',
   'todos',
   'cost',
+  'context',
   'scratchpad'
 ]
 

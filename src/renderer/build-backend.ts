@@ -336,6 +336,8 @@ export function buildBackend(
     reloadCustomThemes: () => req('config:reloadCustomThemes'),
     openThemesFolder: () => reqLocal('config:openThemesFolder'),
     setCostsInterest: (expanded: boolean) => req('costs:setInterest', expanded),
+    setContextWindowInterest: (expanded: boolean) =>
+      req('contextWindow:setInterest', expanded),
     getAllSessionCosts: (sinceMs?: number) => req('costs:getAllSessions', sinceMs),
     getClaudeAuthStatus: () => req('claude:getAuthStatus'),
     getAvailableThemes: () => req('config:getAvailableThemes'),

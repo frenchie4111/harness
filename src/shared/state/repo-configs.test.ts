@@ -129,6 +129,7 @@ describe('repoConfigsReducer', () => {
           'commits',
           'changedFiles',
           'allFiles',
+          'context',
           'scratchpad'
         ]
       })
@@ -140,6 +141,7 @@ describe('repoConfigsReducer', () => {
       'commits',
       'changedFiles',
       'allFiles',
+      'context',
       'scratchpad'
     ])
   })
@@ -158,6 +160,7 @@ describe('repoConfigsReducer', () => {
       'changedFiles',
       'allFiles',
       'todos',
+      'context',
       'scratchpad'
     ])
     expect(result).toHaveLength(DEFAULT_RIGHT_PANEL_ORDER.length)

@@ -417,6 +417,7 @@ export interface ElectronAPI {
    *  surface it manually. */
   openThemesFolder(): Promise<{ ok: true; path: string } | { ok: false; path: string; message: string }>
   setCostsInterest(expanded: boolean): Promise<boolean>
+  setContextWindowInterest(expanded: boolean): Promise<boolean>
   getAllSessionCosts(sinceMs?: number): Promise<SessionCostSummary[]>
   getClaudeAuthStatus(): Promise<ClaudeAuthInfo>
   getAvailableThemes(): Promise<readonly string[]>
