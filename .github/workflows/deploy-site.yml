@@ -1,5 +1,11 @@
 name: Deploy marketing site
 
+# Builds site/ and ships it to Vercel as a prebuilt Build Output API v3
+# upload. Vercel's Git integration is deliberately NOT connected — this
+# workflow is the only thing that deploys the site, so the root
+# package.json's Electron + claude-code native deps never get installed
+# on Vercel. See scripts/deploy-site.sh for the full rationale.
+
 on:
   push:
     branches: [main]
@@ -7,20 +13,20 @@ on:
       - 'site/**'
       - 'package.json'
       - 'package-lock.json'
+      - 'scripts/deploy-site.sh'
       - '.github/workflows/deploy-site.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
+# Never let two deploys race for the production alias.
 concurrency:
-  group: pages
+  group: deploy-site
   cancel-in-progress: false
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,24 +41,13 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Build site
-        run: npm run build:site
+      # Pinned so a CLI release can't change deploy behaviour under us.
+      - name: Install Vercel CLI
+        run: npm i -g vercel@50.37.0
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: site/dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Build and deploy to production
+        run: ./scripts/deploy-site.sh --prod
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
