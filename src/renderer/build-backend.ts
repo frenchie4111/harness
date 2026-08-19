@@ -294,6 +294,7 @@ export function buildBackend(
       req('config:setJsonModeChatDensity', value),
     setUiScale: (value: 'x-small' | 'small' | 'medium' | 'large' | 'x-large') =>
       req('config:setUiScale', value),
+    setNessieColor: (value: string) => req('config:setNessieColor', value),
     setJsonModeSendOnEnter: (enabled: boolean) =>
       req('config:setJsonModeSendOnEnter', enabled),
     setAutoScrollToBottom: (enabled: boolean) =>

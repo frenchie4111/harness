@@ -112,6 +112,8 @@ import {
   DEFAULT_DARK_THEME,
   DEFAULT_PR_REVIEW_PROMPT,
   DEFAULT_SIDEBAR_DETAILS,
+  DEFAULT_NESSIE_COLOR,
+  nessieColorById,
   BOTTOM_ICON_KEYS,
   type SidebarDetailPrefs,
   type SidebarDetailPrefsByMode,
@@ -3903,6 +3905,20 @@ function registerIpcHandlers(): void {
       return true
     }
   )
+
+  transport.onRequest('config:setNessieColor', (_ctx, value: string) => {
+    // Resolve through the shared table so an unknown id can never be
+    // persisted — a bad value here would leave the app with no brand colour.
+    const next = nessieColorById(typeof value === 'string' ? value : '').id
+    if (next === DEFAULT_NESSIE_COLOR) {
+      delete config.nessieColor
+    } else {
+      config.nessieColor = next
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/nessieColorChanged', payload: next })
+    return true
+  })
 
   transport.onRequest(
     'config:setJsonModeSendOnEnter',

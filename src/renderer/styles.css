@@ -36,14 +36,24 @@
   --color-info: #60a5fa;
   --color-accent: #4ade80;
 
-  /* Brand ramp. --color-brand-mid is deliberately the same value as
-   * --color-success: the mark and a passing PR are the same green by
+  /* Brand ramp — the "Nessie colour". These are the Loch Green defaults;
+   * the renderer overwrites all five inline on :root from the chosen preset
+   * (see brand-apply.ts / NESSIE_COLORS), which is why they must stay in one
+   * place rather than being inlined at callsites.
+   *
+   * --color-brand-mid is deliberately the same value as --color-success on
+   * the default preset: the mark and a passing PR are the same green by
    * decision, not by accident. Don't "fix" the duplication by aliasing one
-   * to the other — they're separate meanings that happen to agree today,
-   * and a theme is free to move one without the other. */
+   * to the other — they're separate meanings that happen to agree today.
+   *
+   * --brand-gradient / --brand-flow are the painted forms. Flat presets set
+   * them to a single repeated colour, so the classes below never need to know
+   * whether the active preset is flat or a real gradient. */
   --color-brand: #4ade80;
   --color-brand-mid: #22c55e;
   --color-brand-deep: #16a34a;
+  --brand-gradient: linear-gradient(135deg, #4ade80 0%, #4ade80 100%);
+  --brand-flow: linear-gradient(90deg, #22c55e 0%, #4ade80 25%, #86efac 50%, #4ade80 75%, #22c55e 100%);
 }
 
 /* --- Syntax tokens ---
@@ -571,10 +581,15 @@ mark.find-hit-current {
   to { transform: rotate(360deg); }
 }
 
-/* Branded text — matches the marketing site. Flat brand green now; the class
-   name is kept because it has ~22 callsites across app and site. */
+/* Branded text. Painted with --brand-gradient rather than `color` so the
+   `legacy` Nessie preset can still be a real three-stop gradient; on the flat
+   presets the gradient is one repeated colour and this renders identically. */
 .gradient-text {
-  color: var(--color-brand);
+  background-image: var(--brand-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
 /* Settings search: brief highlight applied to the scroll target after a
@@ -612,29 +627,32 @@ button, [role="button"], a[href], [onclick] {
 /* Brand accents — mirrors the marketing site hero styling */
 .brand-grid-bg {
   background-image:
-    radial-gradient(circle at 50% 0%, rgba(74, 222, 128, 0.10), transparent 55%),
-    radial-gradient(circle at 0% 100%, rgba(34, 197, 94, 0.08), transparent 50%),
-    radial-gradient(circle at 100% 100%, rgba(22, 163, 74, 0.06), transparent 50%);
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--color-brand) 10%, transparent), transparent 55%),
+    radial-gradient(circle at 0% 100%, color-mix(in srgb, var(--color-brand-mid) 8%, transparent), transparent 50%),
+    radial-gradient(circle at 100% 100%, color-mix(in srgb, var(--color-brand-deep) 6%, transparent), transparent 50%);
 }
 .brand-gradient-text {
-  color: var(--color-brand);
+  background-image: var(--brand-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 .brand-gradient-bg {
-  background: var(--color-brand);
+  background-image: var(--brand-gradient);
 }
 .brand-glow {
-  box-shadow: 0 0 60px rgba(74, 222, 128, 0.15);
+  box-shadow: 0 0 60px color-mix(in srgb, var(--color-brand) 15%, transparent);
 }
 
-/* The two flow effects are the one place a gradient survives: they animate
-   background-position, so they structurally need more than one stop. Tonal
-   green rather than the old amber → red → purple sweep. */
+/* The flow effects animate background-position, so they need a multi-stop
+   image regardless of preset — --brand-flow supplies one for every preset. */
 @keyframes brand-gradient-flow {
   0%   { background-position: 0% 50%; }
   100% { background-position: 200% 50%; }
 }
 .group:hover .brand-gradient-flow-text-hover {
-  background: linear-gradient(90deg, #22c55e 0%, #4ade80 25%, #86efac 50%, #4ade80 75%, #22c55e 100%);
+  background-image: var(--brand-flow);
   background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -643,7 +661,7 @@ button, [role="button"], a[href], [onclick] {
   animation: brand-gradient-flow 2.4s linear infinite;
 }
 .brand-gradient-flow-bar {
-  background: linear-gradient(90deg, #22c55e 0%, #4ade80 25%, #86efac 50%, #4ade80 75%, #22c55e 100%);
+  background-image: var(--brand-flow);
   background-size: 200% 100%;
   animation: brand-gradient-flow 2.4s linear infinite;
 }

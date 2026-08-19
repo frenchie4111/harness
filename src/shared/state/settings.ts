@@ -148,6 +148,82 @@ export const EMPTY_CUSTOM_THEMES: CustomTheme[] = []
 export const DEFAULT_LIGHT_THEME = 'solarized-light'
 export const DEFAULT_DARK_THEME = 'dark'
 
+/** A Nessie colour preset — the app's primary/brand colour.
+ *
+ *  `brand`/`mid`/`deep` fill the `--color-brand*` ramp, which every branded
+ *  surface reads: the mark, brand text and backgrounds, glows, the accent.
+ *  `gradient` and `flow` are the painted forms — flat presets simply repeat
+ *  their own colour, so the gradient classes need no special case and
+ *  `legacy` (a real three-stop gradient) drops straight in.
+ *
+ *  Lives in shared because main validates the persisted id against this list
+ *  and the renderer renders swatches from it; there is no second copy. */
+export interface NessieColor {
+  id: string
+  label: string
+  blurb: string
+  brand: string
+  mid: string
+  deep: string
+  /** What --color-accent becomes. Its own field rather than an alias of
+   *  `brand` because `legacy` needs the accent Harness actually shipped
+   *  (purple) — taking the gradient's first stop instead turns every
+   *  accent surface, user message bubbles included, amber. */
+  accent: string
+  gradient: string
+  flow: string
+}
+
+const flat = (
+  id: string,
+  label: string,
+  blurb: string,
+  brand: string,
+  mid: string,
+  deep: string,
+  light: string
+): NessieColor => ({
+  id,
+  label,
+  blurb,
+  brand,
+  mid,
+  deep,
+  accent: brand,
+  gradient: `linear-gradient(135deg, ${brand} 0%, ${brand} 100%)`,
+  flow: `linear-gradient(90deg, ${mid} 0%, ${brand} 25%, ${light} 50%, ${brand} 75%, ${mid} 100%)`
+})
+
+export const NESSIE_COLORS: readonly NessieColor[] = [
+  flat('loch', 'Loch Green', 'She lives in a lake.', '#4ade80', '#22c55e', '#16a34a', '#86efac'),
+  flat('abyss', 'Abyss Blue', 'Deeper than the sonar goes.', '#60a5fa', '#3b82f6', '#2563eb', '#bfdbfe'),
+  flat('glow', 'Bioluminescent', 'For the nocturnal cryptid.', '#22d3ee', '#06b6d4', '#0891b2', '#a5f3fc'),
+  flat('heather', 'Highland Heather', 'Very Scottish of her.', '#c084fc', '#a855f7', '#9333ea', '#e9d5ff'),
+  flat('salmon', 'Leaping Salmon', 'What she had for lunch.', '#fb7185', '#f43f5e', '#e11d48', '#fecdd3'),
+  {
+    id: 'legacy',
+    label: 'Legacy Harness',
+    blurb: 'The old amber → red → purple. For the nostalgic.',
+    brand: '#f59e0b',
+    mid: '#ef4444',
+    deep: '#a855f7',
+    accent: '#c084fc',
+    gradient: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%)',
+    flow: 'linear-gradient(90deg, #f59e0b 0%, #ef4444 25%, #a855f7 50%, #ef4444 75%, #f59e0b 100%)'
+  }
+]
+
+export const DEFAULT_NESSIE_COLOR = 'loch'
+
+/** Resolve a persisted id to a preset, falling back to the default so an id
+ *  removed in a later release can't leave the app with no brand colour. */
+export function nessieColorById(id: string): NessieColor {
+  return (
+    NESSIE_COLORS.find((c) => c.id === id) ??
+    NESSIE_COLORS.find((c) => c.id === DEFAULT_NESSIE_COLOR)!
+  )
+}
+
 /** Default kickoff prompt for "Open PR as worktree". Editable globally in
  *  Settings (`prReviewPrompt`) and per-creation in the New Worktree screen. */
 export const DEFAULT_PR_REVIEW_PROMPT =
@@ -290,6 +366,9 @@ export interface SettingsState {
   jsonModeChatDensity: JsonModeChatDensity
   /** Global UI density. Maps to a root `html` font-size — see SCALES. */
   uiScale: UiScale
+  /** Id of the active Nessie colour preset — the app's primary colour.
+   *  Drives the `--color-brand*` ramp and the accent. See NESSIE_COLORS. */
+  nessieColor: string
   /** When true, plain Enter sends a message in the JSON-mode chat
    *  composer (Shift+Enter inserts a newline). When false (default),
    *  the historical behavior applies: Cmd/Ctrl+Enter sends and plain
@@ -417,6 +496,7 @@ export type SettingsEvent =
   | { type: 'settings/useSystemClaudeForJsonModeChanged'; payload: boolean }
   | { type: 'settings/jsonModeChatDensityChanged'; payload: JsonModeChatDensity }
   | { type: 'settings/uiScaleChanged'; payload: UiScale }
+  | { type: 'settings/nessieColorChanged'; payload: string }
   | { type: 'settings/jsonModeSendOnEnterChanged'; payload: boolean }
   | { type: 'settings/autoScrollToBottomChanged'; payload: boolean }
   | {
@@ -490,6 +570,7 @@ export const initialSettings: SettingsState = {
   useSystemClaudeForJsonMode: false,
   jsonModeChatDensity: 'compact',
   uiScale: 'small',
+  nessieColor: DEFAULT_NESSIE_COLOR,
   jsonModeSendOnEnter: false,
   autoScrollToBottom: true,
   jsonModeDefaultPermissionMode: 'acceptEdits',
@@ -631,6 +712,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, jsonModeChatDensity: event.payload }
     case 'settings/uiScaleChanged':
       return { ...state, uiScale: event.payload }
+    case 'settings/nessieColorChanged':
+      return { ...state, nessieColor: event.payload }
     case 'settings/jsonModeSendOnEnterChanged':
       return { ...state, jsonModeSendOnEnter: event.payload }
     case 'settings/autoScrollToBottomChanged':

@@ -205,7 +205,7 @@ export const CloudinaryIcon = brand(SiCloudinary, '#3448C5')
 // row of brand logos whose parent sets an unrelated text colour.
 export const NessIcon: ToolIcon = ({ className }) => (
   <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-    <g transform="translate(12,12) scale(0.42) translate(-32.2,-24.2)" fill="#4ade80">
+    <g transform="translate(12,12) scale(0.42) translate(-32.2,-24.2)" fill="var(--color-brand)">
       {NESS_MARK_PATHS.map((d) => (
         <path key={d} d={d} />
       ))}

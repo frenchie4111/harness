@@ -21,6 +21,8 @@ import { AgentIcon } from './AgentIcon'
 import { InterfaceToggle } from './InterfaceToggle'
 import { BUILT_IN_THEMES_BY_MODE, type ThemeOption } from '../themes'
 import { SEMANTIC_KEYS } from '../theme-apply'
+import { NESS_MARK_MASK } from './NessMark'
+import { NESSIE_COLORS } from '../../shared/state/settings'
 import type { CustomTheme, UiScale } from '../../shared/state/settings'
 import { SCALES, scaleSpec } from '../../shared/state/settings'
 import { isJsonClaudePermissionMode } from '../../shared/state/json-claude'
@@ -37,6 +39,7 @@ type SectionId = 'general' | 'appearance' | 'agent' | 'worktrees' | 'editor' | '
 type SubSectionId =
   | 'appearance-theme'
   | 'appearance-custom-themes'
+  | 'appearance-nessie'
   | 'appearance-ui-size'
   | 'appearance-terminal-font'
   | 'appearance-sidebar'
@@ -75,6 +78,7 @@ const SECTIONS: Section[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette, children: [
     { id: 'appearance-theme', label: 'Theme' },
     { id: 'appearance-custom-themes', label: 'Custom themes' },
+    { id: 'appearance-nessie', label: "Nessie's colour" },
     { id: 'appearance-ui-size', label: 'UI size' },
     { id: 'appearance-terminal-font', label: 'Terminal font' },
     { id: 'appearance-sidebar', label: 'Sidebar' }
@@ -177,6 +181,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const subSectionRefs = useRef<Record<SubSectionId, HTMLElement | null>>({
     'appearance-theme': null,
     'appearance-custom-themes': null,
+    'appearance-nessie': null,
     'appearance-ui-size': null,
     'appearance-terminal-font': null,
     'appearance-sidebar': null,
@@ -389,6 +394,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     defaultClaudeTabType,
     jsonModeChatDensity,
     uiScale,
+    nessieColor,
     jsonModeSendOnEnter,
     autoScrollToBottom,
     jsonModeDefaultPermissionMode,
@@ -1561,6 +1567,67 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   </button>
                 </div>
               </div>
+
+              <div ref={(el) => { subSectionRefs.current['appearance-nessie'] = el }} id="appearance-nessie" />
+              {/* Nessie's colour — the app's primary. Swatches paint from the
+                  preset's own gradient string, so `legacy` previews as the real
+                  three-stop sweep rather than a flat approximation of it. */}
+              <fieldset className="mt-6 mb-6">
+                <legend className="text-sm font-semibold text-fg-bright mb-1">Nessie&rsquo;s colour</legend>
+                <p className="text-sm text-dim mb-3">
+                  The primary colour used across the whole app — the mark, highlights, and accents.
+                  A custom theme can override it with{' '}
+                  <code className="bg-app/50 px-1 rounded">brand</code>,{' '}
+                  <code className="bg-app/50 px-1 rounded">brand-mid</code>,{' '}
+                  <code className="bg-app/50 px-1 rounded">brand-deep</code> or{' '}
+                  <code className="bg-app/50 px-1 rounded">accent</code>.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {NESSIE_COLORS.map((c) => {
+                    const isActive = nessieColor === c.id
+                    return (
+                      <label
+                        key={c.id}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+                          isActive
+                            ? 'border-brand bg-surface'
+                            : 'border-border bg-panel-raised hover:bg-surface'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="nessie-color"
+                          className="sr-only"
+                          checked={isActive}
+                          onChange={() => { void backend.setNessieColor(c.id) }}
+                        />
+                        {/* Nessie herself, not a colour chip — the preset's
+                            background is painted through her silhouette with a
+                            mask, so `legacy` previews as its real gradient. */}
+                        <span
+                          aria-hidden="true"
+                          className="w-10 h-6 shrink-0"
+                          style={{
+                            backgroundImage: c.gradient,
+                            WebkitMaskImage: NESS_MARK_MASK,
+                            maskImage: NESS_MARK_MASK,
+                            WebkitMaskSize: 'contain',
+                            maskSize: 'contain',
+                            WebkitMaskRepeat: 'no-repeat',
+                            maskRepeat: 'no-repeat',
+                            WebkitMaskPosition: 'center',
+                            maskPosition: 'center'
+                          }}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm text-fg-bright truncate">{c.label}</span>
+                          <span className="block text-xs text-dim truncate">{c.blurb}</span>
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </fieldset>
 
               <div ref={(el) => { subSectionRefs.current['appearance-ui-size'] = el }} id="appearance-ui-size" />
               {/* UI scale — drives the root html font-size, so every rem

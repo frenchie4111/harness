@@ -22,6 +22,7 @@ import { initialConfigHealth, type ConfigLoadError } from '../shared/state/confi
 import { initialAliases } from '../shared/state/aliases'
 import {
   initialSettings,
+  nessieColorById,
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
   DEFAULT_PR_REVIEW_PROMPT,
@@ -156,6 +157,7 @@ export function buildInitialAppState(
         config.uiScale === 'x-large'
           ? config.uiScale
           : 'small',
+      nessieColor: nessieColorById(config.nessieColor ?? '').id,
       jsonModeSendOnEnter: config.jsonModeSendOnEnter === true,
       autoScrollToBottom: config.autoScrollToBottom !== false,
       jsonModeDefaultPermissionMode: isJsonClaudePermissionMode(

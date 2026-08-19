@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
+  DEFAULT_NESSIE_COLOR,
+  NESSIE_COLORS,
   initialSettings,
+  nessieColorById,
   settingsReducer,
   type SettingsEvent,
   type SettingsState
@@ -588,6 +591,48 @@ describe('settingsReducer', () => {
       payload: 'small'
     })
     expect(back.uiScale).toBe('small')
+  })
+
+  it('nessieColorChanged swaps the brand colour preset', () => {
+    expect(initialSettings.nessieColor).toBe(DEFAULT_NESSIE_COLOR)
+    const legacy = apply(initialSettings, {
+      type: 'settings/nessieColorChanged',
+      payload: 'legacy'
+    })
+    expect(legacy.nessieColor).toBe('legacy')
+    const back = apply(legacy, {
+      type: 'settings/nessieColorChanged',
+      payload: DEFAULT_NESSIE_COLOR
+    })
+    expect(back.nessieColor).toBe(DEFAULT_NESSIE_COLOR)
+  })
+
+  it('nessieColorById falls back to the default for an unknown id', () => {
+    // Guards the upgrade path: a preset dropped in a later release must not
+    // leave a user with no brand colour at all.
+    expect(nessieColorById('no-such-preset').id).toBe(DEFAULT_NESSIE_COLOR)
+    expect(nessieColorById('legacy').id).toBe('legacy')
+  })
+
+  it('legacy keeps the accent Harness actually shipped, not its first stop', () => {
+    // Regression: accent was aliased to `brand`, which made every accent
+    // surface (user message bubbles, links, the caret) amber under legacy.
+    const legacy = nessieColorById('legacy')
+    expect(legacy.brand).toBe('#f59e0b')
+    expect(legacy.accent).toBe('#c084fc')
+    // Flat presets have nothing to disambiguate, so accent tracks brand.
+    for (const c of NESSIE_COLORS.filter((x) => x.id !== 'legacy')) {
+      expect(c.accent).toBe(c.brand)
+    }
+  })
+
+  it('every Nessie preset supplies a paintable gradient and flow', () => {
+    // The gradient classes always paint background-image, so a preset with a
+    // bare hex here would silently render nothing.
+    for (const c of NESSIE_COLORS) {
+      expect(c.gradient).toContain('gradient(')
+      expect(c.flow).toContain('gradient(')
+    }
   })
 
   it('jsonModeSendOnEnterChanged toggles the send-on-enter flag', () => {
