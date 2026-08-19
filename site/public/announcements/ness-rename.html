@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Harness is now Ness | Ness</title>
-  <meta name="description" content="Same app, same data, new name. Harness is now Ness — auto-update carries you over, and there is nothing to reinstall." />
+  <meta name="description" content="We’ve decided to rename harness to ness. In theory you shouldn’t have to do anything — the rename is backwards compatible." />
 
   <!-- Open Graph -->
   <meta property="og:site_name" content="Ness" />
   <meta property="og:title" content="Harness is now Ness" />
-  <meta property="og:description" content="Same app, same data, new name. Harness is now Ness — auto-update carries you over, and there is nothing to reinstall." />
+  <meta property="og:description" content="We’ve decided to rename harness to ness. In theory you shouldn’t have to do anything — the rename is backwards compatible." />
   <meta property="og:image" content="https://harness.mikelyons.org/og-image.png?v=ness-rename" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -22,7 +22,7 @@
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Harness is now Ness" />
-  <meta name="twitter:description" content="Same app, same data, new name. Harness is now Ness — auto-update carries you over, and there is nothing to reinstall." />
+  <meta name="twitter:description" content="We’ve decided to rename harness to ness. In theory you shouldn’t have to do anything — the rename is backwards compatible." />
   <meta name="twitter:image" content="https://harness.mikelyons.org/og-image.png?v=ness-rename" />
   <meta name="twitter:image:alt" content="Ness — manage multiple Claude Code sessions across git worktrees." />
 
@@ -51,7 +51,7 @@
     .prose-custom a { color: #fbbf24; }
     .prose-custom a:hover { color: #fcd34d; }
 
-    /* Hero: the old dot-grid wordmark handing off to the Nessie mark.
+    /* Hero: the old dot-grid icon handing off to the Nessie mark.
        Same node/link vocabulary as the remote-backends diagram, so the
        two announcement heroes read as the same family. */
     .rename-hero {
@@ -94,41 +94,13 @@
       color: #4ade80;
       padding: 0 1rem;
     }
-    .hero-hint {
-      margin-top: 0.75rem;
-      text-align: center;
-      font-size: 0.75rem;
-      color: #737373;
-    }
-    @media (max-width: 640px) {
+        @media (max-width: 640px) {
       .rename-hero { flex-direction: column; }
       .rename-link { padding: 0.75rem 0; transform: rotate(90deg); }
     }
 
-    .feature-card {
-      background: rgba(10, 10, 10, 0.6);
-      border: 1px solid #262626;
-      border-radius: 0.75rem;
-      padding: 1.25rem 1.5rem;
-    }
-    .feature-card h4 { color: #f5f5f5; font-weight: 600; margin-bottom: 0.25rem; font-size: 0.9375rem; }
-    .feature-card p { color: #737373; font-size: 0.875rem; line-height: 1.6; margin: 0; }
-    .feature-card code { background: #262626; color: #e5e5e5; padding: 0.0625rem 0.3125rem; border-radius: 0.25rem; font-size: 0.8125em; }
-
-    /* Callout for the one thing users might mistake for a broken update. */
-    .note-card {
-      background: rgba(251, 191, 36, 0.05);
-      border: 1px solid #422006;
-      border-left: 3px solid #fbbf24;
-      border-radius: 0.75rem;
-      padding: 1.25rem 1.5rem;
-      margin-bottom: 1rem;
-    }
-    .note-card p { color: #a3a3a3; line-height: 1.75; margin: 0; }
-    .note-card p + p { margin-top: 0.75rem; }
-    .note-card strong { color: #f5f5f5; font-weight: 600; }
-    .note-card code { background: #262626; color: #e5e5e5; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875em; }
-  </style>
+        /* Callout for the one thing users might mistake for a broken update. */
+      </style>
 </head>
 <body class="min-h-screen grid-bg">
 
@@ -179,10 +151,6 @@
     <h1 class="text-5xl md:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
       Harness is now <span class="gradient-text">Ness.</span>
     </h1>
-    <p class="text-lg text-neutral-400 leading-relaxed">
-      New name, new mark, same app. Your settings, worktrees, token
-      and pane layout come with you — there is nothing you need to do.
-    </p>
   </section>
 
   <!-- Hero: old wordmark → new mark -->
@@ -202,123 +170,37 @@
         <div class="name-sub">same app</div>
       </div>
     </div>
-    <p class="hero-hint">Your config directory never moved. Neither did anything else.</p>
   </section>
 
   <!-- Article -->
   <article class="max-w-3xl mx-auto px-6 pb-24">
 
-    <section class="mb-12">
-      <h2 class="text-2xl font-bold text-neutral-100 mb-4">Why the name changed</h2>
-      <div class="prose-custom">
-        <p>
-          "Harness" was already taken, and taken well. There is a large,
-          well-funded DevOps company by that name, and it owns the search
-          results for it completely. Every attempt to send someone here
-          started with a paragraph explaining which Harness we meant, and
-          ended with them landing somewhere else.
-        </p>
-        <p>
-          A name you have to disambiguate isn't a name. <strong>Ness</strong>
-          is short, it's ours, and it's what was left when you take the
-          "har" off the front — which is roughly how the project already
-          got referred to out loud.
-        </p>
-      </div>
-    </section>
-
-    <section class="mb-12">
-      <h2 class="text-2xl font-bold text-neutral-100 mb-4">Nothing is required of you</h2>
-      <div class="prose-custom">
-        <p>
-          Auto-update carries you across. The rename deliberately did
-          <em>not</em> touch anything that stores your data — the app's
-          data directory and its keychain identity are pinned to their
-          original values precisely so that a name change can't orphan a
-          single byte of your setup.
-        </p>
-      </div>
-      <div class="grid sm:grid-cols-2 gap-4">
-        <div class="feature-card">
-          <h4>Settings and preferences</h4>
-          <p>Theme, hotkeys, fonts, UI scale, agent interface — all read from the same <code>config.json</code> they always did.</p>
-        </div>
-        <div class="feature-card">
-          <h4>Your GitHub token</h4>
-          <p>Still encrypted at rest under the same keychain entry. PR status keeps working without a re-paste.</p>
-        </div>
-        <div class="feature-card">
-          <h4>Worktrees and repos</h4>
-          <p>Every worktree Ness knows about is still there, still grouped, still sorted by PR status.</p>
-        </div>
-        <div class="feature-card">
-          <h4>Pane and tab layout</h4>
-          <p>Splits, tab order and which terminal was where all restore exactly as you left them.</p>
-        </div>
-      </div>
-    </section>
-
-    <section class="mb-12">
-      <h2 class="text-2xl font-bold text-neutral-100 mb-4">One cosmetic wart on macOS</h2>
-      <div class="note-card">
-        <p>
-          <strong>If you auto-update, the app in your Applications folder
-          will still be called <code>Harness.app</code>.</strong> macOS updates
-          replace the app in place, at the path it already lives at — so the
-          bundle keeps its old filename and its old icon in Finder and the
-          Dock, even though everything inside it is the new build.
-        </p>
-        <p>
-          This is harmless and it is not a failed update. If the old name
-          bothers you, download the current release once and drag it over;
-          you'll get <code>Ness.app</code> with the new icon, and it will
-          pick up all of the same settings. Otherwise, ignore it.
-        </p>
-      </div>
-    </section>
-
-    <section class="mb-12">
-      <h2 class="text-2xl font-bold text-neutral-100 mb-4">The new mark</h2>
-      <div class="prose-custom">
-        <p>
-          The dot grid is gone. In its place is a small green creature
-          surfacing out of a loch, which is the joke the name was always
-          going to demand. It's a single flat green — <code>#4ade80</code> —
-          and it now runs through the whole app: the titlebar, focus rings,
-          the pending-worktree pulse, the icon in your Dock.
-        </p>
-        <p>
-          The green is also configurable. <strong>Settings → Appearance →
-          Nessie's colour</strong> repoints the app's primary colour if you'd
-          rather it matched your terminal theme than ours.
-        </p>
-      </div>
-    </section>
-
-    <section class="mb-12">
-      <h2 class="text-2xl font-bold text-neutral-100 mb-4">What's next</h2>
-      <div class="prose-custom">
-        <p>
-          The repository is moving to its own GitHub organisation, and the
-          site will follow it to a dedicated <code>getness.dev</code> domain.
-          Neither is live yet. When they are, the current links will redirect
-          and we'll say so here first — nothing you have bookmarked or cloned
-          is going to break without warning.
-        </p>
-        <p>
-          Until then everything stays where it is:
-          <a href="https://github.com/frenchie4111/harness">the repo</a>,
-          this site, and the update channel your app is already pointed at.
-        </p>
-      </div>
-    </section>
+    <div class="prose-custom">
+      <p>
+        We’ve decided to rename harness to ness. The biggest reason is
+        that I (mike) got tired of trying to explain that “Harness” is an
+        IDE that I build for running other harnesses. The old name was
+        clever, but a bit too clever
+      </p>
+      <p>
+        In theory you shouldn’t have to do anything for the rename. I
+        tried to make it backwards compatible in all the ways I could
+        find. Some config files will still be named Harness unless you
+        rename them manually to ness. But of course if you have any
+        problems at all, feel free to
+        <a href="https://github.com/frenchie4111/harness/issues">leave an issue on github</a>
+      </p>
+      <p>
+        Also, if you are interested in being part of the future of ness,
+        <a href="https://join.slack.com/t/harness-chat/shared_invite/zt-43w6xg34i-mGXrSEKVO0wGC7r_SiePwA">join the slack!</a>
+      </p>
+    </div>
 
     <!-- CTA -->
     <div class="mt-20 p-8 bg-neutral-950 border border-neutral-800 rounded-2xl text-center">
       <h3 class="text-2xl font-bold text-neutral-100 mb-3">Get the latest Ness</h3>
       <p class="text-neutral-500 mb-6 max-w-md mx-auto">
-        A fresh download gets you the new name and icon in Finder. Free,
-        open source, macOS for now.
+        Free, open source, macOS for now.
       </p>
       <a href="/#install" class="inline-block px-8 py-3 bg-white text-black rounded-lg font-semibold hover:bg-neutral-200 transition-colors">
         Download for macOS
