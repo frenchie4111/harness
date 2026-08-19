@@ -133,8 +133,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "frenchie4111",
-      "repo": "harness"
+      "owner": "ness-dev",
+      "repo": "ness"
     }
   },
   "dependencies": {

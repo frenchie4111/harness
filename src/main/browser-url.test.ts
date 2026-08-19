@@ -4,8 +4,8 @@ import { normalizeBrowserUrl } from './browser-url'
 describe('normalizeBrowserUrl', () => {
   it('prepends https:// to a bare host', () => {
     expect(normalizeBrowserUrl('github.com')).toBe('https://github.com')
-    expect(normalizeBrowserUrl('github.com/frenchie4111/harness')).toBe(
-      'https://github.com/frenchie4111/harness'
+    expect(normalizeBrowserUrl('github.com/ness-dev/ness')).toBe(
+      'https://github.com/ness-dev/ness'
     )
   })
 
