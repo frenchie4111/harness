@@ -299,6 +299,27 @@
  * w-[1.125rem] / w-[1.625rem] sites). Add a rung here only when its
  * usage hits double digits.
  */
+/* Leading clearance for the macOS traffic lights on bars that start at the
+ * top-left of the window.
+ *
+ * These are PIXELS on purpose, and are one of the documented exceptions to
+ * the rem-everything rule. The traffic lights are drawn by macOS at a fixed
+ * physical size — they are not part of our rem grid and do not move when
+ * uiScale changes. A rem-based clearance therefore drifts: the wordmark
+ * slides right at large scales and creeps under the buttons at small ones.
+ * Only a fixed offset stays glued to them.
+ *
+ * -lead is the title bar (tucked in close to the lights); -lead-wide is the
+ * banner rows, which want a bit more air. Named utilities rather than raw
+ * pl-* so the fullscreen override below can target them. */
+@utility titlebar-lead {
+  padding-left: 72px;
+}
+
+@utility titlebar-lead-wide {
+  padding-left: 80px;
+}
+
 @utility icon-2xs {
   width: 0.625rem;
   height: 0.625rem;
@@ -580,10 +601,11 @@ button, [role="button"], a[href], [onclick] {
   -webkit-app-region: no-drag;
 }
 
-/* macOS native fullscreen hides the traffic lights, so the 80px leading
- * clearance used on every top-of-window drag bar collapses to 0. Scoped
- * to .drag-region.pl-20 so unrelated pl-20 uses are untouched. */
-:root[data-fullscreen="true"] .drag-region.pl-20 {
+/* macOS native fullscreen hides the traffic lights, so the leading clearance
+ * used on every top-of-window drag bar collapses to 0. Scoped to
+ * .drag-region so unrelated pl-20 / titlebar-lead uses are untouched. */
+:root[data-fullscreen="true"] .drag-region.titlebar-lead,
+:root[data-fullscreen="true"] .drag-region.titlebar-lead-wide {
   padding-left: 0;
 }
 

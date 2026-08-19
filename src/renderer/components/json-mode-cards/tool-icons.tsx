@@ -4,6 +4,8 @@
 // Simple Icons — it is the mark from resources/icon.svg.
 
 import type { ComponentType } from 'react'
+
+import { NESS_MARK_PATHS } from '../NessMark'
 import {
   AlarmClock,
   Bell,
@@ -197,15 +199,16 @@ export const CloudinaryIcon = brand(SiCloudinary, '#3448C5')
 // prod (file://), and the gradient version of this icon rendered blank in
 // packaged builds because of it. Keep it single-fill.
 //
-// The paths are the master mark from resources/icon.svg in its own 64-unit
-// space; the transform maps that bounding box (x 7.6–56.8, y 10.4–38) onto
-// the 24-unit viewBox the rest of this file uses.
+// Path data comes from NessMark so the mark lives in one place; the transform
+// maps its bounding box (x 7.6–56.8, y 10.4–38) onto the 24-unit viewBox the
+// rest of this file uses. Fill is a literal, not currentColor: these sit in a
+// row of brand logos whose parent sets an unrelated text colour.
 export const NessIcon: ToolIcon = ({ className }) => (
   <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
     <g transform="translate(12,12) scale(0.42) translate(-32.2,-24.2)" fill="#4ade80">
-      <path d="M7.6 38C8.1 33.4 10.6 30.6 14.4 30.8C18.1 31 20.6 33.8 21.6 38Z" />
-      <path d="M19.4 38C20.4 32.4 23.3 28.2 27.8 27.9C32.6 27.6 36 31.4 37.4 38Z" />
-      <path d="M39.4 38C38.9 30.2 39 22.4 41 17.8C43.1 13 47.7 10.4 51.6 11.6C55 12.7 56.8 15.4 56.5 17.9C56.2 20.2 53.5 21.2 50.3 20.9C48 20.7 47 22.2 47.3 25.2C47.7 29.6 48.5 33.7 49.4 38Z" />
+      {NESS_MARK_PATHS.map((d) => (
+        <path key={d} d={d} />
+      ))}
     </g>
   </svg>
 )

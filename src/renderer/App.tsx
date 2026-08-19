@@ -956,7 +956,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return (
       <HotkeysProvider bindings={resolvedHotkeys}>
         <div className="flex h-full flex-col">
-          <div className="drag-region h-10 shrink-0 flex items-stretch pl-20">
+          <div className="drag-region h-10 shrink-0 flex items-stretch titlebar-lead">
             <AppTitleSegment />
           </div>
           <div className="flex-1" />
@@ -980,7 +980,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return (
       <HotkeysProvider bindings={resolvedHotkeys}>
       <div className="flex h-full flex-col">
-        <div className="drag-region h-10 shrink-0 flex items-stretch pl-20">
+        <div className="drag-region h-10 shrink-0 flex items-stretch titlebar-lead">
           <AppTitleSegment />
         </div>
         {previewOnboarding && repoRoots.length > 0 && (
@@ -1346,7 +1346,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       )}
       {/* Update-ready banner */}
       {updaterStatus?.state === 'downloaded' && !updateBannerDismissed && (
-        <div className="bg-success/15 border-b border-success/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
+        <div className="bg-success/15 border-b border-success/30 titlebar-lead-wide pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
           <span className="text-success text-sm flex-1">
             <a
               onClick={() => backend.openExternal(harnessReleaseNotesUrl(updaterStatus.version))}
@@ -1376,7 +1376,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       {updaterStatus?.state === 'available' &&
         updaterStatus.manualInstallRequired &&
         !manualUpdateBannerDismissed && (
-          <div className="bg-info/15 border-b border-info/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
+          <div className="bg-info/15 border-b border-info/30 titlebar-lead-wide pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
             <span className="text-info text-sm flex-1">
               Ness {updaterStatus.version} is available. Download the new package from
               GitHub Releases to update.
@@ -1403,7 +1403,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           single newest entry the user hasn't dismissed and that hasn't
           expired. Muted globally via the kebab menu. */}
       {activeAnnouncement && (
-        <div className="bg-accent/15 border-b border-accent/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
+        <div className="bg-accent/15 border-b border-accent/30 titlebar-lead-wide pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
           <span className="text-accent text-sm flex-1">
             <a
               onClick={() => backend.openExternal(activeAnnouncement.href)}
@@ -1459,7 +1459,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           equivalent). The hook command is gated on $HARNESS_TERMINAL_ID
           so sessions spawned outside Ness are unaffected. */}
       {hooksConsent === 'pending' && (
-        <div className="bg-warning/15 border-b border-warning/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
+        <div className="bg-warning/15 border-b border-warning/30 titlebar-lead-wide pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
           <span className="text-warning text-sm flex-1">
             Ness installs status hooks at <code className="text-xs">~/.claude/settings.json</code> to detect
             agent state (waiting, processing, needs approval). They only fire for agents you
@@ -1487,7 +1487,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             and the workspace content area extends underneath. */}
         {!singleScreenMode && !sidebarVisible && (
           <div
-            className="absolute top-0 left-0 h-10 z-20 drag-region flex items-stretch border-b border-border-strong bg-panel pl-20"
+            className="absolute top-0 left-0 h-10 z-20 drag-region flex items-stretch border-b border-border-strong bg-panel titlebar-lead"
             style={{ width: effectiveSidebarWidth + 1 }}
           >
             <div className="flex-1 min-w-0 flex items-stretch overflow-hidden">
@@ -1497,7 +1497,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           </div>
         )}
         {!singleScreenMode && sidebarVisible && (
-          <div className="shrink-0 flex flex-col overflow-hidden" style={{ width: effectiveSidebarWidth }}><div className="drag-region h-10 shrink-0 flex items-stretch border-b border-border-strong bg-panel pl-20"><AppTitleSegment fillParent /></div><div className="flex-1 min-h-0 flex"><Sidebar
+          <div className="shrink-0 flex flex-col overflow-hidden" style={{ width: effectiveSidebarWidth }}><div className="drag-region h-10 shrink-0 flex items-stretch border-b border-border-strong bg-panel titlebar-lead"><AppTitleSegment fillParent /></div><div className="flex-1 min-h-0 flex"><Sidebar
             model={worktreeListModel}
             activeWorktreeId={activeWorktreeId}
             snoozeDefaultDays={settings.snoozeDefaultDays}
