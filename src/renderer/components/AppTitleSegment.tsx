@@ -1,4 +1,6 @@
-// The "Ness" wordmark plus — in dev builds — the active branch, rendered
+import { NessMark } from './NessMark'
+
+// The Ness mark + wordmark plus — in dev builds — the active branch, rendered
 // as one block. Used in every spot the app title appears (above the sidebar,
 // workspace top bar when sidebar is hidden, empty-state fallback bar,
 // onboarding), so the wordmark + dev-branch suffix and styling are defined
@@ -24,6 +26,9 @@ export function AppTitleSegment({
         className ? ` ${className}` : ''
       }`}
     >
+      {/* Sized by height with width auto — the mark is ~1.68:1, so an icon-*
+          square would letterbox it. h-4 is rem-based, so it still tracks uiScale. */}
+      <NessMark className="h-3 w-auto shrink-0 mr-1.5 text-brand" />
       <span className="gradient-text">Ness</span>
       {import.meta.env.DEV && __HARNESS_DEV_BRANCH__ && (
         <span className="text-faint font-normal text-xs ml-1">({__HARNESS_DEV_BRANCH__})</span>
