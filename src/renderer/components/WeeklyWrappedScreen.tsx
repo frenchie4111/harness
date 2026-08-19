@@ -223,7 +223,7 @@ function WrappedPoster({ stats }: { stats: WeeklyStats }): JSX.Element {
         <div className="inline-flex items-center gap-1.5 text-xs text-dim">
           <Sparkles className="icon-xs text-amber-400/70" />
           <span>
-            See you next week <span className="text-faint">– https://harness.mikelyons.org/</span>
+            See you next week <span className="text-faint">– https://getness.dev/</span>
           </span>
         </div>
       </div>

@@ -5,7 +5,7 @@ export const HARNESS_NEW_ISSUE_URL = `${HARNESS_REPO_URL}/issues/new`
 export const HARNESS_ISSUES_URL = `${HARNESS_REPO_URL}/issues`
 export const HARNESS_RELEASES_URL = `${HARNESS_REPO_URL}/releases`
 
-export const HARNESS_SITE_URL = 'https://harness.mikelyons.org'
+export const HARNESS_SITE_URL = 'https://getness.dev'
 export const HARNESS_SITE_RELEASES_URL = `${HARNESS_SITE_URL}/releases.html`
 
 export function harnessReleaseNotesUrl(version: string): string {
