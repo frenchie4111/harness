@@ -209,10 +209,15 @@ export interface JsonClaudeChatEntry {
    *  blinking cursor at the end of the text. */
   isPartial?: boolean
   /** True for a user entry that was typed while busy=true and has
-   *  been written to stdin but not yet resolved by claude (i.e.,
-   *  no `result` boundary has fired since it was queued). The
+   *  been written to stdin but claude hasn't picked it up yet. The
    *  renderer styles these as dashed/muted "queued" bubbles with
-   *  a cancel affordance. Cleared on the next `result`. */
+   *  a cancel affordance. Cleared as soon as claude drains its
+   *  input queue into the next API request (the `system/status:
+   *  requesting` boundary), which is when the message genuinely
+   *  enters the conversation — not at the end of the whole turn.
+   *  That same boundary moves the entry to the end of the list, since
+   *  it was appended where the user hit enter rather than where claude
+   *  read it. */
   isQueued?: boolean
   /** For kind === 'user'. Set when Ness injected the turn itself rather
    *  than the human typing it, so the renderer can style the bubble as an
@@ -990,12 +995,26 @@ export function jsonClaudeReducer(
       const session = state.sessions[event.payload.sessionId]
       if (!session) return state
       if (!session.entries.some((e) => e.isQueued)) return state
-      const nextEntries = session.entries.map((entry) => {
-        if (!entry.isQueued) return entry
+      // Queued entries were appended where the user hit enter, which is
+      // mid-stream of whatever claude was already saying. Claude doesn't
+      // read them until the agent-loop boundary this event marks, so
+      // move them to the tail — the position they actually occupy in the
+      // conversation, directly before the response that considers them.
+      // Relative order among several queued entries is preserved, and
+      // when they're already at the tail (nothing streamed in between)
+      // the array comes out identical, so no bubble visibly moves.
+      const kept: JsonClaudeChatEntry[] = []
+      const promoted: JsonClaudeChatEntry[] = []
+      for (const entry of session.entries) {
+        if (!entry.isQueued) {
+          kept.push(entry)
+          continue
+        }
         const { isQueued: _drop, ...rest } = entry
         void _drop
-        return rest
-      })
+        promoted.push(rest)
+      }
+      const nextEntries = [...kept, ...promoted]
       return {
         ...state,
         sessions: {

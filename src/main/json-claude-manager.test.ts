@@ -304,6 +304,131 @@ describe('JsonClaudeManager', () => {
     expect(cmd).not.toContain('--name')
   })
 
+  // Mid-turn messages used to stay dashed/"queued" until the whole turn
+  // ended, even though claude picks them up at the next agent-loop step.
+  // Claude drains its input queue right before building the next API
+  // request and emits {system, status: 'requesting'} at that moment — so
+  // that event, not `result`, is when the bubble should go solid.
+  describe('mid-turn queued messages', () => {
+    function startBusySession(store: Store, sessionId: string) {
+      const mgr = makeManager(store)
+      const cwd = '/tmp/wt'
+      store.dispatch({
+        type: 'jsonClaude/sessionStarted',
+        payload: { sessionId, worktreePath: cwd }
+      })
+      mgr.create(sessionId, cwd)
+      mgr.send(sessionId, 'first turn')
+      return { mgr, proc: sessionProcs()[0] }
+    }
+
+    const queuedCount = (store: Store, sessionId: string) =>
+      (store.getSnapshot().state.jsonClaude.sessions[sessionId]?.entries ?? []).filter(
+        (e) => e.isQueued
+      ).length
+
+    it("clears isQueued on the next 'requesting' status, before the turn ends", () => {
+      const store = new Store()
+      const sessionId = 'sess-queued-requesting'
+      const { mgr, proc } = startBusySession(store, sessionId)
+
+      mgr.send(sessionId, 'interjection')
+      expect(queuedCount(store, sessionId)).toBe(1)
+
+      // A tool result mid-turn doesn't mean the message was picked up.
+      proc.stdout.emit(
+        'data',
+        Buffer.from(
+          JSON.stringify({
+            type: 'user',
+            message: {
+              role: 'user',
+              content: [
+                { type: 'tool_result', tool_use_id: 'toolu_1', content: 'ok' }
+              ]
+            }
+          }) + '\n'
+        )
+      )
+      expect(queuedCount(store, sessionId)).toBe(1)
+
+      proc.stdout.emit(
+        'data',
+        Buffer.from(
+          JSON.stringify({ type: 'system', subtype: 'status', status: 'requesting' }) +
+            '\n'
+        )
+      )
+      expect(queuedCount(store, sessionId)).toBe(0)
+      // Still mid-turn: busy stays true, the bubble just isn't queued.
+      expect(store.getSnapshot().state.jsonClaude.sessions[sessionId]?.busy).toBe(true)
+    })
+
+    it('repositions the message after the content it interrupted', () => {
+      const store = new Store()
+      const sessionId = 'sess-queued-reorder'
+      const { mgr, proc } = startBusySession(store, sessionId)
+
+      // The user interjects while claude is mid-stream, so the bubble is
+      // appended ahead of the assistant message that was already in
+      // flight — then claude finishes it.
+      mgr.send(sessionId, 'interjection')
+      proc.stdout.emit(
+        'data',
+        Buffer.from(
+          JSON.stringify({
+            type: 'assistant',
+            message: { id: 'msg_a', content: [{ type: 'text', text: 'still talking' }] }
+          }) + '\n'
+        )
+      )
+      // Assistant entries carry `blocks`, user entries carry `text`.
+      const order = (): Array<string | undefined> =>
+        (store.getSnapshot().state.jsonClaude.sessions[sessionId]?.entries ?? []).map(
+          (e) =>
+            e.kind === 'user'
+              ? e.text
+              : e.blocks?.map((b) => ('text' in b ? b.text : '')).join('')
+        )
+      expect(order()).toEqual(['first turn', 'interjection', 'still talking'])
+
+      proc.stdout.emit(
+        'data',
+        Buffer.from(
+          JSON.stringify({ type: 'system', subtype: 'status', status: 'requesting' }) +
+            '\n'
+        )
+      )
+      expect(order()).toEqual(['first turn', 'still talking', 'interjection'])
+    })
+
+    it('leaves a message queued while a non-requesting status streams by', () => {
+      const store = new Store()
+      const sessionId = 'sess-queued-other-status'
+      const { mgr, proc } = startBusySession(store, sessionId)
+      mgr.send(sessionId, 'interjection')
+
+      proc.stdout.emit(
+        'data',
+        Buffer.from(
+          JSON.stringify({ type: 'system', subtype: 'status', status: 'compacting' }) +
+            '\n'
+        )
+      )
+      expect(queuedCount(store, sessionId)).toBe(1)
+    })
+
+    it('still unqueues on result for messages that land after the last request', () => {
+      const store = new Store()
+      const sessionId = 'sess-queued-result'
+      const { mgr, proc } = startBusySession(store, sessionId)
+      mgr.send(sessionId, 'interjection')
+
+      proc.stdout.emit('data', Buffer.from(JSON.stringify({ type: 'result' }) + '\n'))
+      expect(queuedCount(store, sessionId)).toBe(0)
+    })
+  })
+
   it('rate_limit_event over threshold emits one warning card; back-to-back duplicates dedup', () => {
     const store = new Store()
     const mgr = makeManager(store)

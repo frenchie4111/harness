@@ -504,6 +504,32 @@ export class JsonClaudeManager {
           ...(apiMessageId ? { apiMessageId } : {}),
           ...(parentToolUseId ? { parentToolUseId } : {})
         })
+      } else if (type === 'attachment') {
+        // Mid-turn interjections are the one kind of user input claude
+        // does NOT write as a `user` record: they land as an attachment
+        // of type 'queued_command', positioned at the agent-loop
+        // boundary where claude drained them (its `timestamp` field is
+        // still the moment the user hit enter). Without this branch a
+        // reload silently dropped every message the user sent while the
+        // agent was working. Every other attachment subtype is internal
+        // bookkeeping (token reminders, tool/agent listing deltas) and
+        // stays ignored.
+        const attachment = parsed['attachment'] as
+          | { type?: unknown; prompt?: unknown }
+          | undefined
+        if (attachment?.type !== 'queued_command') continue
+        const prompt = attachment.prompt
+        if (typeof prompt !== 'string' || prompt.length === 0) continue
+        const automated = parseAutomatedMessage(prompt)
+        seededEntries.push({
+          kind: 'user',
+          text: automated ? automated.body : prompt,
+          timestamp: Date.now(),
+          entryId: `${sessionId}-seed-u-${counter++}`,
+          ...(automated ? { automation: automated.source } : {}),
+          ...(automated?.from ? { automationFrom: automated.from } : {}),
+          ...(transcriptUuid ? { transcriptUuid } : {})
+        })
       } else if (type === 'system' && parsed['subtype'] === 'compact_boundary') {
         const meta = parsed['compactMetadata'] as
           | { trigger?: unknown; preTokens?: unknown; postTokens?: unknown }
@@ -833,14 +859,19 @@ export class JsonClaudeManager {
     const inst = this.instances.get(sessionId)
     if (!inst) return
     // Mid-turn injection: if a turn is already in flight, append the
-    // user entry inline (so it lands in conversation order between
-    // whatever assistant content was streaming and whatever comes
-    // next) tagged isQueued, and write to stdin immediately. Claude's
-    // stream-json input buffers between agent-loop steps, so the
-    // message gets injected at the next safe boundary (typically
+    // user entry tagged isQueued (so the user sees their message land,
+    // with a cancel affordance) and write to stdin immediately.
+    // Claude's stream-json input buffers between agent-loop steps, so
+    // the message gets injected at the next safe boundary (typically
     // post-tool_result) within the current turn — matching the TUI's
-    // interject-while-busy behavior. On `result` we clear the
-    // isQueued flag so the bubble loses its dashed/queued styling.
+    // interject-while-busy behavior.
+    //
+    // The entry starts out wherever the user hit enter, which is
+    // mid-stream of whatever claude was already saying. When claude
+    // drains its input queue into the next request (the `system/status:
+    // requesting` branch in handleLine) the entry both loses isQueued
+    // and moves to the tail — its real position in the conversation,
+    // just before the response that considers it.
     const session =
       this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
     if (session?.busy) {
@@ -959,13 +990,28 @@ export class JsonClaudeManager {
     }
   }
 
+  /** Clear the dashed/queued styling on every in-flight queued entry of
+   *  a session. Guarded on there actually being one: the reducer no-ops
+   *  when nothing is queued, but the dispatch would still fan out an
+   *  IPC broadcast to every renderer, and the caller on the hot path
+   *  (`system/status: requesting`) fires on every API request. */
+  private unqueueUserEntries(sessionId: string): void {
+    const session = this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
+    if (!session?.entries.some((e) => e.isQueued)) return
+    this.store.dispatch({
+      type: 'jsonClaude/userEntriesUnqueued',
+      payload: { sessionId }
+    })
+  }
+
   /** Remove a queued user entry from the renderer view. NOTE: the
    *  message text is already in claude's stdin buffer by the time the
    *  user clicks cancel, so this is UI-only — claude will still
    *  process the message on the next agent-loop step. The promoted
-   *  entry never gets re-added because we only clear isQueued (we
-   *  don't re-create an entry). On reload, however, claude's
-   *  session.jsonl will reseed the message. */
+   *  entry never gets re-added because unqueuing only touches entries
+   *  still in the list. On reload, however, the message comes back:
+   *  claude logged it to session.jsonl as a queued_command attachment,
+   *  which parseTranscriptEntries seeds. */
   cancelQueued(sessionId: string, entryId: string): void {
     this.store.dispatch({
       type: 'jsonClaude/entryRemoved',
@@ -1006,10 +1052,7 @@ export class JsonClaudeManager {
     // so claude will still process them on the next agent-loop pass
     // unless the interrupt itself drains the buffer (TBD — observe
     // behavior in test).
-    this.store.dispatch({
-      type: 'jsonClaude/userEntriesUnqueued',
-      payload: { sessionId }
-    })
+    this.unqueueUserEntries(sessionId)
     // Flip busy off optimistically; the result event (when the abort
     // resolves into a turn boundary) will also clear it.
     this.dispatchBusy(sessionId, false)
@@ -1555,6 +1598,20 @@ export class JsonClaudeManager {
       }
       return
     }
+    if (type === 'system' && subtype === 'status' && parsed['status'] === 'requesting') {
+      // Claude drains its pending-input queue immediately before it
+      // builds the next API request, then emits this status. So this is
+      // the earliest point at which a mid-turn message we injected is
+      // genuinely part of the conversation — verified against the
+      // session transcript, where the `queue-operation: remove` record
+      // lands ~1ms before this event. Unqueue here rather than waiting
+      // for `result`, which only fires at the end of the whole turn and
+      // left the bubble dashed for minutes while claude was already
+      // acting on it. The `result` handler keeps its own unqueue as the
+      // backstop for messages that land after the last request.
+      this.unqueueUserEntries(instance.sessionId)
+      return
+    }
     if (type === 'system' && subtype === 'init') {
       // Session id is already known (we pinned it via --session-id), but
       // the init payload includes the canonical slash_commands list — keep
@@ -1665,10 +1722,7 @@ export class JsonClaudeManager {
     }
     if (type === 'result') {
       this.dispatchBusy(instance.sessionId, false)
-      this.store.dispatch({
-        type: 'jsonClaude/userEntriesUnqueued',
-        payload: { sessionId: instance.sessionId }
-      })
+      this.unqueueUserEntries(instance.sessionId)
       const authMessage = detectAuthFailureFromResult(parsed)
       if (
         parsed['is_error'] === true ||
