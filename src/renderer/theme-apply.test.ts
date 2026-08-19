@@ -35,19 +35,28 @@ describe('applyTheme', () => {
   it('lays the Nessie preset down for a built-in theme', () => {
     applyTheme(builtIn(), 'loch')
     expect(read('--color-brand')).toBe('#4ade80')
-    expect(read('--color-accent')).toBe('#4ade80')
     expect(read('--brand-gradient')).toContain('gradient(')
     expect(dataset.theme).toBe('dark')
   })
 
-  it('gives legacy the accent Harness shipped, not its first gradient stop', () => {
-    applyTheme(builtIn(), 'legacy')
-    expect(read('--color-brand')).toBe('#f59e0b')
-    expect(read('--color-accent')).toBe('#c084fc')
-    expect(read('--brand-gradient')).toContain('#ef4444')
+  it('never writes accent — that stays the theme\'s secondary', () => {
+    // The whole point of the split. Pinning accent to the brand colour made
+    // the app monotone and cost Dracula its purple on user message bubbles,
+    // links, focus rings and the caret.
+    applyTheme(builtIn('dracula'), 'loch')
+    expect(read('--color-accent')).toBe('')
+    applyTheme(builtIn('dracula'), 'legacy')
+    expect(read('--color-accent')).toBe('')
   })
 
-  it('lets a custom theme override the brand ramp and accent', () => {
+  it('legacy still paints the real three-stop gradient', () => {
+    applyTheme(builtIn(), 'legacy')
+    expect(read('--color-brand')).toBe('#f59e0b')
+    expect(read('--brand-gradient')).toContain('#ef4444')
+    expect(read('--brand-gradient')).toContain('#a855f7')
+  })
+
+  it('lets a custom theme override the brand ramp and set its own accent', () => {
     // The question this answers: yes, these are reachable from theme JSON.
     applyTheme(custom({ brand: '#ff00ff', 'brand-mid': '#cc00cc', accent: '#00ffff' }), 'loch')
     expect(read('--color-brand')).toBe('#ff00ff')
@@ -67,7 +76,6 @@ describe('applyTheme', () => {
   it('keeps the Nessie colour for brand keys the custom theme does not set', () => {
     applyTheme(custom({ app: '#111111' }), 'legacy')
     expect(read('--color-brand')).toBe('#f59e0b')
-    expect(read('--color-accent')).toBe('#c084fc')
   })
 
   it('clears a previous custom theme when switching back to a built-in', () => {

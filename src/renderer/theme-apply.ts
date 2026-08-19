@@ -46,9 +46,13 @@ export const SEMANTIC_KEYS: ReadonlySet<string> = new Set([
  *  Nessie colour on some renders and not others.
  *
  *  Precedence, now explicit: the Nessie preset goes down first, then the
- *  custom theme's own keys layer over it. So the picker sets the app's
- *  primary colour, and a custom theme that deliberately declares `brand` /
- *  `brand-mid` / `brand-deep` / `accent` still wins for exactly those keys. */
+ *  custom theme's own keys layer over it. So the picker sets the brand colour,
+ *  and a custom theme that deliberately declares `brand` / `brand-mid` /
+ *  `brand-deep` still wins for exactly those keys.
+ *
+ *  Note the preset does NOT write `--color-accent`. Accent is the theme's
+ *  secondary and stays the theme's to set — that's what keeps Dracula purple
+ *  under a green mark instead of turning the whole app one colour. */
 export function applyTheme(theme: ResolvedTheme, nessieColorId: string): void {
   if (typeof document === 'undefined') return
   const root = document.documentElement
@@ -67,7 +71,6 @@ export function applyTheme(theme: ResolvedTheme, nessieColorId: string): void {
   setInline('--color-brand-deep', nessie.deep)
   setInline('--brand-gradient', nessie.gradient)
   setInline('--brand-flow', nessie.flow)
-  setInline('--color-accent', nessie.accent)
 
   if (theme.kind === 'built-in') {
     // Built-ins pull every remaining value from the CSS file via the

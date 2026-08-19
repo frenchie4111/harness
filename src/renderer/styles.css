@@ -34,7 +34,10 @@
   --color-warning: #fbbf24;
   --color-danger: #ef4444;
   --color-info: #60a5fa;
-  --color-accent: #4ade80;
+  /* Secondary. Owned by the theme, NOT by the Nessie colour — user message
+   * bubbles, links, focus rings and the caret read this, and pinning it to the
+   * brand colour made the app monotone. */
+  --color-accent: #c084fc;
 
   /* Brand ramp — the "Nessie colour". These are the Loch Green defaults;
    * the renderer overwrites all five inline on :root from the chosen preset
@@ -599,8 +602,8 @@ mark.find-hit-current {
   border-radius: 6px;
 }
 @keyframes harness-settings-flash {
-  0%   { box-shadow: 0 0 0 4px var(--color-accent, #4ade80); background-color: color-mix(in srgb, var(--color-accent, #4ade80) 25%, transparent); }
-  100% { box-shadow: 0 0 0 0  var(--color-accent, #4ade80); background-color: transparent; }
+  0%   { box-shadow: 0 0 0 4px var(--color-accent, #c084fc); background-color: color-mix(in srgb, var(--color-accent, #c084fc) 25%, transparent); }
+  100% { box-shadow: 0 0 0 0  var(--color-accent, #c084fc); background-color: transparent; }
 }
 
 /* All buttons and clickable elements get pointer cursor */
