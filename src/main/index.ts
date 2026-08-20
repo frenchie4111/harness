@@ -154,8 +154,10 @@ import {
   GLOBAL_CHAT_SYSTEM_PROMPT
 } from './global-chat'
 import {
+  applyEnvPatch,
   coerceAppSettingValue,
   findAppSetting,
+  projectAppSettingValue,
   readAppSettings
 } from './app-settings'
 import { getControlServerInfo } from './control-server'
@@ -4964,19 +4966,35 @@ async function runBoot(): Promise<void> {
           store.getSnapshot().state
         )
         if (!coerced.ok) return { ok: false as const, error: coerced.error }
-        const applied = await localTap.invoke(descriptor.channel, coerced.value)
+        // The underlying handler always replaces the whole env map, but
+        // the agent only ever sees redacted names — so it sends a patch
+        // and we fold it into the live map here. Without this, setting
+        // one var would silently drop every other one.
+        const payload =
+          descriptor.type === 'env'
+            ? applyEnvPatch(
+                store.getSnapshot().state.settings[descriptor.key],
+                coerced.value as Record<string, string | null>
+              )
+            : coerced.value
+        const applied = await localTap.invoke(descriptor.channel, payload)
         // Every config:set* handler returns false for a value it
         // rejected. Report the rejection rather than the value we asked
-        // for, so the agent doesn't tell the user it worked.
+        // for, so the agent doesn't tell the user it worked. The
+        // rejected value is echoed for everything except env, where it
+        // would put the secret in the error string.
         if (applied === false) {
           return {
             ok: false as const,
-            error: `Ness rejected ${JSON.stringify(coerced.value)} for "${key}"`
+            error:
+              descriptor.type === 'env'
+                ? `Ness rejected the change to "${key}"`
+                : `Ness rejected ${JSON.stringify(coerced.value)} for "${key}"`
           }
         }
         return {
           ok: true as const,
-          value: store.getSnapshot().state.settings[descriptor.key]
+          value: projectAppSettingValue(descriptor, store.getSnapshot().state)
         }
       },
       listRepos: () => {

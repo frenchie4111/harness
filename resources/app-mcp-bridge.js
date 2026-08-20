@@ -112,13 +112,13 @@ const TOOLS = [
   {
     name: 'list_settings',
     description:
-      "List every Ness setting you can read or change, with its current value, type, allowed values (for enums), and a one-line description of what it does. Call this before set_setting — it is the authoritative list of keys, and the descriptions tell you which setting actually matches what the user asked for. Some entries are read-only (writable: false).",
+      "List every Ness setting you can read or change, with its current value, type, allowed values (for enums), and a one-line description of what it does. Call this before set_setting — it is the authoritative list of keys, and the descriptions tell you which setting actually matches what the user asked for. Some entries are read-only (writable: false).\n\nThis is a curated subset of Ness's settings, not all of them. If the user asks for something that isn't here, say so plainly rather than guessing at a key — a few settings are held back on purpose (the agent system prompts, and the web-transport listener). Settings of type `env` report their variable NAMES with a `<set>` placeholder instead of values, because they hold API keys.",
     inputSchema: { type: 'object', properties: {} }
   },
   {
     name: 'set_setting',
     description:
-      "Change one Ness setting. The change is applied through the same code path as the Settings panel, so it persists and every open window updates immediately — no restart. Pass the key exactly as list_settings reports it. The user sees an approval card before this runs, so say what you're changing and why first. For `hotkeys`, the value REPLACES the whole map: read the current one via list_settings and send back the merged object, or send null to reset every binding.",
+      "Change one Ness setting. The change is applied through the same code path as the Settings panel, so it persists and every open window updates immediately — no restart. Pass the key exactly as list_settings reports it. The user sees an approval card before this runs, so say what you're changing and why first.\n\nOBJECT-VALUED SETTINGS REPLACE, THEY DON'T MERGE. For `hotkeys`, `sidebarDetails`, `worktreeScripts`, `hiddenBottomIcons` and `bottomIconOrder`, the value you send becomes the whole value — read the current one with list_settings and send back the merged object, or you'll silently drop the parts you left out. (`hotkeys` also accepts null to reset every binding to its default.)\n\nENV-VAR SETTINGS ARE THE EXCEPTION: `claudeEnvVars`, `codexEnvVars` and `cursorEnvVars` PATCH. Send only the names you want to change; set a name to null to remove it; names you omit are preserved. This is deliberate — list_settings reports which names are set but never their values, since they routinely hold API keys, so you have no way to read-modify-write them and must not try.",
     inputSchema: {
       type: 'object',
       properties: {

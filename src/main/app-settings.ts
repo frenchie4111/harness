@@ -1,9 +1,21 @@
 // The settings surface the app-scoped agent is allowed to see and change.
 //
-// Deliberately a projection, not a dump of SettingsState: secrets
-// (`hasGithubToken`), derived data (`customThemes`, `viewerLogin`), and
-// one-shot UI bookkeeping (`chatPromotionDismissed`,
-// `dismissedAnnouncementIds`) have no business in an agent's vocabulary.
+// Deliberately a projection, not a dump of SettingsState. What's left
+// out, and why:
+//   * Derived, so writing it is meaningless — `customThemes` (scanned
+//     from disk; use reload_custom_themes), `viewerLogin`,
+//     `harnessStarred`.
+//   * One-shot UI bookkeeping the user drives by dismissing something —
+//     `chatPromotionDismissed`, `dismissedAnnouncementIds`.
+//   * Session-only state another component owns — `preventSleepUntil`
+//     belongs to the WakeLockController, which clears it on expiry.
+//   * Blast radius the user hasn't opted into: the harnessSystemPrompt
+//     family (one bad edit degrades every agent in every worktree) and
+//     the wsTransport family (turning it on opens a network listener).
+//     Both are deliberate holds, not oversights — revisit on request.
+//
+// Env-var settings ARE here but never surrender their values; see the
+// 'env' type above.
 //
 // Each writable entry names the IPC channel that already implements the
 // mutation. Nothing here re-implements a `saveConfig` + `dispatch` pair —
@@ -16,7 +28,18 @@ import { SCALES } from '../shared/state/settings'
 import { JSON_CLAUDE_PERMISSION_MODES } from '../shared/state/json-claude'
 import { AVAILABLE_THEMES } from './persistence'
 
-export type AppSettingType = 'string' | 'boolean' | 'number' | 'enum' | 'object'
+export type AppSettingType =
+  | 'string'
+  | 'boolean'
+  | 'number'
+  | 'enum'
+  | 'object'
+  /** A `NAME -> value` env map for one of the agent CLIs. Handled
+   *  specially in both directions because these routinely hold API keys:
+   *  reads report which names are set and never their values, and writes
+   *  patch-merge rather than replace — a replace would be unusable when
+   *  the caller can't see what it's about to overwrite. */
+  | 'env'
 
 export interface AppSettingDescriptor {
   /** Key as the agent sees it. Matches the SettingsState field name so
@@ -139,6 +162,52 @@ export const APP_SETTINGS: AppSettingDescriptor[] = [
     channel: 'config:setClaudeModel'
   },
   {
+    key: 'codexCommand',
+    description: 'Command line used to launch Codex in terminal tabs.',
+    type: 'string',
+    channel: 'config:setCodexCommand'
+  },
+  {
+    key: 'codexModel',
+    description: "Model passed to Codex's --model flag, or null for its default.",
+    type: 'string',
+    channel: 'config:setCodexModel'
+  },
+  {
+    key: 'cursorCommand',
+    description: 'Command line used to launch the Cursor agent in terminal tabs.',
+    type: 'string',
+    channel: 'config:setCursorCommand'
+  },
+  {
+    key: 'cursorModel',
+    description:
+      "Model passed to the Cursor agent's --model flag, or null for its default.",
+    type: 'string',
+    channel: 'config:setCursorModel'
+  },
+  {
+    key: 'claudeEnvVars',
+    description:
+      'Environment variables injected into every Claude process Ness spawns. Reads report which names are set, never their values — these commonly hold API keys. Writes PATCH: send only the names you want to change, and set a name to null to remove it. Names you omit are left alone.',
+    type: 'env',
+    channel: 'config:setClaudeEnvVars'
+  },
+  {
+    key: 'codexEnvVars',
+    description:
+      'Environment variables injected into every Codex process. Same read redaction and patch-write semantics as claudeEnvVars.',
+    type: 'env',
+    channel: 'config:setCodexEnvVars'
+  },
+  {
+    key: 'cursorEnvVars',
+    description:
+      'Environment variables injected into every Cursor agent process. Same read redaction and patch-write semantics as claudeEnvVars.',
+    type: 'env',
+    channel: 'config:setCursorEnvVars'
+  },
+  {
     key: 'jsonModeDefaultPermissionMode',
     description:
       'Permission mode applied to freshly-spawned Chat sessions. Existing sessions keep their own mode.',
@@ -152,6 +221,104 @@ export const APP_SETTINGS: AppSettingDescriptor[] = [
       'When on, obviously-safe tool calls in Chat tabs are auto-approved by a Haiku reviewer instead of prompting.',
     type: 'boolean',
     channel: 'config:setAutoApprovePermissions'
+  },
+  {
+    key: 'autoApproveSteerInstructions',
+    description:
+      'Project-specific guidance appended to the auto-approver\'s policy prompt (e.g. "approve npm install on this repo", "be strict about Bash writing outside src/"). No effect unless autoApprovePermissions is on.',
+    type: 'string',
+    channel: 'config:setAutoApproveSteerInstructions'
+  },
+  {
+    key: 'sidebarDetails',
+    description:
+      'Which items show in each sidebar row\'s detail cluster, per density. Shape: {"compact": {...}, "comfy": {...}}, each with boolean repoLabel / branch / age / diff / milestone / prNumber / assignee. Writing REPLACES the whole object — read it first and send back the merged value.',
+    type: 'object',
+    channel: 'config:setSidebarDetails'
+  },
+  {
+    key: 'worktreeScripts',
+    description:
+      'Shell commands run when a worktree is created and destroyed. Shape: {"setup": "npm install", "teardown": ""}. Writing replaces both fields, so send both. Empty string disables one.',
+    type: 'object',
+    channel: 'config:setWorktreeScripts'
+  },
+  {
+    key: 'hiddenBottomIcons',
+    description:
+      'Bottom-launcher icons the user has hidden, as a key -> true map. Only keys set to true are stored. Writing replaces the whole map.',
+    type: 'object',
+    channel: 'config:setHiddenBottomIcons'
+  },
+  {
+    key: 'bottomIconOrder',
+    description:
+      'Render order for the bottom-launcher icons, as an array of keys. Unknown or duplicate keys are dropped; known keys you omit get appended in canonical order.',
+    type: 'object',
+    channel: 'config:setBottomIconOrder'
+  },
+  {
+    key: 'mergeStrategy',
+    description: 'Default strategy offered when merging a PR from Ness.',
+    type: 'enum',
+    values: () => ['squash', 'merge-commit', 'fast-forward'],
+    channel: 'config:setMergeStrategy'
+  },
+  {
+    key: 'nameClaudeSessions',
+    description:
+      "When on, Claude sessions are launched with --name set to <repo>/<branch>, so they're identifiable outside Ness.",
+    type: 'boolean',
+    channel: 'config:setNameClaudeSessions'
+  },
+  {
+    key: 'claudeTuiFullscreen',
+    description:
+      'When on, terminal-hosted Claude tabs run in the CLI\'s fullscreen TUI mode.',
+    type: 'boolean',
+    channel: 'config:setClaudeTuiFullscreen'
+  },
+  {
+    key: 'shareClaudeSettings',
+    description:
+      "When on, each worktree's .claude/settings.local.json is symlinked to the main worktree's copy, so tool permissions are shared across worktrees of a repo.",
+    type: 'boolean',
+    channel: 'config:setShareClaudeSettings'
+  },
+  {
+    key: 'openPrInBrowserTab',
+    description:
+      'When on, the Open PR action opens the PR in a Ness browser tab instead of the system browser.',
+    type: 'boolean',
+    channel: 'config:setOpenPrInBrowserTab'
+  },
+  {
+    key: 'snoozeDefaultDays',
+    description: 'Default number of days the snooze action parks a worktree for.',
+    type: 'number',
+    channel: 'config:setSnoozeDefaultDays'
+  },
+  {
+    key: 'announcementsMuted',
+    description:
+      'When on, all announcement banners are suppressed regardless of the feed.',
+    type: 'boolean',
+    channel: 'announcements:mute'
+  },
+  {
+    key: 'preventSleepMode',
+    description:
+      "Wake-lock policy: 'off', 'while-agents-running', or 'always'. Stops the machine sleeping mid-run.",
+    type: 'enum',
+    values: () => ['off', 'while-agents-running', 'always'],
+    channel: 'config:setPreventSleepMode'
+  },
+  {
+    key: 'expandedDiagnosticLoggingEnabled',
+    description:
+      'When on, high-volume per-GitHub-API-call lines are written to debug.log. Useful when diagnosing PR-refresh problems; noisy otherwise.',
+    type: 'boolean',
+    channel: 'config:setExpandedDiagnosticLoggingEnabled'
   },
   {
     key: 'jsonModeSendOnEnter',
@@ -283,6 +450,53 @@ function themeIds(state: AppState, mode: 'light' | 'dark'): string[] {
   return [...AVAILABLE_THEMES, ...custom]
 }
 
+/** Placeholder standing in for an env var's value. Reporting the NAME is
+ *  genuinely useful ("you have ANTHROPIC_BASE_URL set, that's why…");
+ *  reporting the value would paste an API key into a chat transcript
+ *  that persists on disk under ~/.claude/projects. */
+const ENV_VALUE_PLACEHOLDER = '<set>'
+
+function redactEnv(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object') return {}
+  const out: Record<string, string> = {}
+  for (const name of Object.keys(value as Record<string, unknown>).sort()) {
+    out[name] = ENV_VALUE_PLACEHOLDER
+  }
+  return out
+}
+
+/** What the agent is allowed to see for one setting. Identity for
+ *  everything except env maps. Used for both the read path and the value
+ *  echoed back after a write, so a write can't leak what a read won't. */
+export function projectAppSettingValue(
+  descriptor: AppSettingDescriptor,
+  state: AppState
+): unknown {
+  const raw = state.settings[descriptor.key]
+  return descriptor.type === 'env' ? redactEnv(raw) : raw
+}
+
+/** Fold a patch into an existing env map. `null` removes a name; any
+ *  name the patch doesn't mention is preserved. This is what makes a
+ *  redacted read safe — a replace-semantics write would blow away every
+ *  var the caller couldn't see. */
+export function applyEnvPatch(
+  current: unknown,
+  patch: Record<string, string | null>
+): Record<string, string> {
+  const next: Record<string, string> = {}
+  if (current && typeof current === 'object') {
+    for (const [k, v] of Object.entries(current as Record<string, unknown>)) {
+      if (typeof v === 'string') next[k] = v
+    }
+  }
+  for (const [name, value] of Object.entries(patch)) {
+    if (value === null) delete next[name]
+    else next[name] = value
+  }
+  return next
+}
+
 export function readAppSettings(state: AppState): Array<{
   key: string
   value: unknown
@@ -295,7 +509,7 @@ export function readAppSettings(state: AppState): Array<{
     const values = d.values?.(state)
     return {
       key: d.key,
-      value: state.settings[d.key],
+      value: projectAppSettingValue(d, state),
       type: d.type,
       writable: Boolean(d.channel),
       description: d.description,
@@ -306,6 +520,17 @@ export function readAppSettings(state: AppState): Array<{
 
 export function findAppSetting(key: string): AppSettingDescriptor | undefined {
   return APP_SETTINGS.find((d) => d.key === key)
+}
+
+/** JSON.parse that reports failure as `undefined` rather than throwing.
+ *  `null` is a legitimate parse result, so it can't double as the
+ *  sentinel. */
+function tryParseJson(text: string): unknown | undefined {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return undefined
+  }
 }
 
 /** Coerce a JSON value from the MCP call into what the IPC handler
@@ -343,15 +568,41 @@ export function coerceAppSettingValue(
       }
       return { ok: true, value: raw }
     }
+    case 'env': {
+      const parsed = raw && typeof raw === 'string' ? tryParseJson(raw) : raw
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return {
+          ok: false,
+          error: `${descriptor.key} expects an object of NAME -> value (or NAME -> null to remove)`
+        }
+      }
+      const patch: Record<string, string | null> = {}
+      for (const [name, value] of Object.entries(
+        parsed as Record<string, unknown>
+      )) {
+        if (value === null) {
+          patch[name] = null
+          continue
+        }
+        if (typeof value !== 'string') {
+          return {
+            ok: false,
+            error: `${descriptor.key}.${name} must be a string, or null to remove it`
+          }
+        }
+        patch[name] = value
+      }
+      return { ok: true, value: patch }
+    }
     case 'object': {
       if (raw === null) return { ok: true, value: null }
       if (typeof raw === 'object') return { ok: true, value: raw }
       if (typeof raw === 'string') {
-        try {
-          return { ok: true, value: JSON.parse(raw) }
-        } catch {
+        const parsed = tryParseJson(raw)
+        if (parsed === undefined) {
           return { ok: false, error: `${descriptor.key} expects a JSON object` }
         }
+        return { ok: true, value: parsed }
       }
       return { ok: false, error: `${descriptor.key} expects a JSON object` }
     }
