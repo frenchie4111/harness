@@ -15,6 +15,13 @@ export function getBridgeScriptPath(): string {
   return resolveBundledMcpScript('mcp-bridge.js')
 }
 
+/** App-scoped sibling of the above, spawned only for the global chat
+ *  session. Same transport (stdio → local control HTTP server), different
+ *  tool vocabulary — see resources/app-mcp-bridge.js. */
+export function getAppBridgeScriptPath(): string {
+  return resolveBundledMcpScript('app-mcp-bridge.js')
+}
+
 function sanitize(id: string): string {
   return id.replace(/[^a-zA-Z0-9._-]/g, '_')
 }

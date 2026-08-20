@@ -70,6 +70,10 @@
       {
         "from": "resources/permission-prompt-mcp.js",
         "to": "permission-prompt-mcp.js"
+      },
+      {
+        "from": "resources/app-mcp-bridge.js",
+        "to": "app-mcp-bridge.js"
       }
     ],
     "mac": {

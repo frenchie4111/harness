@@ -19,6 +19,7 @@ import { initialAnnouncements } from '../shared/state/announcements'
 import { initialScratchpad } from '../shared/state/scratchpad'
 import { initialSshBootstrap } from '../shared/state/ssh-bootstrap'
 import { initialAssignedPRs } from '../shared/state/assigned-prs'
+import { initialGlobalChat } from '../shared/state/global-chat'
 import { initialConfigHealth, type ConfigLoadError } from '../shared/state/config-health'
 import { initialAliases } from '../shared/state/aliases'
 import {
@@ -97,6 +98,10 @@ export function buildInitialAppState(
     aliases: config.aliases
       ? { byPath: { ...config.aliases } }
       : initialAliases,
+    globalChat: {
+      ...initialGlobalChat,
+      sessionId: config.globalChatSessionId || null
+    },
     settings: {
       ...initialSettings,
       themeMode:

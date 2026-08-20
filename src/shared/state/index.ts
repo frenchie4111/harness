@@ -120,6 +120,12 @@ import {
   type AssignedPRsEvent,
   type AssignedPRsState
 } from './assigned-prs'
+import {
+  initialGlobalChat,
+  globalChatReducer,
+  type GlobalChatEvent,
+  type GlobalChatState
+} from './global-chat'
 import { initialConfigHealth, type ConfigHealthState } from './config-health'
 import {
   initialAliases,
@@ -222,6 +228,7 @@ export type {
   BootstrapError
 } from './ssh-bootstrap'
 export type { AssignedPRsState, AssignedPRsEvent, AssignedPR } from './assigned-prs'
+export type { GlobalChatState, GlobalChatEvent, GlobalChatAuth } from './global-chat'
 export type { ConfigHealthState, ConfigLoadError } from './config-health'
 export type { AliasesState, AliasesEvent } from './aliases'
 
@@ -246,6 +253,7 @@ export interface AppState {
   assignedPRs: AssignedPRsState
   configHealth: ConfigHealthState
   aliases: AliasesState
+  globalChat: GlobalChatState
 }
 
 export type StateEvent =
@@ -268,6 +276,7 @@ export type StateEvent =
   | SshBootstrapEvent
   | AssignedPRsEvent
   | AliasesEvent
+  | GlobalChatEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
@@ -289,7 +298,8 @@ export const initialState: AppState = {
   sshBootstrap: initialSshBootstrap,
   assignedPRs: initialAssignedPRs,
   configHealth: initialConfigHealth,
-  aliases: initialAliases
+  aliases: initialAliases,
+  globalChat: initialGlobalChat
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -395,6 +405,12 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
       aliases: aliasesReducer(state.aliases, event as AliasesEvent)
     }
   }
+  if (event.type.startsWith('globalChat/')) {
+    return {
+      ...state,
+      globalChat: globalChatReducer(state.globalChat, event as GlobalChatEvent)
+    }
+  }
   // configHealth has no events — it's seeded at construction only (see
   // config-health.ts), so there's no reducer branch. The field flows through
   // unchanged via the `...state` spreads above.
@@ -448,7 +464,8 @@ export function mergeWireSnapshot(state: WireSnapshotState): AppState {
     sshBootstrap: { ...initialState.sshBootstrap, ...state.sshBootstrap },
     assignedPRs: { ...initialState.assignedPRs, ...state.assignedPRs },
     configHealth: { ...initialState.configHealth, ...state.configHealth },
-    aliases: { ...initialState.aliases, ...state.aliases }
+    aliases: { ...initialState.aliases, ...state.aliases },
+    globalChat: { ...initialState.globalChat, ...state.globalChat }
   }
 }
 

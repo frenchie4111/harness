@@ -111,6 +111,14 @@ export interface JsonClaudeManagerOptions {
   /** True when the user has disabled the ness-control MCP via
    *  settings.harnessMcpEnabled. Skips the bridge entry entirely. */
   isHarnessMcpEnabled: () => boolean
+  /** Which MCP vocabulary this session gets. 'worktree' (the default for
+   *  every Chat tab) wires the ness-control bridge; 'app' wires the
+   *  ness-app bridge instead, for the global chat session — which has no
+   *  worktree, so the worktree-scoped tools would have nothing to act on. */
+  getMcpScopeKind?: (sessionId: string) => 'worktree' | 'app'
+  /** Bundled ness-app bridge script path. Only consulted for sessions
+   *  whose scope kind is 'app'. */
+  getAppBridgeScriptPath?: () => string
   /** Looks up scope (worktree + repo + isMain) for a given session id.
    *  Mirrors resolveCallerScope() in index.ts but only needs the
    *  worktree/repo bits, not the terminalId echo. */
@@ -609,10 +617,10 @@ export class JsonClaudeManager {
         }
       }
     }
+    const mcpScopeKind = this.opts.getMcpScopeKind?.(sessionId) ?? 'worktree'
     if (this.opts.isHarnessMcpEnabled()) {
       const controlInfo = this.opts.getControlServer()
       if (controlInfo) {
-        const scope = this.opts.getCallerScope(sessionId)
         const controlEnv: Record<string, string> = {
           ELECTRON_RUN_AS_NODE: '1',
           HARNESS_PORT: String(controlInfo.port),
@@ -622,15 +630,24 @@ export class JsonClaudeManager {
           HARNESS_TERMINAL_ID: sessionId,
           HARNESS_SESSION_ID: sessionId
         }
-        if (scope) {
-          controlEnv.HARNESS_WORKTREE_ID = scope.worktreePath
-          controlEnv.HARNESS_REPO_ROOT = scope.repoRoot
-          if (scope.isMain) controlEnv.HARNESS_IS_MAIN = '1'
-        }
-        mcpServers['ness-control'] = {
-          command: process.execPath,
-          args: [this.opts.getControlBridgeScriptPath()],
-          env: controlEnv
+        if (mcpScopeKind === 'app') {
+          mcpServers['ness-app'] = {
+            command: process.execPath,
+            args: [this.opts.getAppBridgeScriptPath?.() ?? ''],
+            env: controlEnv
+          }
+        } else {
+          const scope = this.opts.getCallerScope(sessionId)
+          if (scope) {
+            controlEnv.HARNESS_WORKTREE_ID = scope.worktreePath
+            controlEnv.HARNESS_REPO_ROOT = scope.repoRoot
+            if (scope.isMain) controlEnv.HARNESS_IS_MAIN = '1'
+          }
+          mcpServers['ness-control'] = {
+            command: process.execPath,
+            args: [this.opts.getControlBridgeScriptPath()],
+            env: controlEnv
+          }
         }
       }
     }

@@ -211,6 +211,10 @@ async function main() {
     join(repoRoot, 'resources', 'mcp-bridge.js'),
     join(libDir, 'mcp', 'mcp-bridge.js')
   )
+  await cp(
+    join(repoRoot, 'resources', 'app-mcp-bridge.js'),
+    join(libDir, 'mcp', 'app-mcp-bridge.js')
+  )
 
   const shim = `#!/bin/sh
 DIR="$(cd "$(dirname "$0")/.." && pwd)"

@@ -125,6 +125,42 @@ export interface BrowserPerms {
   mode: 'view' | 'full'
 }
 
+/** App-scoped surface — the vocabulary the global chat agent gets
+ * instead of the worktree-scoped one. Every entry acts on Ness itself:
+ * its settings, its repo list, its hooks consent, its own log. */
+export interface AppQueries {
+  /** Descriptor + current value for every setting the agent may see. */
+  listSettings: () => Array<{
+    key: string
+    value: unknown
+    type: string
+    writable: boolean
+    description: string
+    values?: string[]
+  }>
+  /** Apply one setting through the same IPC handler the Settings panel
+   * uses. `ok: false` covers both an unknown key and a value the
+   * handler rejected. */
+  setSetting: (
+    key: string,
+    value: unknown
+  ) => Promise<{ ok: true; value: unknown } | { ok: false; error: string }>
+  /** Repos currently open, with their worktree counts. */
+  listRepos: () => Array<{ repoRoot: string; name: string; worktrees: number }>
+  addRepo: (path: string) => Promise<{ ok: true; repoRoot: string } | { ok: false; error: string }>
+  /** Hooks consent state + which agents currently have hooks installed
+   * at user scope. */
+  getHooksStatus: () => { consent: string; installedAgents: string[] }
+  setHooksConsent: (
+    consent: 'accepted' | 'declined'
+  ) => Promise<{ ok: true } | { ok: false; error: string }>
+  /** Tail of debug.log. Used for "why is Ness doing X" questions. */
+  readDebugLog: (lines: number) => string
+  /** Version + platform + where config lives. Cheap orientation for an
+   * agent that has no repo to look at. */
+  describeApp: () => Record<string, unknown>
+}
+
 export interface ControlServerDeps {
   getRepoRoots: () => string[]
   getWorktreeBase: () => 'remote' | 'local'
@@ -165,6 +201,7 @@ export interface ControlServerDeps {
   browser: BrowserQueries
   shell: ShellQueries
   messaging: MessagingQueries
+  app: AppQueries
   /** Trim + 80-char clamp + dispatch. Matches the aliases:set IPC handler.
    * Empty-after-trim routes to clearAlias — never stores an empty alias. */
   setAlias: (worktreePath: string, alias: string) => void
@@ -767,6 +804,62 @@ async function handleRequest(
       from,
       woke: result.woke
     })
+  }
+
+  // ness-app endpoints. Unlike everything above, these are not scoped to
+  // a worktree at all — they act on Ness itself, and their caller is the
+  // global chat session, which by construction has no terminal id that
+  // resolves to a worktree. Writes go through the same IPC handlers the
+  // Settings panel calls, so a change lands in every open window; and
+  // because the calling session runs with --permission-prompt-tool, the
+  // user still sees an approval card before any of this is reached.
+  if (path.startsWith('/app/')) {
+    if (req.method === 'GET' && path === '/app/info') {
+      return sendJson(res, 200, deps.app.describeApp())
+    }
+    if (req.method === 'GET' && path === '/app/settings') {
+      return sendJson(res, 200, { settings: deps.app.listSettings() })
+    }
+    if (req.method === 'POST' && path === '/app/settings') {
+      const body = await readJson(req)
+      const key = typeof body.key === 'string' ? body.key.trim() : ''
+      if (!key) return sendJson(res, 400, { error: 'key required' })
+      if (!('value' in body)) {
+        return sendJson(res, 400, { error: 'value required' })
+      }
+      const result = await deps.app.setSetting(key, body.value)
+      if (!result.ok) return sendJson(res, 400, { error: result.error })
+      return sendJson(res, 200, { key, value: result.value })
+    }
+    if (req.method === 'GET' && path === '/app/repos') {
+      return sendJson(res, 200, { repos: deps.app.listRepos() })
+    }
+    if (req.method === 'POST' && path === '/app/repos') {
+      const body = await readJson(req)
+      const repoPath = typeof body.path === 'string' ? body.path.trim() : ''
+      if (!repoPath) return sendJson(res, 400, { error: 'path required' })
+      const result = await deps.app.addRepo(repoPath)
+      if (!result.ok) return sendJson(res, 400, { error: result.error })
+      return sendJson(res, 200, { repoRoot: result.repoRoot })
+    }
+    if (req.method === 'GET' && path === '/app/hooks') {
+      return sendJson(res, 200, deps.app.getHooksStatus())
+    }
+    if (req.method === 'POST' && path === '/app/hooks') {
+      const body = await readJson(req)
+      const consent = body.consent === 'declined' ? 'declined' : 'accepted'
+      const result = await deps.app.setHooksConsent(consent)
+      if (!result.ok) return sendJson(res, 400, { error: result.error })
+      return sendJson(res, 200, { consent })
+    }
+    if (req.method === 'GET' && path === '/app/log') {
+      const raw = url.searchParams.get('lines')
+      const lines = Math.max(1, Math.min(2000, parseInt(raw || '', 10) || 200))
+      return sendJson(res, 200, { log: deps.app.readDebugLog(lines) })
+    }
+    res.writeHead(404)
+    res.end('app endpoint not found')
+    return
   }
 
   // /scope — returns the caller's current scope. The MCP bridge calls this

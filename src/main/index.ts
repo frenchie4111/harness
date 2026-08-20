@@ -23,12 +23,13 @@ import { JsonClaudeStatusDeriver } from './json-claude-status-deriver'
 import { Store } from './store'
 import { WebSocketServerTransport } from './transport-websocket'
 import { CompoundServerTransport } from './transport-compound'
+import { LocalTapTransport } from './transport-local-tap'
 import { createWebClientServer } from './web-client-server'
 import { getOrCreateWsToken, rotateWsToken } from './ws-token'
 import { networkInterfaces } from 'os'
 import type { Server as HttpServer } from 'http'
 import type { ServerTransport } from '../shared/transport/transport'
-import { detectRuntime } from './paths'
+import { detectRuntime, userDataDir } from './paths'
 import { fixPathFromLoginShell } from './path-fix'
 import { parseCliFlags, USAGE, type CliFlags } from './cli-args'
 import { PlaywrightBrowserManager } from './browser-manager-playwright'
@@ -140,7 +141,23 @@ import {
   describeWorktree,
   resolveWorktreeQuery
 } from './chat-delivery'
-import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
+import {
+  writeMcpConfigForTerminal,
+  pruneMcpConfigs,
+  getBridgeScriptPath,
+  getAppBridgeScriptPath
+} from './mcp-config'
+import {
+  globalChatDir,
+  newGlobalChatSessionId,
+  resolveGlobalChatAuth,
+  GLOBAL_CHAT_SYSTEM_PROMPT
+} from './global-chat'
+import {
+  coerceAppSettingValue,
+  findAppSetting,
+  readAppSettings
+} from './app-settings'
 import { getControlServerInfo } from './control-server'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
 import { log, getLogFilePath } from './debug'
@@ -409,8 +426,13 @@ const jsonClaudeManager = new JsonClaudeManager(store, {
     store.getSnapshot().state.settings.claudeEnvVars || {},
   getControlServer: () => getControlServerInfo(),
   getControlBridgeScriptPath: () => getBridgeScriptPath(),
+  getAppBridgeScriptPath: () => getAppBridgeScriptPath(),
   isHarnessMcpEnabled: () =>
     store.getSnapshot().state.settings.harnessMcpEnabled !== false,
+  getMcpScopeKind: (sessionId) =>
+    store.getSnapshot().state.globalChat.sessionId === sessionId
+      ? 'app'
+      : 'worktree',
   getCallerScope: (sessionId) => {
     const scope = resolveCallerScope(sessionId)
     if (!scope) return null
@@ -420,13 +442,25 @@ const jsonClaudeManager = new JsonClaudeManager(store, {
       isMain: scope.isMain
     }
   },
-  getLaunchSettings: (worktreePath, modelOverride) =>
-    buildClaudeLaunchSettings({
+  getLaunchSettings: (worktreePath, modelOverride) => {
+    // The global session's cwd is a Ness-owned scratch dir, not a
+    // worktree, so the worktree system prompt would be describing a repo
+    // that isn't there. Everything else (model, no session name) follows
+    // the normal path.
+    if (worktreePath === globalChatDir()) {
+      return {
+        systemPrompt: GLOBAL_CHAT_SYSTEM_PROMPT,
+        model: (modelOverride || config.claudeModel || '').trim() || undefined,
+        tuiFullscreen: true
+      }
+    }
+    return buildClaudeLaunchSettings({
       cwd: worktreePath,
       worktrees: store.getSnapshot().state.worktrees.list,
       config,
       modelOverride
     })
+  }
 })
 const perfMonitor = new PerfMonitor()
 setGitHubApiRecorder(() => perfMonitor.recordGitHubApiCall())
@@ -555,9 +589,16 @@ const wsTransport =
       )
     : null
 
+// Not a client — a mirror of the request registry that main can call
+// into. The ness-app MCP endpoints use it to drive the same
+// `config:set*` handlers the Settings panel drives. See
+// transport-local-tap.ts.
+const localTap = new LocalTapTransport()
+
 const transports: ServerTransport[] = []
 if (desktopEarly) transports.push(desktopEarly.transport)
 if (wsTransport) transports.push(wsTransport)
+transports.push(localTap)
 const transport: CompoundServerTransport = new CompoundServerTransport(transports)
 transport.start()
 
@@ -1023,6 +1064,80 @@ function startJsonClaudeSession(sessionId: string, worktreePath: string): void {
     store.getSnapshot().state.jsonClaude.sessions[sessionId]?.permissionMode ||
     'default'
   jsonClaudeManager.create(sessionId, worktreePath, permMode, findJsonClaudeTabModel(sessionId))
+}
+
+// ---- Global chat -----------------------------------------------------
+// The app-scoped session. Same manager, same slice, same approval bridge
+// as a Chat tab — the only differences are that its cwd is a Ness-owned
+// directory instead of a worktree, and that its session id is recorded
+// in the globalChat slice so `getMcpScopeKind` can hand it the ness-app
+// tools instead of the worktree-scoped ness-control ones.
+
+/** Re-read whether Claude Code can authenticate at all and publish the
+ *  answer. A fresh install shares an empty ~/.claude/ with the bundled
+ *  binary, and the global window has no onboarding quest behind it — so
+ *  this is what the empty state reads. */
+async function refreshGlobalChatAuth(): Promise<'unknown' | 'ok' | 'required'> {
+  const auth = await resolveGlobalChatAuth(
+    store.getSnapshot().state.settings.claudeEnvVars || {}
+  )
+  store.dispatch({ type: 'globalChat/authChanged', payload: auth })
+  return auth
+}
+
+/** Idempotent "make sure the global session exists and is running".
+ *  Mints + persists a session id on first call; every later call resumes
+ *  the same transcript. Returns the session id even when auth is missing
+ *  so the window can render a stable shell around the empty state. */
+async function ensureGlobalChatSession(): Promise<{
+  sessionId: string
+  cwd: string
+  auth: 'unknown' | 'ok' | 'required'
+}> {
+  const cwd = globalChatDir()
+  let sessionId = store.getSnapshot().state.globalChat.sessionId
+  if (!sessionId) {
+    sessionId = newGlobalChatSessionId()
+    config.globalChatSessionId = sessionId
+    saveConfig(config)
+  }
+  store.dispatch({
+    type: 'globalChat/sessionAssigned',
+    payload: { sessionId, cwd }
+  })
+  const auth = await refreshGlobalChatAuth()
+  if (auth === 'required') {
+    log('global-chat', `auth missing — not spawning sessionId=${sessionId}`)
+    // The slice entry still gets created so the renderer has something
+    // to read; it just never reaches 'running'.
+    store.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId, worktreePath: cwd }
+    })
+    store.dispatch({
+      type: 'jsonClaude/sessionStateChanged',
+      payload: { sessionId, state: 'auth-required' }
+    })
+    return { sessionId, cwd, auth }
+  }
+  if (!jsonClaudeManager.hasSession(sessionId)) {
+    log('global-chat', `starting sessionId=${sessionId} cwd=${cwd}`)
+    store.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: {
+        sessionId,
+        worktreePath: cwd,
+        defaultPermissionMode:
+          store.getSnapshot().state.settings.jsonModeDefaultPermissionMode
+      }
+    })
+    jsonClaudeManager.seedFromTranscript(sessionId, cwd)
+    const permMode =
+      store.getSnapshot().state.jsonClaude.sessions[sessionId]?.permissionMode ||
+      'default'
+    jsonClaudeManager.create(sessionId, cwd, permMode)
+  }
+  return { sessionId, cwd, auth }
 }
 
 /** Resolve what the new worktree's first agent tab should start from,
@@ -3679,6 +3794,40 @@ function registerIpcHandlers(): void {
     }
   )
 
+  // ---- Global chat ---------------------------------------------------
+  transport.onRequest('globalChat:ensure', async (_ctx) => {
+    return await ensureGlobalChatSession()
+  })
+
+  transport.onRequest('globalChat:recheckAuth', async (_ctx) => {
+    const auth = await refreshGlobalChatAuth()
+    // Coming back from 'required' is the whole point of the retry button:
+    // once credentials exist, spawn without making the user reopen the
+    // window.
+    if (auth === 'ok') return await ensureGlobalChatSession()
+    return { auth }
+  })
+
+  transport.onRequest('globalChat:reset', async (_ctx) => {
+    const current = store.getSnapshot().state.globalChat.sessionId
+    if (current) {
+      jsonClaudeManager.kill(current)
+      store.dispatch({
+        type: 'jsonClaude/sessionCleared',
+        payload: { sessionId: current }
+      })
+    }
+    const sessionId = newGlobalChatSessionId()
+    config.globalChatSessionId = sessionId
+    saveConfig(config)
+    store.dispatch({
+      type: 'globalChat/sessionAssigned',
+      payload: { sessionId, cwd: globalChatDir() }
+    })
+    log('global-chat', `reset → sessionId=${sessionId}`)
+    return await ensureGlobalChatSession()
+  })
+
   transport.onRequest(
     'jsonClaude:openAuthLoginTab',
     (_ctx, worktreePath: string): { ok: true; tabId: string } | { ok: false; error: string } => {
@@ -4787,6 +4936,97 @@ async function runBoot(): Promise<void> {
           worktreePath,
           message
         )
+    },
+    // ness-app surface. Every mutation here delegates to the request
+    // handler the UI already uses (via the local transport tap), so an
+    // agent-driven settings change is indistinguishable from a click in
+    // the Settings panel and reaches every open window the same way.
+    app: {
+      listSettings: () => readAppSettings(store.getSnapshot().state),
+      setSetting: async (key, value) => {
+        const descriptor = findAppSetting(key)
+        if (!descriptor) {
+          return {
+            ok: false as const,
+            error: `unknown setting "${key}" — call list_settings for the valid keys`
+          }
+        }
+        if (!descriptor.channel) {
+          return { ok: false as const, error: `"${key}" is read-only` }
+        }
+        const coerced = coerceAppSettingValue(
+          descriptor,
+          value,
+          store.getSnapshot().state
+        )
+        if (!coerced.ok) return { ok: false as const, error: coerced.error }
+        const applied = await localTap.invoke(descriptor.channel, coerced.value)
+        // Every config:set* handler returns false for a value it
+        // rejected. Report the rejection rather than the value we asked
+        // for, so the agent doesn't tell the user it worked.
+        if (applied === false) {
+          return {
+            ok: false as const,
+            error: `Ness rejected ${JSON.stringify(coerced.value)} for "${key}"`
+          }
+        }
+        return {
+          ok: true as const,
+          value: store.getSnapshot().state.settings[descriptor.key]
+        }
+      },
+      listRepos: () => {
+        const list = store.getSnapshot().state.worktrees.list
+        return config.repoRoots.map((repoRoot) => ({
+          repoRoot,
+          name: repoRoot.split('/').pop() || repoRoot,
+          worktrees: list.filter((w) => w.repoRoot === repoRoot).length
+        }))
+      },
+      addRepo: async (path) => {
+        const result = (await localTap.invoke(
+          'repo:addAtPath',
+          path
+        )) as AddRepoResult
+        if (result.kind === 'added') {
+          return { ok: true as const, repoRoot: result.repoRoot }
+        }
+        return {
+          ok: false as const,
+          error: `${path} is not a git repository (${result.kind})`
+        }
+      },
+      getHooksStatus: () => ({
+        consent: store.getSnapshot().state.hooks.consent,
+        // Hooks are installed once at user scope per agent, not per
+        // worktree — the command is env-gated on $HARNESS_TERMINAL_ID so
+        // it no-ops outside Ness. Report which agents actually have them.
+        installedAgents: (['claude', 'codex', 'cursor'] as const).filter((kind) =>
+          getAgent(kind).hooksInstalled()
+        )
+      }),
+      setHooksConsent: async (consent) => {
+        await localTap.invoke(
+          consent === 'accepted' ? 'hooks:accept' : 'hooks:decline'
+        )
+        return { ok: true as const }
+      },
+      readDebugLog: (lines) => readRecentDebugLog(lines),
+      describeApp: () => {
+        const state = store.getSnapshot().state
+        return {
+          version: getHarnessVersion(),
+          platform: `${process.platform}-${process.arch}`,
+          userDataDir: userDataDir(),
+          debugLogPath: getLogFilePath(),
+          repoCount: config.repoRoots.length,
+          worktreeCount: state.worktrees.list.length,
+          hooksConsent: state.hooks.consent,
+          hasGithubToken: state.settings.hasGithubToken,
+          githubAuthSource: state.settings.githubAuthSource,
+          globalChatCwd: globalChatDir()
+        }
+      }
     },
     browser: {
       listTabsForWorktree: (wtPath) => {

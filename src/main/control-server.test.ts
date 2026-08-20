@@ -51,6 +51,17 @@ const runPendingPR = vi.fn<
   >
 >(async () => ({ ok: false, error: 'not used in these tests' }))
 
+const setSetting = vi.fn<
+  (
+    key: string,
+    value: unknown
+  ) => Promise<{ ok: true; value: unknown } | { ok: false; error: string }>
+>(async (_key, value) => ({ ok: true, value }))
+
+const addRepo = vi.fn<
+  (path: string) => Promise<{ ok: true; repoRoot: string } | { ok: false; error: string }>
+>(async (path) => ({ ok: true, repoRoot: path }))
+
 const BROWSER_TAB = 'browser-tab-1'
 let browserEnabled = false
 let captureResult: CaptureResult | null = null
@@ -108,6 +119,25 @@ const deps: ControlServerDeps = {
     },
     describe: (path) => (path === CALLER_WORKTREE ? 'Callers Tree' : 'Other Tree'),
     send: (path, message) => sendMessage(path, message)
+  },
+  app: {
+    listSettings: () => [
+      {
+        key: 'themeDark',
+        value: 'harness-dark',
+        type: 'enum',
+        writable: true,
+        description: 'Dark theme id.',
+        values: ['harness-dark', 'solarized-dark']
+      }
+    ],
+    setSetting: (key, value) => setSetting(key, value),
+    listRepos: () => [{ repoRoot: '/repo', name: 'repo', worktrees: 2 }],
+    addRepo: (path) => addRepo(path),
+    getHooksStatus: () => ({ consent: 'accepted', installedAgents: ['claude'] }),
+    setHooksConsent: async () => ({ ok: true as const }),
+    readDebugLog: (lines) => `tail of ${lines} lines`,
+    describeApp: () => ({ version: '9.9.9', repoCount: 1 })
   }
 }
 
@@ -486,5 +516,94 @@ describe('control-server /browser/screenshot endpoint', () => {
     const r = await get(`/browser/screenshot?tabId=${BROWSER_TAB}`)
     expect(r.status).toBe(500)
     expect(r.json.error).toMatch(/no longer available/)
+  })
+})
+
+describe('control-server /app endpoints', () => {
+  it('GET /app/settings returns the descriptor list', async () => {
+    const r = await get('/app/settings')
+    expect(r.status).toBe(200)
+    expect(r.json.settings).toEqual([
+      {
+        key: 'themeDark',
+        value: 'harness-dark',
+        type: 'enum',
+        writable: true,
+        description: 'Dark theme id.',
+        values: ['harness-dark', 'solarized-dark']
+      }
+    ])
+  })
+
+  it('POST /app/settings applies the change and echoes the stored value', async () => {
+    setSetting.mockClear()
+    const r = await call('POST', '/app/settings', {
+      key: 'themeDark',
+      value: 'solarized-dark'
+    })
+    expect(r.status).toBe(200)
+    expect(r.json).toEqual({ key: 'themeDark', value: 'solarized-dark' })
+    expect(setSetting).toHaveBeenCalledWith('themeDark', 'solarized-dark')
+  })
+
+  it('POST /app/settings surfaces a rejected write as a 400', async () => {
+    setSetting.mockResolvedValueOnce({ ok: false, error: 'nope' })
+    const r = await call('POST', '/app/settings', { key: 'themeDark', value: 'x' })
+    expect(r.status).toBe(400)
+    expect(r.json.error).toBe('nope')
+  })
+
+  it('POST /app/settings requires a value, so `false` stays distinguishable from omitted', async () => {
+    const r = await call('POST', '/app/settings', { key: 'themeDark' })
+    expect(r.status).toBe(400)
+    expect(r.json.error).toMatch(/value required/)
+  })
+
+  it('POST /app/settings accepts an explicit false value', async () => {
+    setSetting.mockClear()
+    const r = await call('POST', '/app/settings', {
+      key: 'autoApprovePermissions',
+      value: false
+    })
+    expect(r.status).toBe(200)
+    expect(setSetting).toHaveBeenCalledWith('autoApprovePermissions', false)
+  })
+
+  it('needs no worktree scope — the caller has none by construction', async () => {
+    const res = await fetch(`${baseUrl}/app/info`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ version: '9.9.9', repoCount: 1 })
+  })
+
+  it('GET /app/log clamps the requested line count', async () => {
+    const r = await get('/app/log?lines=99999')
+    expect(r.status).toBe(200)
+    expect(r.json.log).toBe('tail of 2000 lines')
+  })
+
+  it('GET /app/log falls back to 200 lines for junk input', async () => {
+    const r = await get('/app/log?lines=abc')
+    expect(r.json.log).toBe('tail of 200 lines')
+  })
+
+  it('POST /app/repos reports a non-repo path as a 400', async () => {
+    addRepo.mockResolvedValueOnce({ ok: false, error: '/tmp/x is not a git repository' })
+    const r = await call('POST', '/app/repos', { path: '/tmp/x' })
+    expect(r.status).toBe(400)
+    expect(r.json.error).toMatch(/not a git repository/)
+  })
+
+  it('GET /app/hooks reports consent plus which agents have hooks', async () => {
+    const r = await get('/app/hooks')
+    expect(r.json).toEqual({ consent: 'accepted', installedAgents: ['claude'] })
+  })
+
+  it('404s an unknown /app/ path rather than falling through', async () => {
+    const res = await fetch(`${baseUrl}/app/nope`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    expect(res.status).toBe(404)
   })
 })

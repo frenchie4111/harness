@@ -279,6 +279,10 @@ export interface Config {
   // Diagnostic toggle (no UI): when true, json-mode tabs spawn the user's
   // PATH `claude` instead of the bundled one. Default off.
   useSystemClaudeForJsonMode?: boolean
+  // Session id of the app-scoped global chat. Persisted so the window
+  // resumes the same conversation across restarts — the id is also the
+  // `--resume` argument and the transcript filename.
+  globalChatSessionId?: string
   // Visual density of the JSON-mode chat. Undefined = compact (the
   // historical look). 'comfy' bumps font sizes, padding, and corner
   // radius for newcomers / screen-sharing.
