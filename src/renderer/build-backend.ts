@@ -134,7 +134,8 @@ export function buildBackend(
       newBranchName: string,
       baseBranch?: string
     ) => req('worktree:continue', repoRoot, worktreePath, newBranchName, baseBranch),
-    isWorktreeDirty: (path: string) => req('worktree:isDirty', path),
+    isWorktreeDirty: (path: string, opts?: { bulk?: boolean }) =>
+      req('worktree:isDirty', path, opts),
     removeWorktree: (
       repoRoot: string,
       path: string,

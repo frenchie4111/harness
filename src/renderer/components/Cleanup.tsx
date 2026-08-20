@@ -53,6 +53,9 @@ interface Candidate {
   prState: PRStatus['state'] | null
   merged: boolean
   dirty: boolean
+  /** False until the dirty sweep has actually answered for this worktree.
+   *  `dirty: false` alone can't be trusted while the scan is in flight. */
+  dirtyKnown: boolean
 }
 
 export function Cleanup({
@@ -69,7 +72,9 @@ export function Cleanup({
   const [repoFilter, setRepoFilter] = useState<string | null>(null) // null = all repos
   const [mergedOnly, setMergedOnly] = useState(false)
   const [includeDirty, setIncludeDirty] = useState(false)
+  // Absent key = not scanned yet. Distinct from `false` (scanned, clean).
   const [dirtyMap, setDirtyMap] = useState<Record<string, boolean>>({})
+  const [scanningDirty, setScanningDirty] = useState(true)
   const [activityLastTs, setActivityLastTs] = useState<Record<string, number>>({})
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   // Paths the user has explicitly clicked; their selection state must survive
@@ -93,20 +98,45 @@ export function Cleanup({
     return [...set].sort()
   }, [eligible])
 
+  // The dirty sweep asks git about every eligible worktree, which on a large
+  // set is the most expensive thing this modal does. Two things keep it off
+  // everything else's back: it runs at 'bulk' priority so the main process
+  // dequeues it behind whatever panel the user is looking at, and its answers
+  // land one at a time instead of behind a single Promise.all barrier, so the
+  // list is usable long before the last worktree reports in.
+  //
+  // A path missing from dirtyMap means "not scanned yet", which is distinct
+  // from "clean" — see the selection defaults below, which must not offer up
+  // an unscanned worktree for deletion.
+  useEffect(() => {
+    let cancelled = false
+    setScanningDirty(true)
+    let outstanding = eligible.length
+    if (outstanding === 0) setScanningDirty(false)
+    for (const w of eligible) {
+      void backend
+        .isWorktreeDirty(w.path, { bulk: true })
+        .then((d) => {
+          if (cancelled) return
+          setDirtyMap((prev) => ({ ...prev, [w.path]: d.git || d.scratchpad }))
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (cancelled) return
+          if (--outstanding === 0) setScanningDirty(false)
+        })
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [eligible, backend])
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       setLoading(true)
       try {
-        const [log, dirtyResults] = await Promise.all([
-          backend.getActivityLog(),
-          Promise.all(
-            eligible.map(async (w) => {
-              const d = await backend.isWorktreeDirty(w.path)
-              return [w.path, d.git || d.scratchpad] as const
-            })
-          )
-        ])
+        const log = await backend.getActivityLog()
         if (cancelled) return
         const lastTs: Record<string, number> = {}
         for (const [path, rec] of Object.entries(log as ActivityLog)) {
@@ -125,9 +155,6 @@ export function Cleanup({
           if (ts !== undefined) lastTs[path] = ts
         }
         setActivityLastTs(lastTs)
-        const dmap: Record<string, boolean> = {}
-        for (const [path, d] of dirtyResults) dmap[path] = d
-        setDirtyMap(dmap)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -159,7 +186,8 @@ export function Cleanup({
         lastActiveMs: lastMs,
         prState: pr?.state ?? null,
         merged,
-        dirty
+        dirty,
+        dirtyKnown: dirtyMap[w.path] !== undefined
       })
     }
     out.sort((a, b) => {
@@ -182,7 +210,11 @@ export function Cleanup({
       }
       for (const c of candidates) {
         if (touched[c.worktree.path]) continue
-        next[c.worktree.path] = includeDirty ? true : !c.dirty
+        // `=== false` rather than `!c.dirty`: while the sweep is still running
+        // an unscanned worktree reads as not-dirty, and defaulting those to
+        // selected would arm the delete button over worktrees that may well
+        // have uncommitted work. They tick on as each one is proven clean.
+        next[c.worktree.path] = includeDirty ? true : c.dirtyKnown && !c.dirty
       }
       return next
     })
@@ -379,8 +411,16 @@ export function Cleanup({
           {!loading && candidates.length > 0 && (
             <>
               <div className="flex items-center justify-between mb-2">
-                <div className="text-xs text-dim">
-                  {candidates.length} match{candidates.length === 1 ? '' : 'es'} · {selectedPaths.length} selected
+                <div className="text-xs text-dim flex items-center gap-2">
+                  <span>
+                    {candidates.length} match{candidates.length === 1 ? '' : 'es'} · {selectedPaths.length} selected
+                  </span>
+                  {scanningDirty && (
+                    <span className="flex items-center gap-1 text-muted">
+                      <Loader2 className="icon-2xs animate-spin" />
+                      checking for uncommitted changes…
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 text-xs">
                   <button
