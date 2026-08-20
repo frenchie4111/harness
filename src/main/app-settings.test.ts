@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import {
   APP_SETTINGS,
+  HELD_BACK_SETTINGS,
   applyEnvPatch,
   coerceAppSettingValue,
   findAppSetting,
   projectAppSettingValue,
-  readAppSettings
+  readAppSettings,
+  unclassifiedSettingKeys
 } from './app-settings'
 import { initialState, type AppState } from '../shared/state'
 
@@ -15,10 +19,69 @@ function stateWith(settings: Partial<AppState['settings']>): AppState {
 
 const SECRET = 'sk-ant-do-not-leak-me'
 
-describe('app-settings registry', () => {
+describe('app-settings registry exhaustiveness', () => {
+  // The load-bearing test in this file. Settings are added to this app
+  // constantly; without this, a new one silently doesn't exist to the
+  // global chat and nobody finds out. Failing here forces whoever adds a
+  // setting to spend one line deciding whether an agent should be able
+  // to change it.
+  it('classifies every SettingsState key as exposed or held back', () => {
+    const unclassified = unclassifiedSettingKeys()
+    expect(
+      unclassified,
+      unclassified.length === 0
+        ? ''
+        : `New setting(s) not classified for the ness-app MCP: ${unclassified.join(', ')}.\n` +
+          `Add each to APP_SETTINGS in src/main/app-settings.ts (with a type, a\n` +
+          `description written for an agent, and the config:set* channel that\n` +
+          `already applies it), or to HELD_BACK_SETTINGS with the reason.\n` +
+          `Prefer exposing: the global chat exists to configure Ness by\n` +
+          `conversation, and an unlisted setting might as well not exist to it.`
+    ).toEqual([])
+  })
+
+  it('never lists a key as both exposed and held back', () => {
+    const exposed = new Set<string>(APP_SETTINGS.map((d) => d.key))
+    const both = Object.keys(HELD_BACK_SETTINGS).filter((k) => exposed.has(k))
+    expect(both).toEqual([])
+  })
+
+  it('gives every held-back setting a reason, not a bare true', () => {
+    for (const [key, reason] of Object.entries(HELD_BACK_SETTINGS)) {
+      expect(typeof reason, `${key} needs a reason`).toBe('string')
+      expect(reason!.length, `${key}'s reason is too terse to be useful`).toBeGreaterThan(15)
+    }
+  })
+
+  // Would have caught `config:setAnnouncementsMuted`, which does not
+  // exist — the real channel is `announcements:mute`. A registry entry
+  // naming a channel nobody registered throws at call time, deep inside
+  // an MCP round trip, where the agent reports it as an opaque failure.
+  it('names a request channel that main actually registers', () => {
+    const indexSrc = readFileSync(join(__dirname, 'index.ts'), 'utf-8')
+    const missing = APP_SETTINGS.filter(
+      (d) => d.channel && !indexSrc.includes(`'${d.channel}'`)
+    ).map((d) => `${d.key} -> ${d.channel}`)
+    expect(missing).toEqual([])
+  })
+
   it('every writable descriptor names a distinct key', () => {
     const keys = APP_SETTINGS.map((d) => d.key)
     expect(new Set(keys).size).toBe(keys.length)
+  })
+
+  it('gives every exposed setting a description an agent can act on', () => {
+    for (const d of APP_SETTINGS) {
+      expect(d.description.length, `${d.key} needs a real description`).toBeGreaterThan(20)
+    }
+  })
+
+  it('offers at least two choices for every enum, or it should not be an enum', () => {
+    for (const d of APP_SETTINGS) {
+      if (d.type !== 'enum') continue
+      expect(d.values, `${d.key} is an enum with no values`).toBeDefined()
+      expect(d.values!(initialState).length, `${d.key}`).toBeGreaterThan(1)
+    }
   })
 
   it('marks entries without a channel as read-only', () => {

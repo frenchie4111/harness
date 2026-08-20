@@ -1,20 +1,18 @@
 // The settings surface the app-scoped agent is allowed to see and change.
 //
-// Deliberately a projection, not a dump of SettingsState. What's left
-// out, and why:
-//   * Derived, so writing it is meaningless — `customThemes` (scanned
-//     from disk; use reload_custom_themes), `viewerLogin`,
-//     `harnessStarred`.
-//   * One-shot UI bookkeeping the user drives by dismissing something —
-//     `chatPromotionDismissed`, `dismissedAnnouncementIds`.
-//   * Session-only state another component owns — `preventSleepUntil`
-//     belongs to the WakeLockController, which clears it on expiry.
-//   * Blast radius the user hasn't opted into: the harnessSystemPrompt
-//     family (one bad edit degrades every agent in every worktree) and
-//     the wsTransport family (turning it on opens a network listener).
-//     Both are deliberate holds, not oversights — revisit on request.
+// Deliberately a projection, not a dump of SettingsState — but an
+// EXHAUSTIVE one. Every key of SettingsState must appear either here or
+// in HELD_BACK_SETTINGS below, and app-settings.test.ts fails the build
+// if one appears in neither.
 //
-// Env-var settings ARE here but never surrender their values; see the
+// That check is the point of this file's design. Settings get added to
+// this app constantly, and an allow-list that's merely hand-maintained
+// goes stale silently: the new setting just doesn't exist to the agent,
+// nothing errors, and nobody notices for a month. Forcing a compile-time
+// decision costs whoever adds a setting one line, and that line is
+// exactly where "should an agent be able to change this?" gets asked.
+//
+// Env-var settings ARE exposed but never surrender their values; see the
 // 'env' type above.
 //
 // Each writable entry names the IPC channel that already implements the
@@ -24,7 +22,7 @@
 // as a click in the Settings panel and lands in every open window.
 
 import type { AppState, SettingsState } from '../shared/state'
-import { SCALES } from '../shared/state/settings'
+import { SCALES, initialSettings } from '../shared/state/settings'
 import { JSON_CLAUDE_PERMISSION_MODES } from '../shared/state/json-claude'
 import { AVAILABLE_THEMES } from './persistence'
 
@@ -57,6 +55,47 @@ export interface AppSettingDescriptor {
 }
 
 const UI_SCALES = SCALES.map((s) => s.id)
+
+/** Settings the app-scoped agent deliberately does NOT get, each with
+ *  the reason. Read as the other half of APP_SETTINGS: between them they
+ *  must cover every key of SettingsState, and the test enforces it.
+ *
+ *  Adding a setting to this app? You have to land it in one of the two.
+ *  Default to APP_SETTINGS — the whole point of the global chat is
+ *  configuring Ness conversationally, and a setting that isn't listed
+ *  might as well not exist to it. Come here only when exposure is
+ *  meaningless (derived state), incoherent (one-shot UI bookkeeping),
+ *  or carries blast radius the user hasn't opted into. */
+export const HELD_BACK_SETTINGS: Partial<Record<keyof SettingsState, string>> = {
+  // Derived — the value is computed elsewhere, so writing it here would
+  // either be ignored or immediately overwritten.
+  customThemes: 'scanned from disk; the agent uses reload_custom_themes instead',
+  viewerLogin: 'resolved from the GitHub API at boot',
+  harnessStarred: 'reflects the star state of the repo on GitHub',
+
+  // One-shot UI bookkeeping. These record that a human dismissed
+  // something; an agent setting them fakes an interaction that didn't
+  // happen.
+  chatPromotionDismissed: 'records that the user dismissed an overlay',
+  dismissedAnnouncementIds: 'records which banners the user dismissed',
+
+  // Owned by a main-process component that manages its own lifecycle.
+  preventSleepUntil:
+    'session-only; the WakeLockController owns it and clears it on expiry',
+
+  // Deliberate holds. Not oversights — revisit if the user asks.
+  harnessSystemPromptEnabled:
+    'changes the system prompt of every agent in every worktree at once',
+  harnessSystemPrompt:
+    'changes the system prompt of every agent in every worktree at once',
+  harnessSystemPromptMain:
+    'changes the system prompt of every agent in every worktree at once',
+  wsTransportEnabled: 'opens a network listener — changes the attack surface',
+  wsTransportPort: 'part of the network listener config',
+  wsTransportHost: 'binding 0.0.0.0 exposes the app to the LAN',
+  useSystemClaudeForJsonMode:
+    'undocumented diagnostic toggle with no UI; not offered to the agent yet'
+}
 
 export const APP_SETTINGS: AppSettingDescriptor[] = [
   {
@@ -520,6 +559,18 @@ export function readAppSettings(state: AppState): Array<{
 
 export function findAppSetting(key: string): AppSettingDescriptor | undefined {
   return APP_SETTINGS.find((d) => d.key === key)
+}
+
+/** Keys of SettingsState that are neither exposed nor explicitly held
+ *  back. Should always be empty; the test asserts it. Derived from
+ *  `initialSettings` rather than a hand-written list so it tracks the
+ *  interface automatically — that's the whole mechanism. */
+export function unclassifiedSettingKeys(): string[] {
+  const exposed = new Set<string>(APP_SETTINGS.map((d) => d.key))
+  const held = new Set(Object.keys(HELD_BACK_SETTINGS))
+  return Object.keys(initialSettings).filter(
+    (key) => !exposed.has(key) && !held.has(key)
+  )
 }
 
 /** JSON.parse that reports failure as `undefined` rather than throwing.
