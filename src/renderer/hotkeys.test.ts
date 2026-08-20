@@ -6,6 +6,8 @@ import {
   isTypeableBinding,
   parseBinding,
   bindingToString,
+  matchesBinding,
+  eventToBinding,
   type Action
 } from './hotkeys'
 
@@ -99,9 +101,16 @@ describe('isTypeableBinding', () => {
     expect(isTypeableBinding({ key: ' ', modifiers: {} })).toBe(true)
   })
 
-  it('treats Shift+letter and Alt+letter as typing', () => {
+  it('treats Shift+letter as typing', () => {
     expect(isTypeableBinding(parseBinding('Shift+A'))).toBe(true)
-    expect(isTypeableBinding(parseBinding('Alt+A'))).toBe(true)
+  })
+
+  // ⌥A does insert "å" on macOS, but Alt counts as a deliberate chord —
+  // otherwise Option bindings would be as dead in a text field as bare
+  // letters. See the note on isTypeableBinding.
+  it('treats Alt chords as modifiers, not typing', () => {
+    expect(isTypeableBinding(parseBinding('Alt+A'))).toBe(false)
+    expect(isTypeableBinding(parseBinding('Alt+Shift+A'))).toBe(false)
   })
 
   it('does not treat Cmd or Ctrl chords as typing', () => {
@@ -120,5 +129,86 @@ describe('isTypeableBinding', () => {
     for (const binding of Object.values(DEFAULT_HOTKEYS)) {
       expect(isTypeableBinding(binding)).toBe(false)
     }
+  })
+})
+
+// macOS composes a character from Option: ⌥A reports e.key "å", and the
+// accent chords (⌥E, ⌥I, ⌥N, ⌥U) all report "Dead" — indistinguishable
+// from each other. Matching falls back to e.code for those.
+function keyEvent(
+  key: string,
+  code: string,
+  modifiers: Partial<Record<'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey', boolean>> = {}
+): KeyboardEvent {
+  return {
+    key,
+    code,
+    metaKey: false,
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+    ...modifiers
+  } as KeyboardEvent
+}
+
+describe('matchesBinding with Option held', () => {
+  it('matches ⌥A on physical position, not the composed "å"', () => {
+    const e = keyEvent('å', 'KeyA', { altKey: true })
+    expect(matchesBinding(e, parseBinding('Alt+A'))).toBe(true)
+    expect(matchesBinding(e, parseBinding('Alt+B'))).toBe(false)
+  })
+
+  it('distinguishes the dead-key accent chords', () => {
+    const optE = keyEvent('Dead', 'KeyE', { altKey: true })
+    const optI = keyEvent('Dead', 'KeyI', { altKey: true })
+    expect(matchesBinding(optE, parseBinding('Alt+E'))).toBe(true)
+    expect(matchesBinding(optI, parseBinding('Alt+E'))).toBe(false)
+    expect(matchesBinding(optI, parseBinding('Alt+I'))).toBe(true)
+  })
+
+  it('still honours bindings captured before this, stored as the composed char', () => {
+    const e = keyEvent('å', 'KeyA', { altKey: true })
+    expect(matchesBinding(e, { key: 'å', modifiers: { alt: true } })).toBe(true)
+  })
+
+  it('matches the ⌘⌥ defaults whatever character macOS reports', () => {
+    expect(
+      matchesBinding(keyEvent('®', 'KeyR', { metaKey: true, altKey: true }), DEFAULT_HOTKEYS.openReview)
+    ).toBe(true)
+    expect(
+      matchesBinding(keyEvent('π', 'KeyP', { metaKey: true, altKey: true }), DEFAULT_HOTKEYS.togglePerfMonitor)
+    ).toBe(true)
+  })
+
+  it('leaves non-Option matching alone', () => {
+    // A US-layout Cmd+Shift+[ reports "{" — e.key still decides there.
+    const e = keyEvent('{', 'BracketLeft', { metaKey: true, shiftKey: true })
+    expect(matchesBinding(e, parseBinding('Cmd+Shift+{'))).toBe(true)
+    expect(matchesBinding(e, parseBinding('Cmd+Shift+['))).toBe(false)
+  })
+})
+
+describe('eventToBinding with Option held', () => {
+  it('records the physical key so the badge reads ⌥A', () => {
+    const binding = eventToBinding(keyEvent('å', 'KeyA', { altKey: true }))
+    expect(binding).toEqual({
+      key: 'a',
+      modifiers: { cmd: false, ctrl: false, shift: false, alt: true }
+    })
+    expect(bindingToString(binding!)).toBe('Alt+A')
+  })
+
+  it('records a dead-key chord as its letter', () => {
+    expect(eventToBinding(keyEvent('Dead', 'KeyE', { altKey: true }))?.key).toBe('e')
+  })
+
+  it('falls back to e.key for keys with no printable position', () => {
+    expect(eventToBinding(keyEvent('ArrowDown', 'ArrowDown', { altKey: true }))?.key).toBe(
+      'ArrowDown'
+    )
+  })
+
+  it('is unchanged without Option', () => {
+    expect(eventToBinding(keyEvent('A', 'KeyA', { metaKey: true, shiftKey: true }))?.key).toBe('a')
   })
 })
