@@ -161,7 +161,7 @@ import {
 import { getControlServerInfo } from './control-server'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
 import { log, getLogFilePath } from './debug'
-import { loadCustomThemes } from './themes-loader'
+import { loadCustomThemes, themesDir } from './themes-loader'
 import { perfLog, flushPerfLogSync } from './perf-log'
 import { buildInitialAppState } from './build-initial-state'
 import { AnnouncementsPoller } from './announcements-poller'
@@ -5016,6 +5016,16 @@ async function runBoot(): Promise<void> {
         return { ok: true as const }
       },
       readDebugLog: (lines) => readRecentDebugLog(lines),
+      reloadCustomThemes: async () => {
+        await localTap.invoke('config:reloadCustomThemes')
+        return store
+          .getSnapshot()
+          .state.settings.customThemes.map(({ id, name, mode }) => ({
+            id,
+            name,
+            mode
+          }))
+      },
       describeApp: () => {
         const state = store.getSnapshot().state
         return {
@@ -5023,6 +5033,7 @@ async function runBoot(): Promise<void> {
           platform: `${process.platform}-${process.arch}`,
           userDataDir: userDataDir(),
           debugLogPath: getLogFilePath(),
+          themesDir: themesDir(),
           repoCount: config.repoRoots.length,
           worktreeCount: state.worktrees.list.length,
           hooksConsent: state.hooks.consent,

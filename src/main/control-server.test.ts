@@ -58,6 +58,10 @@ const setSetting = vi.fn<
   ) => Promise<{ ok: true; value: unknown } | { ok: false; error: string }>
 >(async (_key, value) => ({ ok: true, value }))
 
+const reloadThemes = vi.fn<
+  () => Promise<Array<{ id: string; name: string; mode: 'light' | 'dark' }>>
+>(async () => [{ id: 'my-cool-theme', name: 'My Cool Theme', mode: 'dark' }])
+
 const addRepo = vi.fn<
   (path: string) => Promise<{ ok: true; repoRoot: string } | { ok: false; error: string }>
 >(async (path) => ({ ok: true, repoRoot: path }))
@@ -141,6 +145,7 @@ const deps: ControlServerDeps = {
     getHooksStatus: () => ({ consent: 'accepted', installedAgents: ['claude'] }),
     setHooksConsent: async () => ({ ok: true as const }),
     readDebugLog: (lines) => `tail of ${lines} lines`,
+    reloadCustomThemes: () => reloadThemes(),
     describeApp: () => ({ version: '9.9.9', repoCount: 1 })
   }
 }
@@ -627,6 +632,30 @@ describe('control-server /app endpoints', () => {
     const r = await appPost('/app/repos', { path: '/tmp/x' })
     expect(r.status).toBe(400)
     expect(r.json.error).toMatch(/not a git repository/)
+  })
+
+  it('POST /app/themes/reload returns what actually parsed', async () => {
+    const r = await appPost('/app/themes/reload', {})
+    expect(r.status).toBe(200)
+    expect(r.json.themes).toEqual([
+      { id: 'my-cool-theme', name: 'My Cool Theme', mode: 'dark' }
+    ])
+  })
+
+  // The agent is told to treat an absence as "the file was rejected", so
+  // an empty list has to come back as success, not as an error.
+  it('POST /app/themes/reload reports an empty scan as a 200', async () => {
+    reloadThemes.mockResolvedValueOnce([])
+    const r = await appPost('/app/themes/reload', {})
+    expect(r.status).toBe(200)
+    expect(r.json.themes).toEqual([])
+  })
+
+  it('POST /app/themes/reload is closed to worktree callers like the rest', async () => {
+    reloadThemes.mockClear()
+    const r = await appPost('/app/themes/reload', {}, CALLER_TERMINAL)
+    expect(r.status).toBe(403)
+    expect(reloadThemes).not.toHaveBeenCalled()
   })
 
   it('GET /app/hooks reports consent plus which agents have hooks', async () => {

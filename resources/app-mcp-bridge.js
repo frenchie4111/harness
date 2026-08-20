@@ -170,6 +170,12 @@ const TOOLS = [
     }
   },
   {
+    name: 'reload_custom_themes',
+    description:
+      "Rescan the user's themes directory and return every custom theme that loaded. Call this after writing a theme file; Ness only scans at boot and when the user clicks Reload in Settings, so a theme you just wrote is invisible until you do. The returned list is what actually parsed — if your theme isn't in it, the file was rejected and you should say so rather than trying to select it.\n\nTO AUTHOR A THEME: write the JSON yourself with the Write tool (the user reviews the whole file in the approval card), then call this, then set `themeLight` or `themeDark` via set_setting. Get the directory from get_app_info's `themesDir`.\n\nFILE FORMAT — one .json file per theme:\n{\n  \"name\": \"Display Name\",        // REQUIRED, non-empty. Shown in the picker.\n  \"mode\": \"dark\",                // REQUIRED, \"light\" or \"dark\". Decides which\n                                 //   picker it appears in, and therefore whether\n                                 //   themeLight or themeDark can select it.\n  \"colors\": {                    // Optional. Any key you omit inherits from the\n                                 //   built-in default for the same mode, so a\n                                 //   partial theme is valid and often enough.\n    \"app\": \"#0a0a0a\"\n  }\n}\n\nThe theme's id comes from the FILENAME, not from a field: lowercased, every run of non-[a-z0-9-] replaced with a dash, dashes collapsed and trimmed. So `My Cool Theme.json` becomes id `my-cool-theme`. That id is what set_setting takes. It must not collide with a built-in theme id, or the file is skipped.\n\nRecognised `colors` keys (anything else is ignored). Values are any CSS colour string:\n  surfaces      app, panel, panel-raised, surface, surface-hover\n  lines         border, border-strong\n  text          fg, fg-bright, muted, dim, faint\n  semantic      success, warning, danger, info, accent\n  brand ramp    brand, brand-mid, brand-deep\nSyntax highlighting and the gradient brand surfaces are derived from these, so you don't set them separately. A theme that sets `brand` should usually set `brand-mid` and `brand-deep` too, or the ramp will look flat.\n\nA malformed file is skipped and logged rather than throwing — read_ness_log with match 'themes' tells you why.",
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
     name: 'get_hooks_status',
     description:
       "Report whether the user has consented to Ness installing Claude Code hooks, and which worktrees currently have them. Hooks are how Ness knows a terminal agent's real status (processing / waiting / needs-approval) — without them the sidebar dots are guesses.",
@@ -242,6 +248,13 @@ async function handleToolCall(name, args) {
     const q = args && args.repoRoot ? '?repoRoot=' + encodeURIComponent(args.repoRoot) : ''
     const r = await callControl('GET', '/worktrees' + q)
     return JSON.stringify(r, null, 2)
+  }
+  if (name === 'reload_custom_themes') {
+    const r = await callControl('POST', '/app/themes/reload', {})
+    const themes = (r && r.themes) || []
+    return themes.length === 0
+      ? 'No custom themes loaded. If you just wrote one, the file was rejected — check read_ness_log for a "themes" line explaining why.'
+      : JSON.stringify(themes, null, 2)
   }
   if (name === 'get_hooks_status') {
     const r = await callControl('GET', '/app/hooks')

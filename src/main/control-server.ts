@@ -156,6 +156,15 @@ export interface AppQueries {
   ) => Promise<{ ok: true } | { ok: false; error: string }>
   /** Tail of debug.log. Used for "why is Ness doing X" questions. */
   readDebugLog: (lines: number) => string
+  /** Rescan `<userData>/themes/*.json` and republish the result. The
+   * agent writes theme files with its ordinary Write tool — which puts
+   * the whole JSON in front of the user in an approval card — and this
+   * is what makes Ness notice them. Returns what actually loaded, so a
+   * file that failed validation surfaces as an absence the agent can
+   * report rather than a silent no-op. */
+  reloadCustomThemes: () => Promise<
+    Array<{ id: string; name: string; mode: 'light' | 'dark' }>
+  >
   /** Version + platform + where config lives. Cheap orientation for an
    * agent that has no repo to look at. */
   describeApp: () => Record<string, unknown>
@@ -868,6 +877,9 @@ async function handleRequest(
       const result = await deps.app.setHooksConsent(consent)
       if (!result.ok) return sendJson(res, 400, { error: result.error })
       return sendJson(res, 200, { consent })
+    }
+    if (req.method === 'POST' && path === '/app/themes/reload') {
+      return sendJson(res, 200, { themes: await deps.app.reloadCustomThemes() })
     }
     if (req.method === 'GET' && path === '/app/log') {
       const raw = url.searchParams.get('lines')
