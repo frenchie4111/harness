@@ -62,6 +62,9 @@ const addRepo = vi.fn<
   (path: string) => Promise<{ ok: true; repoRoot: string } | { ok: false; error: string }>
 >(async (path) => ({ ok: true, repoRoot: path }))
 
+/** The global chat's session id. Only this caller reaches /app/*. */
+const APP_SESSION = 'global-chat-session'
+
 const BROWSER_TAB = 'browser-tab-1'
 let browserEnabled = false
 let captureResult: CaptureResult | null = null
@@ -121,6 +124,7 @@ const deps: ControlServerDeps = {
     send: (path, message) => sendMessage(path, message)
   },
   app: {
+    isAppScopedCaller: (callerId) => callerId === APP_SESSION,
     listSettings: () => [
       {
         key: 'themeDark',
@@ -520,8 +524,46 @@ describe('control-server /browser/screenshot endpoint', () => {
 })
 
 describe('control-server /app endpoints', () => {
+  async function appGet(
+    path: string,
+    callerId: string = APP_SESSION
+  ): Promise<{ status: number; json: Record<string, unknown> }> {
+    const res = await fetch(`${baseUrl}${path}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Harness-Terminal-Id': callerId
+      }
+    })
+    const text = await res.text()
+    return {
+      status: res.status,
+      json: text ? (JSON.parse(text) as Record<string, unknown>) : {}
+    }
+  }
+
+  async function appPost(
+    path: string,
+    body: unknown,
+    callerId: string = APP_SESSION
+  ): Promise<{ status: number; json: Record<string, unknown> }> {
+    const res = await fetch(`${baseUrl}${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'X-Harness-Terminal-Id': callerId
+      },
+      body: JSON.stringify(body)
+    })
+    const text = await res.text()
+    return {
+      status: res.status,
+      json: text ? (JSON.parse(text) as Record<string, unknown>) : {}
+    }
+  }
+
   it('GET /app/settings returns the descriptor list', async () => {
-    const r = await get('/app/settings')
+    const r = await appGet('/app/settings')
     expect(r.status).toBe(200)
     expect(r.json.settings).toEqual([
       {
@@ -537,7 +579,7 @@ describe('control-server /app endpoints', () => {
 
   it('POST /app/settings applies the change and echoes the stored value', async () => {
     setSetting.mockClear()
-    const r = await call('POST', '/app/settings', {
+    const r = await appPost('/app/settings', {
       key: 'themeDark',
       value: 'solarized-dark'
     })
@@ -548,20 +590,20 @@ describe('control-server /app endpoints', () => {
 
   it('POST /app/settings surfaces a rejected write as a 400', async () => {
     setSetting.mockResolvedValueOnce({ ok: false, error: 'nope' })
-    const r = await call('POST', '/app/settings', { key: 'themeDark', value: 'x' })
+    const r = await appPost('/app/settings', { key: 'themeDark', value: 'x' })
     expect(r.status).toBe(400)
     expect(r.json.error).toBe('nope')
   })
 
   it('POST /app/settings requires a value, so `false` stays distinguishable from omitted', async () => {
-    const r = await call('POST', '/app/settings', { key: 'themeDark' })
+    const r = await appPost('/app/settings', { key: 'themeDark' })
     expect(r.status).toBe(400)
     expect(r.json.error).toMatch(/value required/)
   })
 
   it('POST /app/settings accepts an explicit false value', async () => {
     setSetting.mockClear()
-    const r = await call('POST', '/app/settings', {
+    const r = await appPost('/app/settings', {
       key: 'autoApprovePermissions',
       value: false
     })
@@ -569,41 +611,65 @@ describe('control-server /app endpoints', () => {
     expect(setSetting).toHaveBeenCalledWith('autoApprovePermissions', false)
   })
 
-  it('needs no worktree scope — the caller has none by construction', async () => {
-    const res = await fetch(`${baseUrl}/app/info`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ version: '9.9.9', repoCount: 1 })
-  })
-
   it('GET /app/log clamps the requested line count', async () => {
-    const r = await get('/app/log?lines=99999')
+    const r = await appGet('/app/log?lines=99999')
     expect(r.status).toBe(200)
     expect(r.json.log).toBe('tail of 2000 lines')
   })
 
   it('GET /app/log falls back to 200 lines for junk input', async () => {
-    const r = await get('/app/log?lines=abc')
+    const r = await appGet('/app/log?lines=abc')
     expect(r.json.log).toBe('tail of 200 lines')
   })
 
   it('POST /app/repos reports a non-repo path as a 400', async () => {
     addRepo.mockResolvedValueOnce({ ok: false, error: '/tmp/x is not a git repository' })
-    const r = await call('POST', '/app/repos', { path: '/tmp/x' })
+    const r = await appPost('/app/repos', { path: '/tmp/x' })
     expect(r.status).toBe(400)
     expect(r.json.error).toMatch(/not a git repository/)
   })
 
   it('GET /app/hooks reports consent plus which agents have hooks', async () => {
-    const r = await get('/app/hooks')
+    const r = await appGet('/app/hooks')
     expect(r.json).toEqual({ consent: 'accepted', installedAgents: ['claude'] })
   })
 
   it('404s an unknown /app/ path rather than falling through', async () => {
+    // Plain-text body, so this one can't go through appGet's JSON parse.
     const res = await fetch(`${baseUrl}/app/nope`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Harness-Terminal-Id': APP_SESSION
+      }
     })
     expect(res.status).toBe(404)
+  })
+
+  // The bearer token can't express "which agent is calling" — every
+  // ness-control bridge holds the same one. Without the caller check, a
+  // worktree agent could read its own env and curl these endpoints
+  // directly, changing settings with no approval card.
+  it('rejects a worktree-scoped caller even though its token is valid', async () => {
+    setSetting.mockClear()
+    const r = await appPost(
+      '/app/settings',
+      { key: 'themeDark', value: 'solarized-dark' },
+      CALLER_TERMINAL
+    )
+    expect(r.status).toBe(403)
+    expect(r.json.error).toMatch(/only available to the Ness Chat session/)
+    expect(setSetting).not.toHaveBeenCalled()
+  })
+
+  it('rejects reads from a worktree-scoped caller too, not just writes', async () => {
+    const r = await appGet('/app/log', CALLER_TERMINAL)
+    expect(r.status).toBe(403)
+  })
+
+  it('rejects a caller that sends no id at all', async () => {
+    const res = await fetch(`${baseUrl}/app/info`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    expect(res.status).toBe(403)
   })
 })

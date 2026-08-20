@@ -159,6 +159,12 @@ export interface AppQueries {
   /** Version + platform + where config lives. Cheap orientation for an
    * agent that has no repo to look at. */
   describeApp: () => Record<string, unknown>
+  /** Whether a caller id is the app-scoped session. Only the global chat
+   * is handed the ness-app bridge, but every ness-control bridge holds
+   * the same bearer token — so without this the tool list would be the
+   * only thing stopping a worktree agent from curling these endpoints
+   * directly and changing settings with no approval card. */
+  isAppScopedCaller: (callerId: string) => boolean
 }
 
 export interface ControlServerDeps {
@@ -814,6 +820,17 @@ async function handleRequest(
   // because the calling session runs with --permission-prompt-tool, the
   // user still sees an approval card before any of this is reached.
   if (path.startsWith('/app/')) {
+    // Not scoped to a worktree — these act on Ness itself — but still
+    // scoped to a caller: the app-scoped session and nothing else. The
+    // bearer token can't carry that distinction, since every bridge we
+    // spawn gets the same one.
+    const callerId = String(req.headers['x-harness-terminal-id'] || '')
+    if (!deps.app.isAppScopedCaller(callerId)) {
+      return sendJson(res, 403, {
+        error:
+          'the ness-app tools are only available to the Ness Chat session, which is scoped to the app rather than to a worktree'
+      })
+    }
     if (req.method === 'GET' && path === '/app/info') {
       return sendJson(res, 200, deps.app.describeApp())
     }

@@ -4942,6 +4942,10 @@ async function runBoot(): Promise<void> {
     // agent-driven settings change is indistinguishable from a click in
     // the Settings panel and reaches every open window the same way.
     app: {
+      isAppScopedCaller: (callerId) => {
+        const globalId = store.getSnapshot().state.globalChat.sessionId
+        return Boolean(globalId) && callerId === globalId
+      },
       listSettings: () => readAppSettings(store.getSnapshot().state),
       setSetting: async (key, value) => {
         const descriptor = findAppSetting(key)
