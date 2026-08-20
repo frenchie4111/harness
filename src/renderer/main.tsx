@@ -2,6 +2,7 @@ import './styles.css'
 import { Profiler, type ProfilerOnRenderCallback } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import GlobalChat from './components/GlobalChat'
 import { initStore } from './store'
 import { getBackend } from './backend'
 import { defineHarnessTheme } from './monaco-setup'
@@ -17,14 +18,21 @@ const onRender: ProfilerOnRenderCallback = (_id, _phase, actualDuration) => {
   rendererPerf.recordCommit(actualDuration)
 }
 
+// One HTML entry, two window roots. The global chat window is opened
+// with ?view=global-chat (see createWindow in desktop-shell.ts); it
+// mirrors the same store over the same transport, it just renders a
+// different tree.
+const isGlobalChat =
+  new URLSearchParams(window.location.search).get('view') === 'global-chat'
+
 initStore()
   .then(() => {
     defineHarnessTheme()
     rendererPerf.start((sample) => getBackend().perfReportRendererSample(sample))
     createRoot(document.getElementById('root')!).render(
-      <ErrorBoundary label="app:root" showReload>
+      <ErrorBoundary label={isGlobalChat ? 'global-chat:root' : 'app:root'} showReload>
         <Profiler id="app" onRender={onRender}>
-          <App />
+          {isGlobalChat ? <GlobalChat /> : <App />}
         </Profiler>
         <LinuxWindowControls />
       </ErrorBoundary>

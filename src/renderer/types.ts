@@ -157,6 +157,9 @@ import type {
 } from '../shared/state/json-claude'
 export type { JsonClaudeChatEntry }
 
+import type { GlobalChatAuth } from '../shared/state/global-chat'
+export type { GlobalChatAuth }
+
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
 
 export type SidebarDensity = 'compact' | 'comfy'
@@ -670,6 +673,24 @@ export interface ElectronAPI {
     id: string,
     toolNames?: string[]
   ): Promise<boolean>
+
+  // Global chat — the app-scoped session (its own window, no worktree).
+  globalChatEnsure(): Promise<{
+    sessionId: string
+    cwd: string
+    auth: GlobalChatAuth
+  }>
+  globalChatRecheckAuth(): Promise<{
+    sessionId?: string
+    cwd?: string
+    auth: GlobalChatAuth
+  }>
+  globalChatReset(): Promise<{
+    sessionId: string
+    cwd: string
+    auth: GlobalChatAuth
+  }>
+  globalChatOpenWindow(): Promise<boolean>
 
   getStateSnapshot(): Promise<StateSnapshot>
   onStateEvent(callback: (event: StateEvent, seq: number) => void): () => void

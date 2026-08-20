@@ -280,7 +280,20 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
     startAutoUpdateChecks()
   }
 
-  function createWindow(): BrowserWindow {
+  interface CreateWindowOptions {
+    /** Query string appended to the renderer entry. `?view=global-chat`
+     *  makes main.tsx mount the global chat root instead of <App />. */
+    view?: string
+    title?: string
+    width?: number
+    height?: number
+    /** Secondary windows shouldn't overwrite the main window's saved
+     *  geometry — the user would come back to a workspace sized like a
+     *  chat panel. */
+    skipBoundsPersistence?: boolean
+  }
+
+  function createWindow(opts?: CreateWindowOptions): BrowserWindow {
     // First-launch defaults: aim for 1600x1000, but clamp to the primary
     // display's work area so smaller screens (13" MBP = 1440x900 native)
     // don't get a window that spills off-screen. Returning users' saved
@@ -292,12 +305,13 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
       x: undefined!,
       y: undefined!
     }
+    const usePresetBounds = opts?.width != null && opts?.height != null
 
     const win = new BrowserWindow({
-      width: bounds.width,
-      height: bounds.height,
-      ...(bounds.x != null ? { x: bounds.x, y: bounds.y } : {}),
-      title: 'Ness',
+      width: opts?.width ?? bounds.width,
+      height: opts?.height ?? bounds.height,
+      ...(!usePresetBounds && bounds.x != null ? { x: bounds.x, y: bounds.y } : {}),
+      title: opts?.title ?? 'Ness',
       // nativeImage path so reads work from inside app.asar and the WM
       // gets a real pixel buffer for _NET_WM_ICON on Linux. A bare string
       // path here silently fails when the file is asar-bundled.
@@ -353,8 +367,10 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
       config.windowBounds = win.getBounds()
       saveConfig(config)
     }
-    win.on('resize', saveBounds)
-    win.on('move', saveBounds)
+    if (!opts?.skipBoundsPersistence) {
+      win.on('resize', saveBounds)
+      win.on('move', saveBounds)
+    }
 
     // macOS hides the traffic lights in native fullscreen, so the renderer
     // shouldn't reserve the 80px leading clearance for them. Notify on
@@ -366,12 +382,40 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
     win.on('leave-full-screen', sendFullscreen)
     win.webContents.once('did-finish-load', sendFullscreen)
 
+    const query = opts?.view ? { view: opts.view } : undefined
     if (process.env['ELECTRON_RENDERER_URL']) {
-      win.loadURL(process.env['ELECTRON_RENDERER_URL'])
+      const devUrl = new URL(process.env['ELECTRON_RENDERER_URL'])
+      if (opts?.view) devUrl.searchParams.set('view', opts.view)
+      win.loadURL(devUrl.toString())
     } else {
-      win.loadFile(join(__dirname, '../renderer/index.html'))
+      win.loadFile(join(__dirname, '../renderer/index.html'), { query })
     }
 
+    return win
+  }
+
+  /** One global-chat window at a time — reopening focuses the existing
+   *  one. It's a singleton conversation, so a second window would just be
+   *  two views of the same transcript fighting over scroll position. */
+  let globalChatWindow: BrowserWindow | null = null
+  function openGlobalChatWindow(): BrowserWindow {
+    if (globalChatWindow && !globalChatWindow.isDestroyed()) {
+      globalChatWindow.show()
+      globalChatWindow.focus()
+      return globalChatWindow
+    }
+    const work = screen.getPrimaryDisplay().workAreaSize
+    const win = createWindow({
+      view: 'global-chat',
+      title: 'Ness Chat',
+      width: Math.min(760, work.width - 40),
+      height: Math.min(900, work.height - 40),
+      skipBoundsPersistence: true
+    })
+    globalChatWindow = win
+    win.on('closed', () => {
+      globalChatWindow = null
+    })
     return win
   }
 
@@ -427,6 +471,11 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
             label: 'New Window',
             accelerator: 'CmdOrCtrl+Shift+N',
             click: () => createWindow()
+          },
+          {
+            label: 'Ness Chat',
+            accelerator: 'CmdOrCtrl+Shift+A',
+            click: () => openGlobalChatWindow()
           },
           { type: 'separator' },
           {
@@ -570,6 +619,13 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
 
   function registerDesktopHandlers(): void {
     registerWindowControlHandlers()
+
+    // Desktop-only: the global chat lives in its own BrowserWindow, and
+    // only the local Electron host has windows to open.
+    transport.onRequest('globalChat:openWindow', (_ctx) => {
+      openGlobalChatWindow()
+      return true
+    })
 
     transport.onRequest('repo:add', async (_ctx): Promise<AddRepoResult> => {
       const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]

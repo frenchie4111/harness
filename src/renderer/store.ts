@@ -858,6 +858,13 @@ export function useBrowser() {
   return useAppState((s) => s.browser)
 }
 
+/** App-scoped chat session pointer + auth verdict. Read by the global
+ *  chat window; the conversation itself comes from
+ *  `useJsonClaudeSession(globalChat.sessionId)` like any other chat. */
+export function useGlobalChat() {
+  return useAppState((s) => s.globalChat)
+}
+
 /** The boot-time config.json load error, or null on a healthy load.
  *  Drives InvalidConfigModal. */
 export function useConfigLoadError() {

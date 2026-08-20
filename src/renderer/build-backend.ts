@@ -658,6 +658,14 @@ export function buildBackend(
     clearJsonClaudeSessionToolApprovals: (id: string, toolNames?: string[]) =>
       req('jsonClaude:clearSessionToolApprovals', id, toolNames),
 
+    // Global chat. `openWindow` is always-local — only the Electron host
+    // has BrowserWindows to open — while the session lifecycle follows
+    // the active backend like every other chat.
+    globalChatEnsure: () => req('globalChat:ensure'),
+    globalChatRecheckAuth: () => req('globalChat:recheckAuth'),
+    globalChatReset: () => req('globalChat:reset'),
+    globalChatOpenWindow: () => reqLocal('globalChat:openWindow'),
+
     getStateSnapshot: () => getActiveTransport().getStateSnapshot(),
     onStateEvent: (callback: StateEventListener) =>
       getActiveTransport().onStateEvent(callback),
