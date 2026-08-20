@@ -1482,31 +1482,6 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   </div>
                 </div>
               </label>
-
-              <label
-                className="mt-6 flex items-start gap-2 cursor-pointer"
-                data-search-title="Swap click and ⌘-click on terminal links"
-              >
-                <input
-                  type="checkbox"
-                  checked={terminalPlainClickOpensInApp}
-                  onChange={(e) => handleToggleTerminalPlainClickOpensInApp(e.target.checked)}
-                  className="mt-0.5 cursor-pointer icon-base" />
-                <div className="flex-1">
-                  <div className="text-sm text-fg-bright">
-                    Swap click and ⌘-click on terminal links
-                  </div>
-                  <div className="text-xs text-dim mt-0.5">
-                    By default a plain click on a link in a terminal hands it off
-                    — URLs to your system browser, file paths to your editor —
-                    and ⌘-click keeps it inside Ness in a browser or file tab.
-                    Enable this to swap them, so ⌘-click is what leaves Ness.
-                    Matches terminals where ⌘-click is the gesture for opening a
-                    link for real. <code className="bg-panel-raised px-1 rounded text-xs">mailto:</code>{' '}
-                    and other OS-handled schemes always go external.
-                  </div>
-                </div>
-              </label>
             </section>
 
             {/* Appearance section */}
@@ -3114,9 +3089,9 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <h2 className="text-lg font-semibold text-fg-bright mb-1">Editor</h2>
               <p className="text-sm text-dim mb-4">
                 Your preferred code editor. Ness uses this when you click
-                "Open in editor" on a worktree, or click the edit icon on a
-                changed file. The editor's CLI must be installed and on your
-                shell PATH.
+                "Open in editor" on a worktree, click the edit icon on a
+                changed file, or click a file path in a terminal. The editor's
+                CLI must be installed and on your shell PATH.
               </p>
               <div className="grid grid-cols-2 gap-2 mb-3">
                 {availableEditors.map((ed) => {
@@ -3147,6 +3122,31 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 installed via <em>Shell Command: Install 'code' command in PATH</em> from
                 the command palette).
               </p>
+
+              <label
+                className="mt-6 flex items-start gap-2 cursor-pointer"
+                data-search-title="Swap click and ⌘-click on terminal links"
+              >
+                <input
+                  type="checkbox"
+                  checked={terminalPlainClickOpensInApp}
+                  onChange={(e) => handleToggleTerminalPlainClickOpensInApp(e.target.checked)}
+                  className="mt-0.5 cursor-pointer icon-base" />
+                <div className="flex-1">
+                  <div className="text-sm text-fg-bright">
+                    Swap click and ⌘-click on terminal links
+                  </div>
+                  <div className="text-xs text-dim mt-0.5">
+                    By default a plain click on a link in a terminal hands it off
+                    — file paths to the editor above, URLs to your system browser
+                    — and ⌘-click keeps it inside Ness in a file or browser tab.
+                    Enable this to swap them, so ⌘-click is what leaves Ness.
+                    Matches terminals where ⌘-click is the gesture for opening a
+                    link for real. <code className="bg-panel-raised px-1 rounded text-xs">mailto:</code>{' '}
+                    and other OS-handled schemes always go external.
+                  </div>
+                </div>
+              </label>
             </section>
 
             {/* GitHub section */}
