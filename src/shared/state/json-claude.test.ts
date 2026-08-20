@@ -1713,6 +1713,15 @@ describe('automated message sentinel', () => {
     })
   })
 
+  it('keeps the auto-name rename instruction out of the rendered body', () => {
+    const wire = wrapAutomatedMessage('worktree-autoname', 'add a dark mode toggle')
+    expect(wire).toContain('rename_worktree')
+    expect(parseAutomatedMessage(wire)).toEqual({
+      source: 'worktree-autoname',
+      body: 'add a dark mode toggle'
+    })
+  })
+
   it('parses a kickoff sentinel written before the guidance footer existed', () => {
     expect(
       parseAutomatedMessage(

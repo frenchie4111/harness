@@ -1256,6 +1256,68 @@ export async function getCurrentBranch(worktreePath: string): Promise<string> {
   }
 }
 
+export type RenameBranchResult =
+  | { ok: true; oldBranch: string; branch: string; renamed: boolean }
+  | { ok: false; error: string }
+
+/**
+ * Rename the branch a worktree has checked out (`git branch -m`). The
+ * directory on disk keeps its original name — it's the key every other
+ * piece of Ness state (panes, aliases, terminal cwds, running PTYs) is
+ * filed under, and `git worktree move` would pull it out from under an
+ * agent that's mid-turn.
+ *
+ * Refuses once the branch has been pushed: `git branch -m` carries the
+ * branch's config across, so the renamed local branch would still track
+ * the old remote ref and quietly push there — which is how you detach a
+ * PR from the branch it thinks it's watching.
+ */
+export async function renameWorktreeBranch(
+  worktreePath: string,
+  newBranch: string
+): Promise<RenameBranchResult> {
+  const oldBranch = await getCurrentBranch(worktreePath)
+  if (!oldBranch) {
+    return {
+      ok: false,
+      error: `${worktreePath} is in detached HEAD — there is no branch to rename`
+    }
+  }
+  if (oldBranch === newBranch) {
+    return { ok: true, oldBranch, branch: newBranch, renamed: false }
+  }
+
+  const upstream = await execFileAsync(
+    'git',
+    ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'],
+    { cwd: worktreePath }
+  )
+    .then(({ stdout }) => stdout.trim())
+    .catch(() => '')
+  if (upstream) {
+    return {
+      ok: false,
+      error:
+        `branch "${oldBranch}" is already published (tracking ${upstream}) — renaming it locally ` +
+        `would leave it pushing to the old remote branch. Set a display alias instead.`
+    }
+  }
+
+  try {
+    await execFileAsync('git', ['branch', '-m', newBranch], { cwd: worktreePath })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return {
+      ok: false,
+      error: /already exists/i.test(message)
+        ? `a branch named "${newBranch}" already exists in this repo`
+        : message
+    }
+  }
+  log('worktree', `renamed branch ${oldBranch} -> ${newBranch} in ${worktreePath}`)
+  return { ok: true, oldBranch, branch: newBranch, renamed: true }
+}
+
 /** Report status of the main worktree for a local merge. */
 export async function getMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus> {
   const t0 = performance.now()

@@ -229,6 +229,31 @@ const TOOLS = [
     }
   },
   {
+    name: 'rename_worktree',
+    description:
+      "Rename a worktree's git branch and/or set its display alias. Defaults to the caller's own worktree when worktreePath is omitted, so an agent can rename itself. Pass branchName, alias, or both in one call.\n\nThe branch rename is a real `git branch -m` — the folder on disk keeps its original name (it's what every open tab, terminal and running process is anchored to), so a worktree whose directory and branch names disagree is expected, not a bug. Renaming is refused once the branch has been pushed, because the renamed local branch would still push to the old remote ref: on a published branch, set an alias instead.\n\nWhen Ness created this worktree from a kickoff prompt alone, it guessed the branch name and asked you to call this tool with a better one. Do that in a single call, then get on with the work.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        branchName: {
+          type: 'string',
+          description:
+            'New git branch name. Kebab-case, no spaces (slashes are allowed, e.g. `fix/login-redirect`). Rejected rather than silently sanitized if it is not a valid branch name, or if a branch by that name already exists.'
+        },
+        alias: {
+          type: 'string',
+          description:
+            'Display alias shown instead of the branch name in the sidebar, window title, and tab strip. Short and human — Title Case with spaces ("Login Redirect", "PR 214 Review"), not a kebab-case slug that just repeats the branch name. Trimmed and clamped to 80 chars.'
+        },
+        worktreePath: {
+          type: 'string',
+          description:
+            "Absolute path of the worktree to rename. Optional — defaults to the caller's own worktree."
+        }
+      }
+    }
+  },
+  {
     name: 'clear_worktree_alias',
     description:
       "Remove the display alias for a worktree so it shows its branch name again in Ness. Defaults to the caller's current worktree when worktreePath is omitted. No-op if no alias was set.",
@@ -678,6 +703,30 @@ async function handleToolCall(name, args) {
     return r.alias
       ? 'Set alias "' + r.alias + '" for ' + r.worktreePath + clampNote
       : 'Cleared alias for ' + r.worktreePath + clampNote
+  }
+  if (name === 'rename_worktree') {
+    const branchName = args && typeof args.branchName === 'string' ? args.branchName.trim() : ''
+    const hasAlias = args && typeof args.alias === 'string'
+    if (!branchName && !hasAlias) {
+      throw new Error('branchName or alias is required')
+    }
+    const r = await callControl('POST', '/worktrees/rename', {
+      branchName: branchName || undefined,
+      alias: hasAlias ? args.alias : undefined,
+      worktreePath: args && args.worktreePath
+    })
+    const parts = []
+    if (r.branch) {
+      parts.push(
+        r.renamed
+          ? 'Renamed branch ' + r.oldBranch + ' → ' + r.branch
+          : 'Branch was already named ' + r.branch
+      )
+    }
+    if (r.alias !== undefined) {
+      parts.push(r.alias ? 'set alias "' + r.alias + '"' : 'cleared alias')
+    }
+    return parts.join(', ') + ' for ' + r.worktreePath + '.'
   }
   if (name === 'clear_worktree_alias') {
     const r = await callControl('DELETE', '/aliases', {

@@ -752,6 +752,15 @@ function automationLabel(
       brand: true
     }
   }
+  // The body here is the human's own kickoff prompt — only the stripped
+  // footer (rename yourself) was Ness's, hence "your prompt".
+  if (source === 'worktree-autoname') {
+    return {
+      label: 'Kickoff Prompt',
+      note: 'opened this worktree · naming it from your prompt',
+      brand: true
+    }
+  }
   return { label: 'Ness · CI failure', note: 'sent automatically', brand: false }
 }
 

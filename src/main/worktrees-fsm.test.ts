@@ -5,7 +5,7 @@ vi.mock('./debug', () => ({ log: () => {} }))
 vi.mock('./worktree', () => ({
   listWorktrees: vi.fn(async () => []),
   addWorktree: vi.fn(),
-  defaultWorktreeDir: vi.fn(),
+  defaultWorktreeDir: vi.fn((repoRoot: string) => `${repoRoot}/wt`),
   fetchPullRequestRef: vi.fn(),
   localBranchExists: vi.fn(async () => false),
   runWorktreeScript: vi.fn(),
@@ -21,6 +21,7 @@ vi.mock('./repo-config', () => ({
 import { Store } from './store'
 import { sanitizeHeadBranchForLocal, WorktreesFSM } from './worktrees-fsm'
 import { listWorktrees, addWorktree, runWorktreeScript } from './worktree'
+import { parseAutomatedMessage } from '../shared/state/json-claude'
 
 describe('sanitizeHeadBranchForLocal', () => {
   it('returns the head ref unchanged for typical names', () => {
@@ -125,5 +126,97 @@ describe('WorktreesFSM.runPending', () => {
     await fsm.runPending({ id: 'pending:1', repoRoot: '/repo', branchName: 'new' })
 
     expect(seenAtSetup).toEqual(['/repo/wt/new'])
+  })
+
+  it('names the branch from the prompt when no branchName is given', async () => {
+    ;(addWorktree as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      path: '/repo/wt/add-dark-mode-toggle',
+      branch: 'add-dark-mode-toggle'
+    })
+    const created: Array<{ initialPrompt?: string }> = []
+    const store = new Store()
+    const fsm = new WorktreesFSM(store, {
+      getRepoRoots: () => ['/repo'],
+      getWorktreeSetupCmd: () => '',
+      getWorktreeBaseMode: () => 'remote',
+      onWorktreeCreated: (params) => {
+        created.push(params)
+      }
+    })
+
+    const outcome = await fsm.runPending({
+      id: 'pending:auto',
+      repoRoot: '/repo',
+      branchName: '',
+      initialPrompt: 'Add a dark mode toggle to Settings'
+    })
+
+    expect(outcome.outcome).toBe('success')
+    expect(addWorktree).toHaveBeenCalledWith(
+      '/repo',
+      '/repo/wt',
+      'add-dark-mode-toggle-settings',
+      expect.anything()
+    )
+    // The agent is told to replace the guess — that's the other half of
+    // auto-naming, and without it the slug is the name forever. It rides in
+    // the automated-message sentinel so the chat card shows only what the
+    // user typed.
+    expect(created[0].initialPrompt).toContain('rename_worktree')
+    expect(parseAutomatedMessage(created[0].initialPrompt)).toEqual({
+      source: 'worktree-autoname',
+      body: 'Add a dark mode toggle to Settings'
+    })
+  })
+
+  it('leaves an explicit branchName alone and adds no rename instruction', async () => {
+    ;(addWorktree as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      path: '/repo/wt/chosen',
+      branch: 'chosen'
+    })
+    const created: Array<{ initialPrompt?: string }> = []
+    const fsm = new WorktreesFSM(new Store(), {
+      getRepoRoots: () => ['/repo'],
+      getWorktreeSetupCmd: () => '',
+      getWorktreeBaseMode: () => 'remote',
+      onWorktreeCreated: (params) => {
+        created.push(params)
+      }
+    })
+
+    await fsm.runPending({
+      id: 'pending:explicit',
+      repoRoot: '/repo',
+      branchName: 'chosen',
+      initialPrompt: 'Add a dark mode toggle'
+    })
+
+    expect(addWorktree).toHaveBeenCalledWith('/repo', '/repo/wt', 'chosen', expect.anything())
+    expect(created[0].initialPrompt).toBe('Add a dark mode toggle')
+  })
+
+  it('errors when there is neither a branch name nor a prompt to name from', async () => {
+    const store = new Store()
+    const fsm = new WorktreesFSM(store, {
+      getRepoRoots: () => ['/repo'],
+      getWorktreeSetupCmd: () => '',
+      getWorktreeBaseMode: () => 'remote',
+      onWorktreeCreated: () => {}
+    })
+
+    const outcome = await fsm.runPending({
+      id: 'pending:empty',
+      repoRoot: '/repo',
+      branchName: ''
+    })
+
+    expect(outcome).toMatchObject({ outcome: 'error' })
+    expect(addWorktree).not.toHaveBeenCalled()
+    // The renderer routes an error outcome to the pending entry's screen,
+    // so the entry has to exist for the failure to be visible at all.
+    expect(store.getSnapshot().state.worktrees.pending[0]).toMatchObject({
+      id: 'pending:empty',
+      status: 'error'
+    })
   })
 })

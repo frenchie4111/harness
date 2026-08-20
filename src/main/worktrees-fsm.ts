@@ -20,6 +20,9 @@ import {
   type ForkSource
 } from '../shared/state/worktrees'
 import type { AgentKind } from '../shared/state/terminals'
+import { slugifyPromptToBranch, withAutoNameInstruction } from '../shared/auto-name'
+import { existsSync } from 'fs'
+import { join } from 'path'
 
 /** Sanitize a PR's head branch into a name that's safe as both a git
  *  branch (we're not strict here since git accepts most things) and a
@@ -50,6 +53,32 @@ export async function chooseLocalPRBranchName(
     return `${candidate}-pr-${prNumber}`
   }
   return candidate
+}
+
+/** Give up appending numeric suffixes after this many collisions and let
+ *  git report whatever it reports. 50 worktrees off one prompt slug means
+ *  something else is wrong. */
+const MAX_AUTO_NAME_ATTEMPTS = 50
+
+/** Pick a provisional branch name from a kickoff prompt that collides with
+ *  neither an existing branch nor an existing worktree directory. Exported
+ *  for the reducer tests; callers should go through `runPending`. */
+export async function pickAutoBranchName(
+  repoRoot: string,
+  worktreeDir: string,
+  prompt: string
+): Promise<string> {
+  const base = slugifyPromptToBranch(prompt)
+  for (let n = 1; n <= MAX_AUTO_NAME_ATTEMPTS; n++) {
+    const candidate = n === 1 ? base : `${base}-${n}`
+    // Both checks matter: the branch may exist without a worktree (deleted
+    // worktree, stale ref) and the directory may exist without a branch
+    // (a failed create that left the folder behind).
+    if (existsSync(join(worktreeDir, candidate))) continue
+    if (await localBranchExists(repoRoot, candidate)) continue
+    return candidate
+  }
+  return `${base}-${MAX_AUTO_NAME_ATTEMPTS + 1}`
 }
 
 export type PendingOutcome =
@@ -177,7 +206,29 @@ export class WorktreesFSM {
      * instead of from the repo's default base. */
     baseRef?: string
   }): Promise<PendingOutcome> {
-    const { id, repoRoot, branchName, initialPrompt, teleportSessionId, agentKind, model, forkSource, checkoutExisting, baseRef } = params
+    const { id, repoRoot, teleportSessionId, agentKind, model, forkSource, checkoutExisting, baseRef } = params
+    const wtDir = defaultWorktreeDir(repoRoot)
+
+    // Auto-name: an empty branchName means "you name it" — the default path
+    // from the New worktree screen, where the user types only a prompt. Ness
+    // slugs a provisional name (it needs one before `git worktree add`), and
+    // the kickoff prompt carries an instruction telling the agent to replace
+    // it via the rename_worktree MCP tool once it has read the task.
+    let branchName = params.branchName
+    let initialPrompt = params.initialPrompt
+    if (!branchName) {
+      if (!initialPrompt?.trim()) {
+        const error = 'a branch name or a kickoff prompt is required'
+        this.store.dispatch({
+          type: 'worktrees/pendingAdded',
+          payload: { id, repoRoot, branchName: '', status: 'error', error }
+        })
+        return { id, outcome: 'error', error }
+      }
+      branchName = await pickAutoBranchName(repoRoot, wtDir, initialPrompt)
+      initialPrompt = withAutoNameInstruction(initialPrompt)
+    }
+
     const pending: PendingWorktree = {
       id,
       repoRoot,
@@ -190,7 +241,6 @@ export class WorktreesFSM {
     this.store.dispatch({ type: 'worktrees/pendingAdded', payload: pending })
 
     try {
-      const wtDir = defaultWorktreeDir(repoRoot)
       const mode = this.opts.getWorktreeBaseMode()
       const created = await addWorktree(repoRoot, wtDir, branchName, {
         // An explicit baseRef (Ref tab) wins over default-base resolution,

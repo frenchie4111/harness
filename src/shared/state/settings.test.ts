@@ -159,6 +159,29 @@ describe('settingsReducer', () => {
     expect(on.shareClaudeSettings).toBe(true)
   })
 
+  it('newWorktreeAdvancedOpenChanged remembers the disclosure state', () => {
+    expect(initialSettings.newWorktreeAdvancedOpen).toBe(false)
+    const open = apply(initialSettings, {
+      type: 'settings/newWorktreeAdvancedOpenChanged',
+      payload: true
+    })
+    expect(open.newWorktreeAdvancedOpen).toBe(true)
+    const closed = apply(open, {
+      type: 'settings/newWorktreeAdvancedOpenChanged',
+      payload: false
+    })
+    expect(closed.newWorktreeAdvancedOpen).toBe(false)
+  })
+
+  it('starterTasksDismissedChanged hides the starter cards for good', () => {
+    expect(initialSettings.starterTasksDismissed).toBe(false)
+    const dismissed = apply(initialSettings, {
+      type: 'settings/starterTasksDismissedChanged',
+      payload: true
+    })
+    expect(dismissed.starterTasksDismissed).toBe(true)
+  })
+
   it('harnessMcpEnabledChanged toggles mcp flag', () => {
     const off = apply(initialSettings, {
       type: 'settings/harnessMcpEnabledChanged',

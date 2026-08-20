@@ -57,7 +57,7 @@ import { SnoozeTimer } from './snooze-timer'
 import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
-import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitMeta, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, listRecentCommitShas, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, pruneWorktrees, type MergeStrategy } from './worktree'
+import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitMeta, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, listRecentCommitShas, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, renameWorktreeBranch, symlinkClaudeSettings, pruneWorktrees, type MergeStrategy } from './worktree'
 import { listOpenPRs, getPRByNumber, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, approvePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult, type PRLookupResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
@@ -2333,6 +2333,34 @@ function registerIpcHandlers(): void {
     }
     saveConfig(config)
     store.dispatch({ type: 'settings/claudeEnvVarsChanged', payload: cleaned })
+    return true
+  })
+
+  transport.onRequest('config:setNewWorktreeAdvancedOpen', (_ctx, open: boolean) => {
+    if (open) {
+      config.newWorktreeAdvancedOpen = true
+    } else {
+      delete config.newWorktreeAdvancedOpen
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/newWorktreeAdvancedOpenChanged',
+      payload: config.newWorktreeAdvancedOpen === true
+    })
+    return true
+  })
+
+  transport.onRequest('config:setStarterTasksDismissed', (_ctx, dismissed: boolean) => {
+    if (dismissed) {
+      config.starterTasksDismissed = true
+    } else {
+      delete config.starterTasksDismissed
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/starterTasksDismissedChanged',
+      payload: config.starterTasksDismissed === true
+    })
     return true
   })
 
@@ -4773,6 +4801,13 @@ async function runBoot(): Promise<void> {
     },
     clearAlias: (worktreePath) => {
       store.dispatch({ type: 'aliases/cleared', payload: { path: worktreePath } })
+    },
+    renameBranch: async (worktreePath, newBranch) => {
+      const result = await renameWorktreeBranch(worktreePath, newBranch)
+      // The gitdir HEAD watcher would catch this on its own, but the tool
+      // response should not be able to arrive before the sidebar agrees.
+      if (result.ok && result.renamed) await worktreesFSM.refreshList()
+      return result
     },
     messaging: {
       isEnabled: () => config.worktreeMessagingEnabled === true,

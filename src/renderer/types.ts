@@ -387,6 +387,8 @@ export interface ElectronAPI {
   setShowAssignedPRs(enabled: boolean): Promise<boolean>
   refreshAssignedPRs(): Promise<boolean>
   setShareClaudeSettings(enabled: boolean): Promise<boolean>
+  setNewWorktreeAdvancedOpen(open: boolean): Promise<boolean>
+  setStarterTasksDismissed(dismissed: boolean): Promise<boolean>
   setHarnessSystemPromptEnabled(enabled: boolean): Promise<boolean>
   setHarnessSystemPrompt(prompt: string): Promise<boolean>
   setHarnessSystemPromptMain(prompt: string): Promise<boolean>

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { NessMark } from './NessMark'
-import { Sparkles, Loader2, X, Map as MapIcon, ListChecks, BookOpen, Radio, GitPullRequest, GitBranch, ChevronRight, ChevronDown, Check } from 'lucide-react'
-import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
+import { Sparkles, Loader2, X, Map as MapIcon, ListChecks, BookOpen, Radio, GitPullRequest, GitBranch, ChevronRight, ChevronDown, Check, Wand2 } from 'lucide-react'
+import { sanitizeBranchInput, isValidBranchName } from '../../shared/branch-name'
 import { RepoIcon } from './RepoIcon'
 import { useBackend } from '../backend'
 import { useSettings } from '../store'
@@ -98,7 +98,6 @@ const STARTER_PROMPTS = [
     icon: MapIcon,
     label: 'Map the repo',
     hint: 'A one-paragraph architecture summary',
-    branch: 'map-repo',
     prompt:
       "Read this repo and write a one-paragraph summary of its architecture in SCRATCH.md — what the major pieces are and how they fit together. Keep it under 150 words."
   },
@@ -106,7 +105,6 @@ const STARTER_PROMPTS = [
     icon: ListChecks,
     label: 'Find the TODOs',
     hint: 'Collect every TODO/FIXME in one file',
-    branch: 'find-todos',
     prompt:
       "Search the codebase for every TODO and FIXME comment. Write TODOS.md grouping them by file with line numbers and the comment text. Don't fix anything — just catalog."
   },
@@ -114,7 +112,6 @@ const STARTER_PROMPTS = [
     icon: BookOpen,
     label: 'Sharpen the README',
     hint: 'Get 3 concrete improvement ideas',
-    branch: 'sharpen-readme',
     prompt:
       "Read the README and propose 3 specific, concrete improvements (not vague advice). Reply with the suggestions — don't make any changes yet so I can review first."
   }
@@ -149,14 +146,20 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   // settings; model defaults to empty (= use settings.claudeModel/codexModel
   // at spawn time). Teleport mode pins to Claude — codex has no equivalent
   // "resume by id" flow today.
-  const [agentKindOverride, setAgentKindOverride] = useState<AgentKind>(
+  const defaultAgentKind: AgentKind =
     settings.defaultAgent === 'codex'
       ? 'codex'
       : settings.defaultAgent === 'cursor'
         ? 'cursor'
         : 'claude'
-  )
+  const [agentKindOverride, setAgentKindOverride] = useState<AgentKind>(defaultAgentKind)
   const [modelOverride, setModelOverride] = useState('')
+  // Persisted, not local: someone who works in Advanced wants it open every
+  // time they open this screen, not just for this one visit. `advancedShown`
+  // below additionally forces it open whenever something inside is
+  // non-default, so a typed branch name or a pinned model is never hidden
+  // behind a collapsed header.
+  const advancedOpen = settings.newWorktreeAdvancedOpen
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const branchRef = useRef<HTMLInputElement>(null)
@@ -164,6 +167,14 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   const teleportRef = useRef<HTMLInputElement>(null)
 
   const backend = useBackend()
+  const toggleAdvanced = useCallback(() => {
+    void backend.setNewWorktreeAdvancedOpen(!advancedOpen)
+  }, [backend, advancedOpen])
+  // One-way and persisted: "dismiss forever" means the cards don't come
+  // back on the next visit, this window, or any other client.
+  const dismissStarterTasks = useCallback(() => {
+    void backend.setStarterTasksDismissed(true)
+  }, [backend])
   // Cache PR-list fetch results per repo so flipping back to the tab
   // doesn't re-fetch within the same modal session.
   const [prsByRepo, setPrsByRepo] = useState<Record<string, PRSummary[] | null>>({})
@@ -201,6 +212,19 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   const effectiveBranch = mode === 'teleport'
     ? (parsedTeleport ? teleportFolderName(parsedTeleport) : '')
     : submitBranch
+  // The default path: no branch name typed, so main slugs a provisional one
+  // from the prompt and the new agent renames itself once it's read the task.
+  const autoNaming = mode === 'fresh' && branchTab === 'new' && branch.trim() === ''
+  const advancedShown =
+    advancedOpen ||
+    mode !== 'fresh' ||
+    !autoNaming ||
+    agentKindOverride !== defaultAgentKind ||
+    modelOverride.trim().length > 0
+  // Open because something in there is non-default rather than because the
+  // user asked for it. The toggle goes inert instead of silently flipping a
+  // preference that can't take effect until they undo the override.
+  const advancedForcedOpen = advancedShown && !advancedOpen
   // On the Ref tab the new branch is forked from this base ref (commit SHA,
   // tag, remote ref, or an expression like `HEAD~3`). It can include chars
   // that `isValidBranchName` rightly rejects for branch *names*, so it's only
@@ -214,11 +238,13 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
     (mode === 'fresh'
       ? branchTab === 'ref'
         ? isValidBranchName(submitBranch) && !!baseRef
-        : isValidBranchName(submitBranch)
+        : autoNaming
+          ? prompt.trim().length > 0
+          : isValidBranchName(submitBranch)
       : !!parsedTeleport && !teleportInvalid && isValidBranchName(effectiveBranch))
 
   useEffect(() => {
-    branchRef.current?.focus()
+    promptRef.current?.focus()
   }, [])
 
   // Lazy-load the PR list when the tab is shown for a repo we haven't
@@ -452,13 +478,6 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
     setLookupPending(false)
   }, [selectedRepo, mode])
 
-  const handleBranchKey = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
-      e.preventDefault()
-      promptRef.current?.focus()
-    }
-  }, [])
-
   // The footer is identical across modes; only the submit handler, the
   // in-flight flag, and the enabled check differ between PR and non-PR.
   const isPRMode = mode === 'pr'
@@ -466,9 +485,51 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   const footerSubmit = isPRMode ? () => void handlePRSubmit() : handleSubmit
   const footerEnabled = isPRMode ? selectedPRNumber !== null && prClickPending === null : canSubmit
 
+  // Rendered directly under each mode's primary input — the prompt box in
+  // fresh/teleport, the review prompt in PR mode (where it also has to sit
+  // above the PR list it filters). One definition so the three placements
+  // can't drift.
+  const repoPicker =
+    repoRoots.length > 1 ? (
+      <div className="mt-5">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-dim">
+            Repository
+          </span>
+          <span className="flex items-center gap-1 text-xs text-faint">
+            <kbd className={KBD_CHIP}>⌘[</kbd>
+            <kbd className={KBD_CHIP}>⌘]</kbd>
+            to switch repo
+          </span>
+        </div>
+        <div className="flex p-1 bg-app border border-border-strong rounded-lg gap-1 flex-wrap">
+          {repoRoots.map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => setSelectedRepo(r)}
+              disabled={footerBusy}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                selectedRepo === r
+                  ? 'bg-panel text-fg-bright shadow-sm'
+                  : 'text-dim hover:text-fg'
+              }`}
+            >
+              <RepoIcon repoName={r.split('/').pop() || r} className="text-sm" />
+              {r.split('/').pop() || r}
+            </button>
+          ))}
+        </div>
+      </div>
+    ) : null
+
   return (
+    // min-h-0 on both this column and the scroll area below: a flex child
+    // defaults to min-height:auto, so without it the card grows past the
+    // viewport instead of the overflow container scrolling. Desktop rarely
+    // hits that; a phone hits it as soon as Advanced is open.
     <div
-      className="flex-1 flex flex-col min-w-0 bg-app brand-grid-bg relative"
+      className="flex-1 min-h-0 flex flex-col min-w-0 bg-app brand-grid-bg relative"
       onKeyDown={handleKeyDown}
     >
       <div className="drag-region h-10 shrink-0 flex items-center justify-end pr-2">
@@ -481,7 +542,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="max-w-2xl mx-auto px-4 sm:px-8 py-8">
           <div className="text-center mb-8">
             <NessMark className="h-16 w-auto mx-auto mb-5 text-brand" />
@@ -489,192 +550,13 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
               New <span className="brand-gradient-text">worktree</span>
             </h1>
             <p className="text-muted text-base">
-              Fork a branch or select an existing branch and send Claude into it.
+              Say what you want done. Ness makes the branch and sends the agent in.
             </p>
           </div>
 
           <div className="bg-panel/80 backdrop-blur border border-border rounded-2xl p-6 shadow-xl">
-            <div className="flex p-1 bg-app border border-border-strong rounded-lg mb-6">
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('fresh')
-                  requestAnimationFrame(() => branchRef.current?.focus())
-                }}
-                disabled={submitting}
-                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                  mode === 'fresh'
-                    ? 'bg-panel text-fg-bright shadow-sm'
-                    : 'text-dim hover:text-fg'
-                }`}
-              >
-                <Sparkles className="icon-xs" />
-                Fresh start
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('teleport')
-                  requestAnimationFrame(() => teleportRef.current?.focus())
-                }}
-                disabled={submitting}
-                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                  mode === 'teleport'
-                    ? 'bg-panel text-fg-bright shadow-sm'
-                    : 'text-dim hover:text-fg'
-                }`}
-              >
-                <Radio className="icon-xs" />
-                Teleport from claude.ai
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('pr')}
-                disabled={submitting}
-                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                  mode === 'pr'
-                    ? 'bg-panel text-fg-bright shadow-sm'
-                    : 'text-dim hover:text-fg'
-                }`}
-              >
-                <GitPullRequest className="icon-xs" />
-                Open PR
-              </button>
-            </div>
-
-            {repoRoots.length > 1 && (
-              <div className="mb-5">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-dim">
-                    Repository
-                  </span>
-                  <span className="flex items-center gap-1 text-xs text-faint">
-                    <kbd className={KBD_CHIP}>⌘[</kbd>
-                    <kbd className={KBD_CHIP}>⌘]</kbd>
-                    to switch repo
-                  </span>
-                </div>
-                <div className="flex p-1 bg-app border border-border-strong rounded-lg gap-1 flex-wrap">
-                  {repoRoots.map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setSelectedRepo(r)}
-                      disabled={submitting}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                        selectedRepo === r
-                          ? 'bg-panel text-fg-bright shadow-sm'
-                          : 'text-dim hover:text-fg'
-                      }`}
-                    >
-                      <RepoIcon repoName={r.split('/').pop() || r} className="text-sm" />
-                      {r.split('/').pop() || r}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {mode === 'fresh' && (
-              <div>
-                <div className="flex p-1 bg-app border border-border-strong rounded-lg mb-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      switchBranchTab('new')
-                      requestAnimationFrame(() => branchRef.current?.focus())
-                    }}
-                    disabled={submitting}
-                    className={`flex-1 flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                      branchTab === 'new'
-                        ? 'bg-panel text-fg-bright shadow-sm'
-                        : 'text-dim hover:text-fg'
-                    }`}
-                  >
-                    New branch
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => switchBranchTab('existing')}
-                    disabled={submitting}
-                    className={`flex-1 flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                      branchTab === 'existing'
-                        ? 'bg-panel text-fg-bright shadow-sm'
-                        : 'text-dim hover:text-fg'
-                    }`}
-                  >
-                    Existing branch
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => switchBranchTab('ref')}
-                    disabled={submitting}
-                    className={`flex-1 flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                      branchTab === 'ref'
-                        ? 'bg-panel text-fg-bright shadow-sm'
-                        : 'text-dim hover:text-fg'
-                    }`}
-                  >
-                    Any Git Ref
-                  </button>
-                </div>
-
-                {branchTab === 'new' && (
-                  <input
-                    ref={branchRef}
-                    type="text"
-                    value={branch}
-                    onChange={handleBranchChange}
-                    onKeyDown={handleBranchKey}
-                    placeholder="fix-the-thing"
-                    disabled={submitting}
-                    autoComplete="off"
-                    spellCheck={false}
-                    className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
-                  />
-                )}
-                {branchTab === 'existing' && (
-                  <ExistingBranchCombobox
-                    branches={branchesByRepo[selectedRepo] || []}
-                    value={existingBranch}
-                    onChange={handlePickExistingBranch}
-                    disabled={submitting || !selectedRepo}
-                    placeholder={!selectedRepo ? 'Select a repository first' : undefined}
-                  />
-                )}
-                {branchTab === 'ref' && (
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      value={refBranch}
-                      onChange={handleRefBranchChange}
-                      placeholder="new-branch-name"
-                      disabled={submitting || !selectedRepo}
-                      autoComplete="off"
-                      spellCheck={false}
-                      className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
-                    />
-                    <input
-                      type="text"
-                      value={refValue}
-                      onChange={handleRefChange}
-                      onKeyDown={handleBranchKey}
-                      placeholder="from: commit SHA, tag, or origin/branch"
-                      disabled={submitting || !selectedRepo}
-                      autoComplete="off"
-                      spellCheck={false}
-                      className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
-                    />
-                    <p className="text-xs text-dim">
-                      Creates a new branch at any git ref — a commit SHA, tag, or remote branch (e.g. <span className="font-mono">origin/main</span>).
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
             {mode === 'fresh' && forkSource && (
-              <div className="mt-6 flex items-start gap-2 rounded-lg border-2 border-accent/40 bg-accent/5 px-4 py-3">
+              <div className="mb-6 flex items-start gap-2 rounded-lg border-2 border-accent/40 bg-accent/5 px-4 py-3">
                 <GitBranch className="icon-sm text-accent shrink-0 mt-0.5" />
                 <div className="text-xs text-dim">
                   <span className="text-fg-bright font-semibold">Continuing an existing conversation.</span>{' '}
@@ -686,80 +568,97 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
             )}
 
             {mode === 'fresh' && (
-              <label className="block mt-6">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-dim">
-                    {forkSource ? 'What to do next' : 'Kickoff prompt'}
-                  </span>
-                  <span className="text-xs text-faint">optional</span>
-                </div>
-                <textarea
-                  ref={promptRef}
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder={
-                    forkSource
-                      ? 'What should it work on in the new worktree? Leave blank to just carry the conversation over.'
-                      : 'What should Claude start on? Leave blank to drop in and take it from there.'
-                  }
-                  disabled={submitting}
-                  rows={5}
-                  className="w-full bg-app border-2 border-border-strong rounded-lg px-4 py-3 text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors resize-none"
-                />
-              </label>
+              <>
+                <label className="block">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-dim">
+                      {forkSource ? 'What to do next' : 'Kickoff prompt'}
+                    </span>
+                    <span className="text-xs text-faint">
+                      {autoNaming && !forkSource ? 'names the branch too' : 'optional'}
+                    </span>
+                  </div>
+                  <textarea
+                    ref={promptRef}
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder={
+                      forkSource
+                        ? 'What should it work on in the new worktree? Leave blank to just carry the conversation over.'
+                        : 'What should we build next?'
+                    }
+                    disabled={submitting}
+                    rows={6}
+                    className="w-full bg-app border-2 border-border-strong rounded-lg px-4 py-3 text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors resize-none"
+                  />
+                  {autoNaming && (
+                    <div className="mt-2 flex items-start gap-1.5 text-xs text-dim">
+                      <Wand2 className="icon-xs text-accent shrink-0 mt-0.5" />
+                      <span>
+                        Ness names the branch from this prompt, and the agent renames it once it
+                        has read the task. Set a name yourself under Advanced.
+                      </span>
+                    </div>
+                  )}
+                </label>
+                {repoPicker}
+              </>
             )}
 
             {mode === 'teleport' && (
-              <label className="block">
-                <div className="mb-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-dim">
-                    Session id or command
-                  </span>
-                </div>
-                <input
-                  ref={teleportRef}
-                  type="text"
-                  value={teleportInput}
-                  onChange={(e) => setTeleportInput(e.target.value)}
-                  placeholder="session_014RhXscMpGuVrBJnbeTcpVn  or  claude --teleport session_…"
-                  disabled={submitting}
-                  autoComplete="off"
-                  spellCheck={false}
-                  className={`w-full bg-app border-2 rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none transition-colors ${
-                    teleportInvalid
-                      ? 'border-danger focus:border-danger'
-                      : 'border-border-strong focus:border-accent'
-                  }`}
-                />
-                <div className="mt-2 text-xs text-dim leading-snug">
-                  {teleportInvalid ? (
-                    <span className="text-danger">
-                      Couldn't find a <span className="font-mono">session_…</span> id in there.
+              <>
+                <label className="block">
+                  <div className="mb-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-dim">
+                      Session id or command
                     </span>
-                  ) : parsedTeleport ? (
-                    <>
-                      Worktree folder: <span className="font-mono text-fg">{effectiveBranch}</span>
-                      {' '}— the Claude CLI will check out the session's own branch on top.
-                    </>
-                  ) : (
-                    <>
-                      Grab a session id from{' '}
-                      <span className="font-mono">claude.ai/code</span> to resume it here.
-                    </>
-                  )}
-                </div>
-              </label>
+                  </div>
+                  <input
+                    ref={teleportRef}
+                    type="text"
+                    value={teleportInput}
+                    onChange={(e) => setTeleportInput(e.target.value)}
+                    placeholder="session_014RhXscMpGuVrBJnbeTcpVn  or  claude --teleport session_…"
+                    disabled={submitting}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className={`w-full bg-app border-2 rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none transition-colors ${
+                      teleportInvalid
+                        ? 'border-danger focus:border-danger'
+                        : 'border-border-strong focus:border-accent'
+                    }`}
+                  />
+                  <div className="mt-2 text-xs text-dim leading-snug">
+                    {teleportInvalid ? (
+                      <span className="text-danger">
+                        Couldn't find a <span className="font-mono">session_…</span> id in there.
+                      </span>
+                    ) : parsedTeleport ? (
+                      <>
+                        Worktree folder: <span className="font-mono text-fg">{effectiveBranch}</span>
+                        {' '}— the Claude CLI will check out the session's own branch on top.
+                      </>
+                    ) : (
+                      <>
+                        Grab a session id from{' '}
+                        <span className="font-mono">claude.ai/code</span> to resume it here.
+                      </>
+                    )}
+                  </div>
+                </label>
+                {repoPicker}
+              </>
             )}
 
             {mode === 'pr' && (
               <>
-                <label className="block mb-4">
+                <label className="block">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold uppercase tracking-wider text-dim">
                       Review prompt
                     </span>
                     <span className="text-xs text-faint">
-                      sent to Claude after the PR loads · edit defaults in Settings
+                      sent to the agent after the PR loads · edit defaults in Settings
                     </span>
                   </div>
                   <textarea
@@ -771,17 +670,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                     className="w-full bg-app border-2 border-border-strong rounded-lg px-4 py-3 text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors resize-none"
                   />
                 </label>
-                <AgentModelRow
-                  mode={mode}
-                  agentKind={agentKindOverride}
-                  setAgentKind={setAgentKindOverride}
-                  model={modelOverride}
-                  setModel={setModelOverride}
-                  defaultClaudeModel={settings.claudeModel}
-                  defaultCodexModel={settings.codexModel}
-                  defaultCursorModel={settings.cursorModel}
-                  disabled={prClickPending !== null}
-                />
+                {repoPicker}
                 <div className="mt-5">
                   <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-2">
                     Look up by number
@@ -848,20 +737,227 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
               </>
             )}
 
-            {mode !== 'pr' && (
-              <AgentModelRow
-                mode={mode}
-                agentKind={agentKindOverride}
-                setAgentKind={setAgentKindOverride}
-                model={modelOverride}
-                setModel={setModelOverride}
-                defaultClaudeModel={settings.claudeModel}
-                defaultCodexModel={settings.codexModel}
-                defaultCursorModel={settings.cursorModel}
-                disabled={submitting}
-                forkLocked={forkSource !== undefined}
-              />
-            )}
+            {/* Everything that isn't "say what you want done" lives here: how
+                the worktree starts (fresh / teleport / PR), which branch it
+                lands on, and which agent runs in it. Forced open whenever any
+                of it is non-default, so nothing is silently in effect while
+                hidden — including a non-fresh start mode, which is otherwise
+                a one-way door. */}
+            <div className="mt-5">
+              <button
+                type="button"
+                onClick={toggleAdvanced}
+                disabled={advancedForcedOpen}
+                title={
+                  advancedForcedOpen
+                    ? 'Stays open while a non-default option is set here'
+                    : undefined
+                }
+                className={`flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-dim transition-colors ${
+                  advancedForcedOpen ? 'cursor-default' : 'hover:text-fg cursor-pointer'
+                }`}
+              >
+                {advancedShown ? <ChevronDown className="icon-xs" /> : <ChevronRight className="icon-xs" />}
+                Advanced
+                {!advancedShown && (
+                  <span className="ml-1 normal-case font-normal tracking-normal text-faint">
+                    start mode, branch, agent, model
+                  </span>
+                )}
+              </button>
+              {advancedShown && (
+                <div className="mt-3">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-2">
+                    Start from
+                  </div>
+                  <div className="flex p-1 bg-app border border-border-strong rounded-lg mb-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('fresh')
+                        requestAnimationFrame(() => promptRef.current?.focus())
+                      }}
+                      disabled={submitting}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                        mode === 'fresh'
+                          ? 'bg-panel text-fg-bright shadow-sm'
+                          : 'text-dim hover:text-fg'
+                      }`}
+                    >
+                      <Sparkles className="icon-xs" />
+                      Fresh start
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('teleport')
+                        requestAnimationFrame(() => teleportRef.current?.focus())
+                      }}
+                      disabled={submitting}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                        mode === 'teleport'
+                          ? 'bg-panel text-fg-bright shadow-sm'
+                          : 'text-dim hover:text-fg'
+                      }`}
+                    >
+                      <Radio className="icon-xs" />
+                      Teleport from claude.ai
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMode('pr')}
+                      disabled={submitting}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                        mode === 'pr'
+                          ? 'bg-panel text-fg-bright shadow-sm'
+                          : 'text-dim hover:text-fg'
+                      }`}
+                    >
+                      <GitPullRequest className="icon-xs" />
+                      Open PR
+                    </button>
+                  </div>
+
+                  {mode === 'fresh' && (
+                    <>
+                      <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-2">
+                        Branch
+                      </div>
+                      <div className="flex p-1 bg-app border border-border-strong rounded-lg mb-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            switchBranchTab('new')
+                            requestAnimationFrame(() => branchRef.current?.focus())
+                          }}
+                          disabled={submitting}
+                          className={`flex-1 flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                            branchTab === 'new'
+                              ? 'bg-panel text-fg-bright shadow-sm'
+                              : 'text-dim hover:text-fg'
+                          }`}
+                        >
+                          New branch
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => switchBranchTab('existing')}
+                          disabled={submitting}
+                          className={`flex-1 flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                            branchTab === 'existing'
+                              ? 'bg-panel text-fg-bright shadow-sm'
+                              : 'text-dim hover:text-fg'
+                          }`}
+                        >
+                          Existing branch
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => switchBranchTab('ref')}
+                          disabled={submitting}
+                          className={`flex-1 flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                            branchTab === 'ref'
+                              ? 'bg-panel text-fg-bright shadow-sm'
+                              : 'text-dim hover:text-fg'
+                          }`}
+                        >
+                          Any Git Ref
+                        </button>
+                      </div>
+
+                      {branchTab === 'new' && (
+                        <label className="block">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-xs text-dim">Branch name</span>
+                            <span className="text-xs text-faint">
+                              {autoNaming ? 'auto' : 'set by you'}
+                            </span>
+                          </div>
+                          <input
+                            ref={branchRef}
+                            type="text"
+                            value={branch}
+                            onChange={handleBranchChange}
+                            placeholder="fix-the-thing"
+                            disabled={submitting}
+                            autoComplete="off"
+                            spellCheck={false}
+                            className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
+                          />
+                          <p className="text-xs text-dim mt-2">
+                            {autoNaming
+                              ? 'Leave blank and the branch gets named from your prompt.'
+                              : 'Overrides auto-naming — the agent keeps the name you set.'}
+                          </p>
+                        </label>
+                      )}
+                      {branchTab === 'existing' && (
+                        <label className="block">
+                          <div className="text-xs text-dim mb-1.5">Branch to check out</div>
+                          <ExistingBranchCombobox
+                            branches={branchesByRepo[selectedRepo] || []}
+                            value={existingBranch}
+                            onChange={handlePickExistingBranch}
+                            disabled={submitting || !selectedRepo}
+                            placeholder={!selectedRepo ? 'Select a repository first' : undefined}
+                          />
+                        </label>
+                      )}
+                      {branchTab === 'ref' && (
+                        <div className="space-y-3">
+                          <label className="block">
+                            <div className="text-xs text-dim mb-1.5">Branch name</div>
+                            <input
+                              type="text"
+                              value={refBranch}
+                              onChange={handleRefBranchChange}
+                              placeholder="new-branch-name"
+                              disabled={submitting || !selectedRepo}
+                              autoComplete="off"
+                              spellCheck={false}
+                              className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
+                            />
+                          </label>
+                          <label className="block">
+                            <div className="text-xs text-dim mb-1.5">Base ref</div>
+                            <input
+                              type="text"
+                              value={refValue}
+                              onChange={handleRefChange}
+                              placeholder="commit SHA, tag, or origin/branch"
+                              disabled={submitting || !selectedRepo}
+                              autoComplete="off"
+                              spellCheck={false}
+                              className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
+                            />
+                          </label>
+                          <p className="text-xs text-dim">
+                            Creates a new branch at any git ref — a commit SHA, tag, or remote branch (e.g. <span className="font-mono">origin/main</span>).
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  <div className="text-xs font-semibold uppercase tracking-wider text-dim mt-4">
+                    Agent &amp; model
+                  </div>
+                  <AgentModelRow
+                    mode={mode}
+                    agentKind={agentKindOverride}
+                    setAgentKind={setAgentKindOverride}
+                    model={modelOverride}
+                    setModel={setModelOverride}
+                    defaultClaudeModel={settings.claudeModel}
+                    defaultCodexModel={settings.codexModel}
+                    defaultCursorModel={settings.cursorModel}
+                    disabled={footerBusy}
+                    forkLocked={forkSource !== undefined}
+                    collapsible={false}
+                  />
+                </div>
+              )}
+            </div>
 
             {error && (
               <div className="mt-4 text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2">
@@ -899,24 +995,29 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
             </div>
           </div>
 
-          {mode === 'fresh' && (
+          {mode === 'fresh' && !settings.starterTasksDismissed && (
           <div className="mt-10">
-            <div className="mb-3 px-1">
+            <div className="mb-3 px-1 flex items-center gap-1.5">
               <span className="text-xs font-semibold uppercase tracking-wider text-dim">
                 Or try a starter task
               </span>
+              <button
+                type="button"
+                onClick={dismissStarterTasks}
+                title="Hide starter tasks for good"
+                aria-label="Hide starter tasks for good"
+                className="text-faint hover:text-fg p-0.5 rounded transition-colors cursor-pointer"
+              >
+                <X className="icon-xs" />
+              </button>
             </div>
             <div className="grid sm:grid-cols-3 gap-3">
               {STARTER_PROMPTS.map(
-                ({ icon: Icon, label, hint, branch: starterBranch, prompt: starterPrompt }) => (
+                ({ icon: Icon, label, hint, prompt: starterPrompt }) => (
                   <button
                     key={label}
                     type="button"
                     onClick={() => {
-                      if (!branch) {
-                        switchBranchTab('new')
-                        setBranch(starterBranch)
-                      }
                       setPrompt(starterPrompt)
                       promptRef.current?.focus()
                     }}
@@ -1220,6 +1321,10 @@ interface AgentModelRowProps {
   /** Pins the agent to Claude because the new worktree resumes a forked
    *  transcript, which no other agent can pick up. */
   forkLocked?: boolean
+  /** Whether to render its own "Advanced" disclosure. False when an outer
+   *  disclosure already owns the collapse (the fresh-start flow), so the
+   *  user doesn't have to open two nested Advanced sections. */
+  collapsible?: boolean
 }
 
 function AgentModelRow({
@@ -1232,7 +1337,8 @@ function AgentModelRow({
   defaultCodexModel,
   defaultCursorModel,
   disabled,
-  forkLocked
+  forkLocked,
+  collapsible = true
 }: AgentModelRowProps): JSX.Element {
   const locked = mode === 'teleport' || forkLocked === true
   const effectiveAgent = locked ? 'claude' : agentKind
@@ -1260,7 +1366,7 @@ function AgentModelRow({
   // sticky once the user expands; collapsing again is always a click.
   const [openOverride, setOpenOverride] = useState(false)
   const hasNonDefault = (!locked && agentKind !== 'claude') || model.trim().length > 0
-  const open = openOverride || hasNonDefault
+  const open = !collapsible || openOverride || hasNonDefault
 
   const handleAgentChange = (next: AgentKind): void => {
     if (next !== agentKind) setModel('')
@@ -1277,21 +1383,23 @@ function AgentModelRow({
   const modelDisplay = modelOptions.find((m) => m.id === model)?.displayName || model
 
   return (
-    <div className="mt-5">
-      <button
-        type="button"
-        onClick={() => setOpenOverride((v) => !v)}
-        className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-dim hover:text-fg transition-colors cursor-pointer"
-      >
-        {open ? <ChevronDown className="icon-xs" /> : <ChevronRight className="icon-xs" />}
-        Advanced
-        {!open && hasNonDefault && (
-          <span className="ml-1 normal-case font-normal tracking-normal text-faint">
-            ({agentLabel}
-            {model.trim() ? ` · ${modelDisplay}` : ''})
-          </span>
-        )}
-      </button>
+    <div className={collapsible ? 'mt-5' : ''}>
+      {collapsible && (
+        <button
+          type="button"
+          onClick={() => setOpenOverride((v) => !v)}
+          className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-dim hover:text-fg transition-colors cursor-pointer"
+        >
+          {open ? <ChevronDown className="icon-xs" /> : <ChevronRight className="icon-xs" />}
+          Advanced
+          {!open && hasNonDefault && (
+            <span className="ml-1 normal-case font-normal tracking-normal text-faint">
+              ({agentLabel}
+              {model.trim() ? ` · ${modelDisplay}` : ''})
+            </span>
+          )}
+        </button>
+      )}
       {open && (
         <div className="flex items-center gap-3 mt-3">
           <div className="flex items-center gap-2">
