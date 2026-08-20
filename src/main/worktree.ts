@@ -1347,8 +1347,48 @@ export async function renameWorktreeBranch(
   return { ok: true, oldBranch, branch: newBranch, renamed: true }
 }
 
+// Main-worktree status is asked for far more often than it changes. It's keyed
+// by repoRoot, not worktree, so switching between two worktrees of the same
+// repo recomputes an identical answer — and a single switch asks for it twice
+// over, because `worktree:previewMerge` needs it internally while the panel
+// requests it directly in parallel. Each miss is four sequential git spawns,
+// one of which is a full `git status` on the main checkout.
+//
+// The in-flight entry is what collapses the concurrent pair; the TTL is what
+// covers flipping back and forth between worktrees. It's deliberately short —
+// this answer gates the "main isn't ready" fixup button, so it should track
+// reality at human timescale — and any Ness-side mutation of main busts it
+// outright rather than waiting the TTL out.
+const MAIN_STATUS_TTL_MS = 3000
+const mainStatusCache = new Map<
+  string,
+  { at: number; promise: Promise<MainWorktreeStatus> }
+>()
+
+export function invalidateMainWorktreeStatus(repoRoot?: string): void {
+  if (repoRoot === undefined) mainStatusCache.clear()
+  else mainStatusCache.delete(repoRoot)
+}
+
 /** Report status of the main worktree for a local merge. */
-export async function getMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus> {
+export async function getMainWorktreeStatus(
+  repoRoot: string,
+  opts: { force?: boolean } = {}
+): Promise<MainWorktreeStatus> {
+  const hit = mainStatusCache.get(repoRoot)
+  if (!opts.force && hit && Date.now() - hit.at < MAIN_STATUS_TTL_MS) return hit.promise
+
+  const promise = readMainWorktreeStatus(repoRoot).catch((err) => {
+    // Never let a failure stick around for the TTL — the next caller should
+    // get a real attempt, not a cached rejection.
+    if (mainStatusCache.get(repoRoot)?.promise === promise) mainStatusCache.delete(repoRoot)
+    throw err
+  })
+  mainStatusCache.set(repoRoot, { at: Date.now(), promise })
+  return promise
+}
+
+async function readMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus> {
   const t0 = performance.now()
   let walledExec = 0
   let cumExec = 0
@@ -1405,7 +1445,7 @@ export async function prepareMainForMerge(repoRoot: string): Promise<MainWorktre
     log('worktree', `checking out ${status.baseBranch} in main worktree ${status.path}`)
     await execFileAsync('git', ['checkout', status.baseBranch], { cwd: status.path })
   }
-  return getMainWorktreeStatus(repoRoot)
+  return getMainWorktreeStatus(repoRoot, { force: true })
 }
 
 export interface MergeLocalResult {
@@ -1424,7 +1464,9 @@ export async function mergeWorktreeLocally(
   sourceBranch: string,
   strategy: MergeStrategy
 ): Promise<MergeLocalResult> {
-  const status = await getMainWorktreeStatus(repoRoot)
+  // Forced: this read is the gate on whether merging is safe at all, so it
+  // must reflect the repo right now rather than up to a TTL ago.
+  const status = await getMainWorktreeStatus(repoRoot, { force: true })
   if (!status.ready) {
     throw new Error(
       `Main worktree is not ready: ${status.isDirty ? 'has uncommitted changes' : `on ${status.currentBranch || 'detached HEAD'}, not ${status.baseBranch}`}`
@@ -1488,6 +1530,11 @@ export async function mergeWorktreeLocally(
       )
     }
     throw new Error(`Merge failed and was aborted: ${detail}`)
+  } finally {
+    // Main moved either way — a landed merge, or the abort/reset on the
+    // failure path. Dropped after the fact rather than before, so a read
+    // racing the merge can't repopulate the entry with mid-merge state.
+    invalidateMainWorktreeStatus(repoRoot)
   }
 
   return {
