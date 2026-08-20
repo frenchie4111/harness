@@ -470,13 +470,6 @@ export async function scanSessions(options: ScanOptions = {}): Promise<ScanResul
   }
 }
 
-/** True when a session looks like real work rather than a throwaway probe.
- *  Drives the default filter in the import browser. */
-export function isSubstantive(session: DiscoveredSession): boolean {
-  if (!session.userTurnsExact) return true
-  return session.userTurns >= 2
-}
-
 export function sessionExists(session: DiscoveredSession): boolean {
   return existsSync(session.transcriptPath)
 }

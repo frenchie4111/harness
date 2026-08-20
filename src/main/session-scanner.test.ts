@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { isSubstantive, readSessionFile, scanSessions } from './session-scanner'
+import { readSessionFile, scanSessions } from './session-scanner'
 import { statSync } from 'fs'
 
 let root: string
@@ -250,17 +250,5 @@ describe('scanSessions', () => {
     const seen: number[] = []
     await scanSessions({ root, useCache: false, onProgress: (done) => seen.push(done) })
     expect(seen).toEqual([1, 2])
-  })
-})
-
-describe('isSubstantive', () => {
-  it('rejects a single-turn throwaway', () => {
-    const path = writeSession('d', 'abc', [userLine('one shot')])
-    expect(isSubstantive(read(path))).toBe(false)
-  })
-
-  it('accepts a multi-turn session', () => {
-    const path = writeSession('d', 'abc', [userLine('one'), assistantLine('r'), userLine('two')])
-    expect(isSubstantive(read(path))).toBe(true)
   })
 })
