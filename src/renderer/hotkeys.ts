@@ -130,6 +130,37 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
  * Settings rebind UI omits them — they have no editable binding. */
 export const GESTURE_ACTIONS: ReadonlySet<Action> = new Set<Action>(['focusTerminal'])
 
+const CODE_TO_KEY: Record<string, string> = {
+  Comma: ',',
+  Period: '.',
+  Slash: '/',
+  Semicolon: ';',
+  Quote: "'",
+  BracketLeft: '[',
+  BracketRight: ']',
+  Backslash: '\\',
+  Minus: '-',
+  Equal: '=',
+  Backquote: '`',
+  Space: ' '
+}
+
+/**
+ * The character a key would produce with no modifiers, derived from its
+ * physical position (`e.code`). Returns null for keys that don't produce
+ * one (F1, Escape, ArrowUp) — those report a stable `e.key` already.
+ *
+ * This exists because Option is a text-entry modifier on macOS: ⌥A reports
+ * `e.key === 'å'`, and ⌥E reports `'Dead'` (the start of an accent
+ * sequence, so ⌥E and ⌥I are indistinguishable by key). Binding on `e.key`
+ * alone therefore can't express "Option plus the A key".
+ */
+export function keyFromCode(code: string): string | null {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase()
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5)
+  return CODE_TO_KEY[code] ?? null
+}
+
 /** Check if a KeyboardEvent matches a hotkey binding */
 export function matchesBinding(e: KeyboardEvent, binding: HotkeyBinding): boolean {
   const wantCmd = binding.modifiers.cmd ?? false
@@ -145,6 +176,11 @@ export function matchesBinding(e: KeyboardEvent, binding: HotkeyBinding): boolea
   // Normalize key comparison — e.key is case-sensitive but we want case-insensitive for letters
   const eventKey = e.key.length === 1 ? e.key.toLowerCase() : e.key
   const bindingKey = binding.key.length === 1 ? binding.key.toLowerCase() : binding.key
+
+  // With Option held, e.key is the composed character ("å", "Dead"), so match
+  // on physical position instead. The e.key comparison still runs after, so
+  // bindings captured before this existed (stored as "Alt+Å") keep working.
+  if (wantAlt && keyFromCode(e.code) === bindingKey) return true
 
   return eventKey === bindingKey
 }
@@ -163,23 +199,49 @@ export function isEditableTarget(el: HTMLElement | null): boolean {
 }
 
 /**
+ * True when this binding is indistinguishable from typing a character —
+ * `a`, `Shift+A`, space. Those must not be stolen from an editable target.
+ * Anything with Cmd, Ctrl, or Alt is a deliberate chord and stays live
+ * everywhere, as do keys that never insert text (`F12`, `Escape`).
+ *
+ * Alt is on the modifier side despite ⌥A typing "å" on macOS: treating it
+ * as typing would make Option bindings as dead in a text field as bare
+ * letters, and Option is the one easy one-hand modifier left. The cost is
+ * that binding ⌥A means you can't type "å" in the app — self-inflicted and
+ * limited to the one chord, unlike losing the letter A.
+ */
+export function isTypeableBinding(binding: HotkeyBinding): boolean {
+  const { cmd, ctrl, alt } = binding.modifiers
+  if (cmd || ctrl || alt) return false
+  return binding.key.length === 1
+}
+
+/**
  * Parse a shortcut string like "Cmd+Shift+T" into a HotkeyBinding.
  * Recognized modifier tokens: Cmd, Ctrl, Shift, Alt.
- * The last token is the key.
+ *
+ * Modifiers are consumed greedily from the front and everything after the
+ * last one is the key, so a key that IS the separator survives the round
+ * trip: "Shift+Cmd++" splits to ['Shift','Cmd','',''] and rejoins to '+'.
+ * Taking the last token instead yielded '' — a binding that could never
+ * match. Single-character keys skip the trim so ' ' (Space) survives too.
  */
 export function parseBinding(shortcut: string): HotkeyBinding {
   const parts = shortcut.split('+')
   const modifiers: Modifiers = {}
 
-  for (let i = 0; i < parts.length - 1; i++) {
+  let i = 0
+  for (; i < parts.length - 1; i++) {
     const mod = parts[i].trim().toLowerCase()
     if (mod === 'cmd' || mod === 'meta') modifiers.cmd = true
     else if (mod === 'ctrl' || mod === 'control') modifiers.ctrl = true
     else if (mod === 'shift') modifiers.shift = true
     else if (mod === 'alt' || mod === 'option') modifiers.alt = true
+    else break
   }
 
-  const key = parts[parts.length - 1].trim()
+  const rest = parts.slice(i).join('+')
+  const key = rest.length > 1 ? rest.trim() : rest
 
   return { key, modifiers }
 }
@@ -192,8 +254,15 @@ export function parseBinding(shortcut: string): HotkeyBinding {
 export function formatBindingGlyphs(binding: string, separator = ' '): string {
   // Canonical macOS modifier order: Control, Option, Shift, Command.
   const MOD_ORDER = ['⌃', '⌥', '⇧', '⌘']
-  const glyphs = binding
-    .split('+')
+  const parts = binding.split('+')
+  // Trailing empty tokens mean the key itself was the separator:
+  // "Shift+Cmd++" → ['Shift','Cmd','',''] → ['Shift','Cmd','+']. Without
+  // this the badge renders "⇧⌘" with no key at all.
+  while (parts.length > 1 && parts[parts.length - 1] === '') {
+    parts.pop()
+    if (parts[parts.length - 1] === '') parts[parts.length - 1] = '+'
+  }
+  const glyphs = parts
     .map((part) => {
       const lower = part.trim().toLowerCase()
       if (lower === 'cmd' || lower === 'meta') return '\u2318' // ⌘
@@ -365,8 +434,12 @@ export const ACTION_CATEGORIES: HotkeyCategory[] = [
 export function eventToBinding(e: KeyboardEvent): HotkeyBinding | null {
   // Ignore pure modifier presses
   if (['Meta', 'Control', 'Shift', 'Alt'].includes(e.key)) return null
+  // With Option held, capture the physical key so ⌥A records as "Alt+A"
+  // rather than "Alt+Å" — and so ⌥E records as E rather than "Dead", which
+  // every other Option-accent chord would also have collided on.
+  const fromCode = e.altKey ? keyFromCode(e.code) : null
   return {
-    key: e.key.length === 1 ? e.key.toLowerCase() : e.key,
+    key: fromCode ?? (e.key.length === 1 ? e.key.toLowerCase() : e.key),
     modifiers: {
       cmd: e.metaKey,
       ctrl: e.ctrlKey,

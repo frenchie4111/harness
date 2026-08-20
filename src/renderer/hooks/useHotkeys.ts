@@ -1,6 +1,12 @@
 import { useEffect, useRef } from 'react'
 import type { Action } from '../hotkeys'
-import { matchesBinding, resolveHotkeys, GESTURE_ACTIONS } from '../hotkeys'
+import {
+  matchesBinding,
+  resolveHotkeys,
+  isEditableTarget,
+  isTypeableBinding,
+  GESTURE_ACTIONS
+} from '../hotkeys'
 import type { HotkeyBinding } from '../hotkeys'
 
 type ActionMap = Partial<Record<Action, () => void>>
@@ -40,11 +46,19 @@ export function useHotkeys(actions: ActionMap, overrides?: Record<string, string
         return
       }
 
+      // Typing beats hotkeys. A user who rebinds an action to a bare key
+      // (approve = "a") still expects "a" to reach the chat composer, the
+      // rename field, Monaco, or a terminal. Narrower than the shield
+      // above: only bindings that would insert a character are suppressed,
+      // so Cmd+W / Ctrl+Tab / F12 keep working while a field has focus.
+      const editable = target instanceof HTMLElement && isEditableTarget(target)
+
       const bindings = bindingsRef.current
       const handlers = actionsRef.current
 
       for (const [action, binding] of Object.entries(bindings)) {
         if (GESTURE_ACTIONS.has(action as Action)) continue
+        if (editable && isTypeableBinding(binding)) continue
         const handler = handlers[action as Action]
         if (!handler) continue
 

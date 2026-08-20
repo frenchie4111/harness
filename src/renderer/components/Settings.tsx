@@ -13,7 +13,7 @@ import { useBackend } from '../backend'
 import { LEGACY_REPO_CONFIG_FILENAME } from '../../shared/state/repo-configs'
 import type { UpdaterStatus, MergeStrategy, RepoConfig, AgentKind, SidebarDensity, SidebarDetailPrefs, Worktree, PRStatus } from '../types'
 import { SubtitleDetail } from './WorktreeSubtitleDetail'
-import { DEFAULT_HOTKEYS, ACTION_LABELS, ACTION_CATEGORIES, bindingToString, eventToBinding, formatBindingGlyphs, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
+import { DEFAULT_HOTKEYS, ACTION_LABELS, ACTION_CATEGORIES, bindingToString, eventToBinding, formatBindingGlyphs, resolveHotkeys, isTypeableBinding, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
 import { HotkeyBadge } from './HotkeyBadge'
 import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS, CURSOR_MODELS } from '../../shared/agent-registry'
@@ -3317,7 +3317,14 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   const overridden = isOverridden(action)
                   return (
                     <div key={action} className={`flex items-center justify-between px-3 py-2 ${indent ? 'pl-9' : ''}`}>
-                      <span className="text-sm text-fg">{ACTION_LABELS[action]}</span>
+                      <span className="flex flex-col gap-0.5 pr-3">
+                        <span className="text-sm text-fg">{ACTION_LABELS[action]}</span>
+                        {isTypeableBinding(binding) && (
+                          <span className="text-xs text-faint">
+                            No ⌘/⌃ — types instead of firing while an input has focus. Press ⎋ to leave the chat composer first.
+                          </span>
+                        )}
+                      </span>
                       <div className="flex items-center gap-2">
                         {overridden && (
                           <Tooltip label="Reset to default">

@@ -2542,7 +2542,21 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           ref={scrollRef}
           onScroll={onScroll}
           tabIndex={0}
-          className="flex-1 overflow-y-auto overflow-x-hidden outline-none"
+          onKeyDown={(e) => {
+            // Escape parks focus here so bare-key hotkeys work; Enter puts
+            // it back in the composer. Guarded to the container itself so
+            // Enter on a focused button inside the transcript (Allow, Deny,
+            // a collapsed card) still activates that button.
+            if (e.key === 'Enter' && e.target === e.currentTarget) {
+              e.preventDefault()
+              textareaRef.current?.focus()
+            }
+          }}
+          // focus-visible, not focus: a click into the transcript to scroll
+          // or select text shouldn't draw a ring, but arriving here from
+          // Escape should — that's the moment the user needs to see that
+          // the composer no longer has the keystroke.
+          className="flex-1 overflow-y-auto overflow-x-hidden outline-none focus-visible:ring-1 focus-visible:ring-accent/40 focus-visible:ring-inset"
           style={{ overflowAnchor: 'none' }}
         >
           {/* Stable wrapper so the auto-scroll ResizeObserver (mounted once
@@ -2794,6 +2808,18 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                   setMentionDismissed(draft)
                   return
                 }
+              }
+              if (e.key === 'Escape') {
+                // Leave the composer. Global hotkeys bound to a bare key
+                // (approve = "a") are suppressed while an editable element
+                // has focus — this is how you get out to use them without
+                // reaching for the mouse. The draft is preserved; Enter or
+                // a click comes back. Only reachable with no popover open:
+                // the mention block above consumes Escape first.
+                e.preventDefault()
+                e.currentTarget.blur()
+                scrollRef.current?.focus({ preventScroll: true })
+                return
               }
               if (e.key === 'Enter') {
                 // IME composition guard — don't send while composing
