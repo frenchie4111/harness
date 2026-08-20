@@ -322,6 +322,12 @@ export interface SettingsState {
   /** When true, the Open PR action (⌘⇧G) opens the PR in a Ness browser
    *  tab instead of handing the URL to the system browser. */
   openPrInBrowserTab: boolean
+  /** Swaps the click / ⌘-click roles for links in a terminal. Default
+   *  (false): plain click goes external (system browser, or editor for
+   *  file paths), ⌘-click stays in Ness (browser tab / file tab). True
+   *  inverts both, matching terminals where ⌘-click is the "open it for
+   *  real" gesture. */
+  terminalPlainClickOpensInApp: boolean
   harnessSystemPromptEnabled: boolean
   harnessSystemPrompt: string
   harnessSystemPromptMain: string
@@ -486,6 +492,7 @@ export type SettingsEvent =
   | { type: 'settings/autoUpdateEnabledChanged'; payload: boolean }
   | { type: 'settings/warnBeforeQuittingChanged'; payload: boolean }
   | { type: 'settings/openPrInBrowserTabChanged'; payload: boolean }
+  | { type: 'settings/terminalPlainClickOpensInAppChanged'; payload: boolean }
   | { type: 'settings/harnessSystemPromptEnabledChanged'; payload: boolean }
   | { type: 'settings/harnessSystemPromptChanged'; payload: string }
   | { type: 'settings/harnessSystemPromptMainChanged'; payload: string }
@@ -562,6 +569,7 @@ export const initialSettings: SettingsState = {
   autoUpdateEnabled: true,
   warnBeforeQuitting: true,
   openPrInBrowserTab: false,
+  terminalPlainClickOpensInApp: false,
   harnessSystemPromptEnabled: true,
   harnessSystemPrompt: '',
   harnessSystemPromptMain: '',
@@ -690,6 +698,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, warnBeforeQuitting: event.payload }
     case 'settings/openPrInBrowserTabChanged':
       return { ...state, openPrInBrowserTab: event.payload }
+    case 'settings/terminalPlainClickOpensInAppChanged':
+      return { ...state, terminalPlainClickOpensInApp: event.payload }
     case 'settings/harnessSystemPromptEnabledChanged':
       return { ...state, harnessSystemPromptEnabled: event.payload }
     case 'settings/harnessSystemPromptChanged':

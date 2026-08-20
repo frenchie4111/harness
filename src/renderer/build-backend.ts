@@ -309,6 +309,8 @@ export function buildBackend(
     setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
     setWarnBeforeQuitting: (enabled: boolean) => req('config:setWarnBeforeQuitting', enabled),
     setOpenPrInBrowserTab: (enabled: boolean) => req('config:setOpenPrInBrowserTab', enabled),
+    setTerminalPlainClickOpensInApp: (enabled: boolean) =>
+      req('config:setTerminalPlainClickOpensInApp', enabled),
     setExpandedDiagnosticLoggingEnabled: (enabled: boolean) =>
       req('config:setExpandedDiagnosticLoggingEnabled', enabled),
     setShowAssignedPRs: (enabled: boolean) => req('config:setShowAssignedPRs', enabled),

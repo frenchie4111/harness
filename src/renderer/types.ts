@@ -383,6 +383,7 @@ export interface ElectronAPI {
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
   setWarnBeforeQuitting(enabled: boolean): Promise<boolean>
   setOpenPrInBrowserTab(enabled: boolean): Promise<boolean>
+  setTerminalPlainClickOpensInApp(enabled: boolean): Promise<boolean>
   setExpandedDiagnosticLoggingEnabled(enabled: boolean): Promise<boolean>
   setShowAssignedPRs(enabled: boolean): Promise<boolean>
   refreshAssignedPRs(): Promise<boolean>

@@ -214,6 +214,10 @@ export interface Config {
   // When true, the Open PR action opens the PR in a Ness browser tab
   // instead of the system browser. Default is off (undefined/false).
   openPrInBrowserTab?: boolean
+  // When true, a plain click on a terminal link opens it inside Ness and
+  // ⌘-click hands it to the system browser / editor — the inverse of the
+  // default. Default is off (undefined/false).
+  terminalPlainClickOpensInApp?: boolean
   // When false, new worktrees don't symlink their .claude/settings.local.json
   // to the main worktree's copy, and the boot migration doesn't convert
   // existing regular files. Default is enabled (undefined/true).

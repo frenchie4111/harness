@@ -139,6 +139,10 @@ export interface FileLinkProviderOptions {
   openInApp: (rel: string, link: ParsedFilePath) => void
   /** Open the worktree-relative file in the external editor (plain click). */
   openInEditor: (rel: string, link: ParsedFilePath) => void
+  /** When this returns true the click roles above are swapped: plain click
+   *  opens the in-app file tab, Cmd/Ctrl-click hands off to the editor.
+   *  Read per click (not captured) so the setting applies to live terminals. */
+  plainClickOpensInApp?: () => boolean
   /** Notified when the pointer enters/leaves a file link, so the host can
    *  withhold the click's mouse-report bytes from a mouse-aware PTY (the same
    *  trick the URL/commit link providers use to avoid a double-action). */
@@ -152,6 +156,7 @@ export interface FileLinkProviderOptions {
  *  which TUI chrome won't accidentally produce. */
 export function makeFileLinkProvider(opts: FileLinkProviderOptions): ILinkProvider {
   const { terminal, cwd, getKnownFiles, openInApp, openInEditor, onHoverChange } = opts
+  const plainClickOpensInApp = opts.plainClickOpensInApp ?? ((): boolean => false)
   return {
     provideLinks(lineNumber, callback) {
       const known = getKnownFiles()
@@ -177,9 +182,11 @@ export function makeFileLinkProvider(opts: FileLinkProviderOptions): ILinkProvid
           },
           decorations: { pointerCursor: true, underline: true },
           // Mirror the URL link model: plain click → external (here, the
-          // user's editor); Cmd/Ctrl-click → in-app (a file tab).
+          // user's editor); Cmd/Ctrl-click → in-app (a file tab). Both roles
+          // swap together when the user inverts the modifier.
           activate: (event) => {
-            if (event.metaKey || event.ctrlKey) openInApp(rel, match)
+            const modified = event.metaKey || event.ctrlKey
+            if (modified !== plainClickOpensInApp()) openInApp(rel, match)
             else openInEditor(rel, match)
           },
           hover: () => onHoverChange?.(true),
