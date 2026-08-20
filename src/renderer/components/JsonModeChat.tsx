@@ -273,6 +273,13 @@ interface JsonModeChatProps {
    *  the tab explicitly via panes:wakeTab (right-click menu or first
    *  selection). Defaults to 'awake' for back-compat callers. */
   mode?: 'awake' | 'asleep'
+  /** 'app' is the global chat: same session machinery, but `worktreePath`
+   *  points at a Ness-owned directory rather than a repo, so the handful
+   *  of affordances that only mean something inside a worktree are
+   *  suppressed. They're all listed at `isAppScope` in the component
+   *  body — if you add a seventh, gate it there too. Defaults to
+   *  'worktree'. */
+  scope?: 'worktree' | 'app'
 }
 
 // All per-tool card components live in src/renderer/components/json-mode-cards/
@@ -540,7 +547,7 @@ function AuthFailureCard({
   onRetry
 }: {
   message?: string
-  onOpenLoginTab: () => void
+  onOpenLoginTab: (() => void) | null
   onRetry: () => void
 }): JSX.Element {
   return (
@@ -570,21 +577,34 @@ function AuthFailureCard({
             <HighlightedText text={message} />
           </pre>
         )}
-        <div>
-          Click{' '}
-          <span className="font-semibold text-fg-bright">Sign in</span> to open{' '}
-          <code className="font-mono text-fg-bright">claude auth login</code> in
-          a new shell tab. Complete the OAuth handshake there, then click{' '}
-          <span className="font-semibold text-fg-bright">Retry</span> to resume
-          this session.
-        </div>
+        {onOpenLoginTab ? (
+          <div>
+            Click{' '}
+            <span className="font-semibold text-fg-bright">Sign in</span> to open{' '}
+            <code className="font-mono text-fg-bright">claude auth login</code> in
+            a new shell tab. Complete the OAuth handshake there, then click{' '}
+            <span className="font-semibold text-fg-bright">Retry</span> to resume
+            this session.
+          </div>
+        ) : (
+          <div>
+            Run <code className="font-mono text-fg-bright">claude</code> in a
+            terminal and follow the sign-in prompt, or sign in from a Claude tab
+            in any worktree — they share the same{' '}
+            <code className="font-mono text-fg-bright">~/.claude/</code>{' '}
+            credentials. Then click{' '}
+            <span className="font-semibold text-fg-bright">Retry</span>.
+          </div>
+        )}
         <div className="flex gap-2 pt-1">
-          <button
-            onClick={onOpenLoginTab}
-            className="px-2 py-1 bg-accent text-white rounded hover:bg-accent/90 cursor-pointer"
-          >
-            Sign in
-          </button>
+          {onOpenLoginTab && (
+            <button
+              onClick={onOpenLoginTab}
+              className="px-2 py-1 bg-accent text-white rounded hover:bg-accent/90 cursor-pointer"
+            >
+              Sign in
+            </button>
+          )}
           <button
             onClick={onRetry}
             className="px-2 py-1 bg-panel-raised border border-border-strong rounded text-fg-bright hover:bg-panel cursor-pointer"
@@ -856,7 +876,10 @@ interface RenderContext {
   sessionId: string
   worktreePath: string
   isExited: boolean
-  onOpenLoginTab: () => void
+  /** Null when there's no pane to open a login shell tab in (the global
+   *  chat) — the card then tells the user to sign in elsewhere instead
+   *  of offering a button that can't work. */
+  onOpenLoginTab: (() => void) | null
   onRetryAuth: () => void
 }
 
@@ -1220,7 +1243,18 @@ function anchorTopPadding(): number {
   return 0.75 * parseFloat(getComputedStyle(document.documentElement).fontSize)
 }
 
-export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonModeChatProps): JSX.Element {
+export function JsonModeChat({
+  sessionId,
+  worktreePath,
+  mode = 'awake',
+  scope = 'worktree'
+}: JsonModeChatProps): JSX.Element {
+  // The global chat has no repo behind it, so: no file @-mentions (no
+  // tree to list), no worktree @-mentions or fork-into-worktree (it
+  // isn't a branch of anything), no "switch back to Terminal mode" (it
+  // isn't a tab), no wake / lastActive touch (it isn't in a pane), and a
+  // different sign-in path (there's no pane to open a login shell in).
+  const isAppScope = scope === 'app'
   const backend = useBackend()
   const session = useJsonClaudeSession(sessionId)
   const { pending, resolve } = useJsonClaudeApprovals(sessionId)
@@ -1234,7 +1268,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   } = useSettings()
   const worktrees = useWorktrees()
   const aliases = useAliases()
-  const cameFromTerminalDefault = defaultClaudeTabType === 'xterm'
+  const cameFromTerminalDefault = defaultClaudeTabType === 'xterm' && !isAppScope
   const isMac =
     typeof window !== 'undefined' &&
     (window.__HARNESS_PLATFORM__
@@ -1303,6 +1337,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     if (mode === 'asleep') wakeRequestedRef.current = false
   }, [mode])
   const handleComposerActivity = useCallback((): void => {
+    if (isAppScope) return
     if (mode === 'asleep' && !wakeRequestedRef.current) {
       wakeRequestedRef.current = true
       void backend.panesWakeTab(worktreePath, sessionId)
@@ -1312,7 +1347,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       lastTouchAtRef.current = now
       void backend.touchWorktreeLastActive(worktreePath)
     }
-  }, [backend, mode, sessionId, worktreePath])
+  }, [backend, isAppScope, mode, sessionId, worktreePath])
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const findInputRef = useRef<HTMLInputElement>(null)
   // dragenter fires for every child element entered, dragleave for every
@@ -1692,19 +1727,27 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       sessionId,
       worktreePath,
       isExited: session?.state === 'exited',
-      onOpenLoginTab: () => {
-        // One-click sign-in: main spawns the bundled claude binary's
-        // `auth login` subcommand in a fresh shell tab. The tab runs
-        // the OAuth handshake to completion and exits cleanly. Both
-        // the bundled binary and the json-mode subprocess share
-        // ~/.claude/, so credentials written by the login tab are
-        // visible on the next Retry.
-        void backend.openJsonClaudeAuthLoginTab(worktreePath)
-      },
+      onOpenLoginTab: isAppScope
+        ? null
+        : () => {
+            // One-click sign-in: main spawns the bundled claude binary's
+            // `auth login` subcommand in a fresh shell tab. The tab runs
+            // the OAuth handshake to completion and exits cleanly. Both
+            // the bundled binary and the json-mode subprocess share
+            // ~/.claude/, so credentials written by the login tab are
+            // visible on the next Retry.
+            void backend.openJsonClaudeAuthLoginTab(worktreePath)
+          },
       onRetryAuth: () => {
-        // Same restart sequence as the "Reconnect" button on the exited-
-        // session banner: kill (no-op if already gone) then start, which
-        // re-attaches with whatever auth state is now in ~/.claude/.
+        // The app-scoped session re-checks auth main-side, which spawns
+        // it again once credentials exist. Worktree sessions use the same
+        // restart sequence as the exited-session banner: kill (no-op if
+        // already gone) then start, re-attaching with whatever auth state
+        // is now in ~/.claude/.
+        if (isAppScope) {
+          void backend.globalChatRecheckAuth()
+          return
+        }
         void (async () => {
           await backend.killJsonClaude(sessionId)
           await backend.startJsonClaude(sessionId, worktreePath)
@@ -1723,6 +1766,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     backgroundAgents,
     sessionId,
     worktreePath,
+    isAppScope,
     session?.state
   ])
 
@@ -1883,6 +1927,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   // module scope so reopening the popover (or clicking through several
   // json-claude tabs in the same worktree) doesn't re-shell every time.
   useEffect(() => {
+    if (isAppScope) return
     const cached = FILE_CACHE.get(worktreePath)
     const now = Date.now()
     if (cached && now - cached.ts < FILE_CACHE_TTL_MS) {
@@ -1898,7 +1943,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     return () => {
       cancelled = true
     }
-  }, [worktreePath])
+  }, [isAppScope, worktreePath])
 
   // Find the most recent trigger char (`/` or `@`) before the cursor.
   // The token between trigger+1 and cursor is the query. Returns null if
@@ -1968,7 +2013,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   // Gated on the setting that grants the agent send_message in the first
   // place — tagging a worktree it has no tool to reach is a dead end.
   const worktreeMentionTargets = useMemo(() => {
-    if (!worktreeMessagingEnabled) return []
+    if (!worktreeMessagingEnabled || isAppScope) return []
     return worktrees.list
       .filter((w) => !w.prunable && w.path !== worktreePath)
       .map((w) => ({
@@ -1976,7 +2021,13 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
         handle: worktreeHandle(w.repoRoot, w.branch),
         alias: aliases.byPath[w.path]
       }))
-  }, [worktreeMessagingEnabled, worktrees.list, aliases.byPath, worktreePath])
+  }, [
+    worktreeMessagingEnabled,
+    isAppScope,
+    worktrees.list,
+    aliases.byPath,
+    worktreePath
+  ])
 
   const mentionItems = useMemo<MentionPopoverItem[]>(() => {
     if (mentionDismissed === draft) return []
@@ -2484,7 +2535,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
               </span>
             </div>
           </button>
-          {conversationForkEnabled && (
+          {conversationForkEnabled && !isAppScope && (
             <button
               type="button"
               onClick={(e) => {
