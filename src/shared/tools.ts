@@ -1,10 +1,10 @@
 /** A user-defined right-column tool, discovered from
- * `<worktree>/.harness/tools/<id>/tool.json`. The directory name is the
+ * `<worktree>/.ness/tools/<id>/tool.json`. The directory name is the
  * id; the manifest supplies presentation. Nothing about how the panel
  * looks comes from the script's output — the script only emits markdown
  * for the body. */
 export interface ToolSpec {
-  /** Directory name under `.harness/tools/`. */
+  /** Directory name under `.ness/tools/`. */
   id: string
   /** Panel header text. Static so the panel has a title before the
    * script has ever run (and while it's failing). */
@@ -12,7 +12,7 @@ export interface ToolSpec {
   /** Script path relative to the tool directory. Defaults to `run.sh`. */
   script: string
   /** Absolute path to the tool directory, exported to the script as
-   * HARNESS_TOOL_DIR. */
+   * NESS_TOOL_DIR. */
   dir: string
   /** `auto` re-runs on the changed-files watcher signal and the poll
    * interval; `manual` only runs on mount and on the refresh button. */
@@ -29,7 +29,7 @@ export interface ToolRunResult {
   error?: string
 }
 
-export const TOOLS_DIRNAME = '.harness/tools'
+export const TOOLS_DIRNAME = '.ness/tools'
 export const TOOL_MANIFEST_FILENAME = 'tool.json'
 export const DEFAULT_TOOL_SCRIPT = 'run.sh'
 
@@ -40,13 +40,13 @@ export const BUILD_CUSTOM_TOOL_BRANCH = 'custom-tool'
  * right column's panel menu. It lives next to the types it describes so
  * the contract has one source of truth — if the manifest fields, the env
  * vars, or the markdown mapping change, this changes with them. */
-export const BUILD_CUSTOM_TOOL_PROMPT = `I want to add a custom Harness tool: a panel in this worktree's right column, backed by a script you write. Ask me what it should show if that isn't already clear from our conversation, then build it.
+export const BUILD_CUSTOM_TOOL_PROMPT = `I want to add a custom Ness tool: a panel in this worktree's right column, backed by a script you write. Ask me what it should show if that isn't already clear from our conversation, then build it.
 
 ## Layout
 
 Everything lives in this worktree:
 
-    .harness/tools/<id>/
+    .ness/tools/<id>/
       tool.json
       run.sh          # must be executable
 
@@ -62,7 +62,7 @@ The directory name is the tool id. \`tool.json\`:
 
 - Spawned directly, so it needs a shebang — \`#!/usr/bin/env bash\`, python, node, whatever is executable.
 - cwd is the worktree root.
-- Env available: \`HARNESS_WORKTREE_PATH\`, \`HARNESS_BRANCH\`, \`HARNESS_REPO_ROOT\`, \`HARNESS_TOOL_DIR\`, \`HARNESS_TOOL_ID\`.
+- Env available: \`NESS_WORKTREE_PATH\`, \`NESS_BRANCH\`, \`NESS_REPO_ROOT\`, \`NESS_TOOL_DIR\`, \`NESS_TOOL_ID\`.
 - **stdout is markdown and becomes the entire panel body.** Don't print anything you don't want rendered.
 - stderr surfaces as an error tooltip on a non-zero exit. A script that fails but still wrote to stdout gets that output rendered anyway, so you can format your own error rows.
 - Killed after 20s. Output capped at 256KB.
@@ -85,9 +85,9 @@ Images and raw HTML are dropped. Prose paragraphs look wrong here — think rows
 
 Links are how a row does something:
 
-- \`[Fix these](harness:send?text=Fix+the+failing+tests)\` — sends that text to the agent in this worktree
-- \`[src/app.ts](harness:file?path=src/app.ts)\` — opens the file
-- \`[Reload](harness:refresh)\` — re-runs the tool
+- \`[Fix these](ness:send?text=Fix+the+failing+tests)\` — sends that text to the agent in this worktree
+- \`[src/app.ts](ness:file?path=src/app.ts)\` — opens the file
+- \`[Reload](ness:refresh)\` — re-runs the tool
 - \`[View PR](https://github.com/owner/repo/pull/1)\` — opens in the browser
 
 Query values must be URL-encoded. Any other link renders as inert text.

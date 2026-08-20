@@ -12,8 +12,8 @@ import { useBackend } from '../backend'
  *
  * No rehype-raw — raw HTML in tool output stays inert. */
 
-export interface HarnessLinkAction {
-  /** e.g. `send`, `file` — the part after `harness:`. */
+export interface NessLinkAction {
+  /** e.g. `send`, `file` — the part after `ness:`. */
   verb: string
   params: URLSearchParams
 }
@@ -21,11 +21,11 @@ export interface HarnessLinkAction {
 const REMARK_PLUGINS = [remarkGfm]
 
 /** react-markdown blanks any href whose protocol isn't http/https/mailto/
- * etc., so `harness:` action links arrive as `href=""` and fall through to
+ * etc., so `ness:` action links arrive as `href=""` and fall through to
  * the inert-text branch below. Let ours through and keep the default
  * sanitizer for everything else — it's what stops `javascript:`. */
 function urlTransform(url: string): string {
-  return url.startsWith('harness:') ? url : defaultUrlTransform(url)
+  return url.startsWith('ness:') ? url : defaultUrlTransform(url)
 }
 
 /** Set inside <li> so paragraphs don't add a second layer of row padding
@@ -45,7 +45,7 @@ function Paragraph({ children }: { children?: ReactNode }): JSX.Element {
 
 interface SidebarMarkdownProps {
   markdown: string
-  onAction?: (action: HarnessLinkAction) => void
+  onAction?: (action: NessLinkAction) => void
 }
 
 export function SidebarMarkdown({ markdown, onAction }: SidebarMarkdownProps): JSX.Element {
@@ -80,11 +80,11 @@ export function SidebarMarkdown({ markdown, onAction }: SidebarMarkdownProps): J
       ),
       a: ({ href, children }) => {
         const target = href ?? ''
-        if (target.startsWith('harness:')) {
+        if (target.startsWith('ness:')) {
           return (
             <button
               onClick={() => {
-                const rest = target.slice('harness:'.length)
+                const rest = target.slice('ness:'.length)
                 const [verb, query = ''] = rest.split('?')
                 onAction?.({ verb, params: new URLSearchParams(query) })
               }}

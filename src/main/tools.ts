@@ -16,7 +16,7 @@ const MAX_OUTPUT_BYTES = 256 * 1024
 
 /** Tools live in the worktree, not the repo root, so a branch can iterate
  * on its own tooling and a PR that edits a tool exercises the new version.
- * (Note this differs from `.harness.json`, which resolves against repoRoot.) */
+ * (Note this differs from `.ness.json`, which resolves against repoRoot.) */
 function toolsDir(worktreePath: string): string {
   return join(worktreePath, TOOLS_DIRNAME)
 }
@@ -113,11 +113,11 @@ export async function runTool(
         cwd: worktreePath,
         env: {
           ...process.env,
-          HARNESS_WORKTREE_PATH: worktreePath,
-          HARNESS_BRANCH: ctx.branch,
-          HARNESS_REPO_ROOT: ctx.repoRoot,
-          HARNESS_TOOL_DIR: spec.dir,
-          HARNESS_TOOL_ID: spec.id
+          NESS_WORKTREE_PATH: worktreePath,
+          NESS_BRANCH: ctx.branch,
+          NESS_REPO_ROOT: ctx.repoRoot,
+          NESS_TOOL_DIR: spec.dir,
+          NESS_TOOL_ID: spec.id
         }
       })
     } catch (err) {

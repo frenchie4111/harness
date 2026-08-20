@@ -3,7 +3,7 @@ import { RefreshCw, TriangleAlert } from 'lucide-react'
 import type { ToolRunResult, ToolSpec } from '../types'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
-import { SidebarMarkdown, type HarnessLinkAction } from './SidebarMarkdown'
+import { SidebarMarkdown, type NessLinkAction } from './SidebarMarkdown'
 import { useWatchedQuery } from '../hooks/useWatchedQuery'
 import { toolPanelKey } from '../../shared/state/repo-configs'
 import { useBackend } from '../backend'
@@ -39,7 +39,7 @@ export function CustomToolPanel({
   })
 
   const handleAction = useCallback(
-    (action: HarnessLinkAction) => {
+    (action: NessLinkAction) => {
       if (action.verb === 'send') {
         const text = action.params.get('text')
         if (text) onSendToAgent?.(text)

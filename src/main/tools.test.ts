@@ -7,7 +7,7 @@ import { discoverTools, runTool } from './tools'
 let root: string
 
 function addTool(id: string, manifest: unknown, script?: string): string {
-  const dir = join(root, '.harness/tools', id)
+  const dir = join(root, '.ness/tools', id)
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'tool.json'), JSON.stringify(manifest))
   if (script !== undefined) {
@@ -19,7 +19,7 @@ function addTool(id: string, manifest: unknown, script?: string): string {
 }
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'harness-tools-'))
+  root = mkdtempSync(join(tmpdir(), 'ness-tools-'))
 })
 
 afterEach(() => {
@@ -48,7 +48,7 @@ describe('discoverTools', () => {
   })
 
   it('skips a directory whose manifest is malformed', () => {
-    const dir = join(root, '.harness/tools/broken')
+    const dir = join(root, '.ness/tools/broken')
     mkdirSync(dir, { recursive: true })
     writeFileSync(join(dir, 'tool.json'), '{not json')
     expect(discoverTools(root)).toEqual([])
@@ -69,8 +69,8 @@ describe('runTool', () => {
     expect(res.markdown).toContain('- a row')
   })
 
-  it('exposes the harness env vars to the script', async () => {
-    addTool('env', { title: 'Env' }, '#!/bin/sh\necho "$HARNESS_BRANCH $HARNESS_TOOL_ID"\n')
+  it('exposes the ness env vars to the script', async () => {
+    addTool('env', { title: 'Env' }, '#!/bin/sh\necho "$NESS_BRANCH $NESS_TOOL_ID"\n')
     const res = await runTool(root, 'env', ctx)
     expect(res.markdown.trim()).toBe('feature/x env')
   })
@@ -98,7 +98,7 @@ describe('runTool', () => {
 
   it('tells the user to chmod +x when the script is not executable', async () => {
     addTool('noexec', { title: 'No Exec' }, '#!/bin/sh\necho hi\n')
-    chmodSync(join(root, '.harness/tools/noexec/run.sh'), 0o644)
+    chmodSync(join(root, '.ness/tools/noexec/run.sh'), 0o644)
     const res = await runTool(root, 'noexec', ctx)
     expect(res.ok).toBe(false)
     expect(res.error).toContain('chmod +x')
