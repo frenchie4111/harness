@@ -51,6 +51,45 @@
     .prose-custom a { color: #fbbf24; }
     .prose-custom a:hover { color: #fcd34d; }
 
+    /* Hacker News call-to-action under the lede. Carries HN's orange
+       rather than the Ness green: it points off-site, and the colour is
+       the fastest way to read it as "this is the HN thread" without
+       needing the label. */
+    .hn-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.625rem;
+      margin-top: 1.75rem;
+      padding: 0.5rem 1rem 0.5rem 0.625rem;
+      border: 1px solid rgba(255, 102, 0, 0.35);
+      border-radius: 0.625rem;
+      background: rgba(255, 102, 0, 0.06);
+      color: #fb923c;
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: border-color 0.15s, background 0.15s, color 0.15s;
+    }
+    .hn-cta:hover {
+      border-color: rgba(255, 102, 0, 0.6);
+      background: rgba(255, 102, 0, 0.12);
+      color: #fdba74;
+    }
+    .hn-cta svg { flex: none; display: block; }
+    .hn-mark {
+      width: 1.25rem;
+      height: 1.25rem;
+      border-radius: 0.25rem;
+      background: #ff6600;
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.8125rem;
+      line-height: 1.25rem;
+      text-align: center;
+      flex: none;
+    }
+    .hn-cta-sub { color: #9a9a9a; font-weight: 400; }
+
     /* Inline aside: a <details> toggle for the worktree primer, so the
        definition is one click away instead of interrupting the flow. */
     .prose-custom details {
@@ -347,6 +386,16 @@
       basically means starting a 2nd conversation that has all of the
       history of the first one.
     </p>
+    <a
+      class="hn-cta"
+      href="https://news.ycombinator.com/item?id=49374419"
+      target="_blank"
+      rel="noopener"
+    >
+      <span class="hn-mark" aria-hidden="true">Y</span>
+      Upvote on Hacker News
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><polyline points="7 7 17 7 17 17"/></svg>
+    </a>
   </section>
 
   <!-- Article -->
