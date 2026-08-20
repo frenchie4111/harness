@@ -31,6 +31,20 @@
 // `worktree add` are user-initiated, rare, and long — queueing them behind a
 // background sweep would be strictly worse, and they call read helpers
 // internally, which under a shared cap is a deadlock waiting to happen.
+//
+// Cap re-checked against the thing that actually matters — one worktree
+// switch, which issues ~15-20 reads, measured on the same monorepo both idle
+// and while a full dirty sweep runs:
+//
+//   cap  quiet mean  quiet p50   contended mean  contended max
+//     2      1881ms     1784ms           1876ms         2884ms
+//     4      1675ms     1614ms           1702ms         3449ms
+//     6      1623ms     1548ms           1677ms         3724ms
+//     8      1625ms     1559ms           1770ms         3936ms
+//
+// 4 and 6 are within run-to-run noise of each other on the mean (repeat runs
+// at cap=4 landed between 1602ms and 1675ms), and the tail under contention
+// gets monotonically worse as the cap rises. 4 is chosen for that tail.
 
 export type GitPriority = 'interactive' | 'bulk'
 
