@@ -177,21 +177,29 @@ export function isTypeableBinding(binding: HotkeyBinding): boolean {
 /**
  * Parse a shortcut string like "Cmd+Shift+T" into a HotkeyBinding.
  * Recognized modifier tokens: Cmd, Ctrl, Shift, Alt.
- * The last token is the key.
+ *
+ * Modifiers are consumed greedily from the front and everything after the
+ * last one is the key, so a key that IS the separator survives the round
+ * trip: "Shift+Cmd++" splits to ['Shift','Cmd','',''] and rejoins to '+'.
+ * Taking the last token instead yielded '' — a binding that could never
+ * match. Single-character keys skip the trim so ' ' (Space) survives too.
  */
 export function parseBinding(shortcut: string): HotkeyBinding {
   const parts = shortcut.split('+')
   const modifiers: Modifiers = {}
 
-  for (let i = 0; i < parts.length - 1; i++) {
+  let i = 0
+  for (; i < parts.length - 1; i++) {
     const mod = parts[i].trim().toLowerCase()
     if (mod === 'cmd' || mod === 'meta') modifiers.cmd = true
     else if (mod === 'ctrl' || mod === 'control') modifiers.ctrl = true
     else if (mod === 'shift') modifiers.shift = true
     else if (mod === 'alt' || mod === 'option') modifiers.alt = true
+    else break
   }
 
-  const key = parts[parts.length - 1].trim()
+  const rest = parts.slice(i).join('+')
+  const key = rest.length > 1 ? rest.trim() : rest
 
   return { key, modifiers }
 }
@@ -204,8 +212,15 @@ export function parseBinding(shortcut: string): HotkeyBinding {
 export function formatBindingGlyphs(binding: string, separator = ' '): string {
   // Canonical macOS modifier order: Control, Option, Shift, Command.
   const MOD_ORDER = ['⌃', '⌥', '⇧', '⌘']
-  const glyphs = binding
-    .split('+')
+  const parts = binding.split('+')
+  // Trailing empty tokens mean the key itself was the separator:
+  // "Shift+Cmd++" → ['Shift','Cmd','',''] → ['Shift','Cmd','+']. Without
+  // this the badge renders "⇧⌘" with no key at all.
+  while (parts.length > 1 && parts[parts.length - 1] === '') {
+    parts.pop()
+    if (parts[parts.length - 1] === '') parts[parts.length - 1] = '+'
+  }
+  const glyphs = parts
     .map((part) => {
       const lower = part.trim().toLowerCase()
       if (lower === 'cmd' || lower === 'meta') return '\u2318' // ⌘

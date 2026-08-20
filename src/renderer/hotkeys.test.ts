@@ -5,6 +5,7 @@ import {
   formatBindingGlyphs,
   isTypeableBinding,
   parseBinding,
+  bindingToString,
   type Action
 } from './hotkeys'
 
@@ -43,6 +44,52 @@ describe('formatBindingGlyphs', () => {
   it('formats single modifiers and special keys', () => {
     expect(formatBindingGlyphs('Cmd+,', '')).toBe('⌘,')
     expect(formatBindingGlyphs('Cmd+ArrowDown', '')).toBe('⌘↓')
+  })
+
+  it('renders a "+" key instead of dropping it', () => {
+    expect(formatBindingGlyphs('Shift+Cmd++', '')).toBe('⇧⌘+')
+  })
+
+  it('leaves the double-tap Shift gesture label alone', () => {
+    expect(formatBindingGlyphs('Shift+Shift', '')).toBe('⇧⇧')
+  })
+})
+
+describe('parseBinding', () => {
+  it('parses punctuation keys', () => {
+    expect(parseBinding('Cmd+Shift+[')).toEqual({
+      key: '[',
+      modifiers: { cmd: true, shift: true }
+    })
+    expect(parseBinding('Cmd+Shift+{')).toEqual({
+      key: '{',
+      modifiers: { cmd: true, shift: true }
+    })
+  })
+
+  it('round-trips every binding whose key is the "+" separator', () => {
+    const plus = bindingToString(DEFAULT_HOTKEYS.uiScaleUp)
+    expect(plus).toBe('Shift+Cmd++')
+    expect(parseBinding(plus)).toEqual(DEFAULT_HOTKEYS.uiScaleUp)
+  })
+
+  it('round-trips a Space key without trimming it away', () => {
+    const binding = { key: ' ', modifiers: { cmd: true } }
+    expect(parseBinding(bindingToString(binding))).toEqual(binding)
+  })
+
+  // bindingToString uppercases single-char keys and matchesBinding
+  // lowercases both sides, so case is deliberately lossy — compare folded.
+  it('round-trips every default binding', () => {
+    const fold = (k: string): string => (k.length === 1 ? k.toLowerCase() : k)
+    for (const [action, binding] of Object.entries(DEFAULT_HOTKEYS)) {
+      const parsed = parseBinding(bindingToString(binding))
+      expect({ action, key: fold(parsed.key), modifiers: parsed.modifiers }).toEqual({
+        action,
+        key: fold(binding.key),
+        modifiers: binding.modifiers
+      })
+    }
   })
 })
 
