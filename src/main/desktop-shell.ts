@@ -419,6 +419,20 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
     return win
   }
 
+  /** Menu accelerators fire regardless of which window has focus, and
+   *  `transport.sendSignal` broadcasts to every BrowserWindow — so a
+   *  workspace action triggered while the chat window is focused would
+   *  silently act on the main window instead. Anything that mutates the
+   *  workspace has to check this first. */
+  function isGlobalChatFocused(): boolean {
+    const focused = BrowserWindow.getFocusedWindow()
+    return (
+      focused != null &&
+      globalChatWindow != null &&
+      focused.id === globalChatWindow.id
+    )
+  }
+
   function buildMenu(): void {
     const template: Electron.MenuItemConstructorOptions[] = [
       {
@@ -473,8 +487,12 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
             click: () => createWindow()
           },
           {
+            // NOT Cmd+Shift+A — that's the `aliasWorktree` hotkey, and a
+            // menu accelerator wins over the renderer's keydown handler,
+            // so claiming it would silently break aliasing. Cmd+Shift+J
+            // is unbound in hotkeys.ts and in this menu.
             label: 'Ness Chat',
-            accelerator: 'CmdOrCtrl+Shift+A',
+            accelerator: 'CmdOrCtrl+Shift+J',
             click: () => openGlobalChatWindow()
           },
           { type: 'separator' },
@@ -491,7 +509,16 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
             // Window" action and the user loses everything.
             label: 'Close Tab',
             accelerator: 'CmdOrCtrl+W',
-            click: () => transport.sendSignal('app:closeFocusedTab')
+            click: () => {
+              // The chat window has no tabs, so ⌘W there means "close
+              // this window" — not "close a tab in some other window",
+              // which is what the broadcast would otherwise do.
+              if (isGlobalChatFocused()) {
+                BrowserWindow.getFocusedWindow()?.close()
+                return
+              }
+              transport.sendSignal('app:closeFocusedTab')
+            }
           },
           {
             label: 'Close Window',
@@ -560,12 +587,18 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
           {
             label: 'Split Pane Right',
             accelerator: 'CmdOrCtrl+D',
-            click: () => transport.sendSignal('app:splitPaneRight')
+            click: () => {
+              if (isGlobalChatFocused()) return
+              transport.sendSignal('app:splitPaneRight')
+            }
           },
           {
             label: 'Split Pane Down',
             accelerator: 'CmdOrCtrl+Shift+D',
-            click: () => transport.sendSignal('app:splitPaneDown')
+            click: () => {
+              if (isGlobalChatFocused()) return
+              transport.sendSignal('app:splitPaneDown')
+            }
           },
           { type: 'separator' },
           { role: 'front' }

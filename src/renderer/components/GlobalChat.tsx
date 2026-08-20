@@ -7,21 +7,34 @@
 // pre-auth screen that stands in for the chat when Claude Code has no
 // credentials to run on.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { KeyRound, Loader2, RefreshCw, SquarePen } from 'lucide-react'
-import { useAppState, useGlobalChat, useJsonClaudeSession } from '../store'
+import {
+  useAppState,
+  useGlobalChat,
+  useJsonClaudeSession,
+  useJsonClaudePendingApprovals
+} from '../store'
 import { useBackend } from '../backend'
 import { useActiveTheme } from '../hooks/useActiveTheme'
 import { applyTheme, effectiveAppBg } from '../theme-apply'
 import { scaleSpec } from '../../shared/state/settings'
+import { QUESTION_TOOL_NAME } from '../../shared/state/json-claude'
+import { resolveHotkeys } from '../hotkeys'
+import { useHotkeys } from '../hooks/useHotkeys'
 import { JsonModeChat } from './JsonModeChat'
-import { Tooltip } from './Tooltip'
+import { HotkeysProvider, Tooltip } from './Tooltip'
 
 export default function GlobalChat(): JSX.Element {
   const theme = useActiveTheme()
   const nessieColor = useAppState((s) => s.settings.nessieColor)
   const uiScale = useAppState((s) => s.settings.uiScale)
+  const hotkeyOverrides = useAppState((s) => s.settings.hotkeys) ?? undefined
   const backend = useBackend()
+  const resolvedHotkeys = useMemo(
+    () => resolveHotkeys(hotkeyOverrides),
+    [hotkeyOverrides]
+  )
 
   // Same two document-level effects App.tsx runs. They're per-document,
   // not per-app, so a second window has to run them itself.
@@ -33,11 +46,68 @@ export default function GlobalChat(): JSX.Element {
     document.documentElement.style.fontSize = `${scaleSpec(uiScale).rootPx}px`
   }, [uiScale])
 
+  // HotkeysProvider carries the Radix tooltip provider that <Tooltip>
+  // requires, plus the binding context <HotkeyBadge> reads — both are
+  // used by the shared chat components we render here, and both throw or
+  // render wrong without a provider in scope.
   return (
-    <div className="h-screen w-screen flex flex-col bg-app text-fg overflow-hidden">
-      <Body />
-    </div>
+    <HotkeysProvider bindings={resolvedHotkeys}>
+      <ApprovalHotkeys overrides={hotkeyOverrides} />
+      <div className="h-screen w-screen flex flex-col bg-app text-fg overflow-hidden">
+        <Body />
+      </div>
+    </HotkeysProvider>
   )
+}
+
+/** Approve / deny for the oldest pending approval. The approval card
+ *  advertises these two bindings unconditionally, and App.tsx's
+ *  handler map isn't mounted in this window — without this they'd be
+ *  labels for keystrokes that do nothing. Same semantics as the
+ *  `approveToolUse` / `denyToolUse` entries in useHotkeyHandlers,
+ *  including the AskUserQuestion carve-out (a plain allow there resolves
+ *  the question as unanswered, so the card has to own it). */
+function ApprovalHotkeys({
+  overrides
+}: {
+  overrides?: Record<string, string>
+}): null {
+  const backend = useBackend()
+  const { sessionId } = useGlobalChat()
+  const pendingApprovals = useJsonClaudePendingApprovals()
+  const active = useMemo(() => {
+    if (!sessionId) return null
+    const mine = Object.values(pendingApprovals)
+      .filter((a) => a.sessionId === sessionId)
+      .sort((a, b) => a.timestamp - b.timestamp)
+    return mine[0] ?? null
+  }, [pendingApprovals, sessionId])
+
+  const resolve = useCallback(
+    (behavior: 'allow' | 'deny') => {
+      if (!active) return
+      if (active.toolName === QUESTION_TOOL_NAME) return
+      document
+        .getElementById(active.requestId)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      void backend.resolveJsonClaudeApproval(
+        active.requestId,
+        behavior === 'allow'
+          ? { behavior, updatedInput: active.input }
+          : { behavior, message: 'user denied' }
+      )
+    },
+    [active, backend]
+  )
+
+  useHotkeys(
+    {
+      approveToolUse: () => resolve('allow'),
+      denyToolUse: () => resolve('deny')
+    },
+    overrides
+  )
+  return null
 }
 
 function Body(): JSX.Element {
