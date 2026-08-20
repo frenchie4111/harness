@@ -136,92 +136,11 @@ export function ContextPanel({ focusedTabId }: ContextPanelProps): JSX.Element |
   // this path too.
   if (!supported) return null
 
-  const body = (): JSX.Element => {
-    if (!snapshot) {
-      return (
-        <div className="text-xs text-faint italic">
-          No context data yet. Updates after each turn.
-        </div>
-      )
-    }
-
-    const { usedTokens, limit, autocompactAt } = snapshot
-    const pct = limit > 0 ? (usedTokens / limit) * 100 : 0
-    const toCompact = autocompactAt - usedTokens
-    // Sorted so the biggest consumer is always the first thing read —
-    // that's the whole point of the panel.
-    const sorted = rows.filter((r) => r.tokens > 0).sort((a, b) => b.tokens - a.tokens)
-
-    return (
-      <>
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="text-base font-medium text-text tabular-nums">
-              {Math.round(pct)}%
-            </span>
-            <span className="text-xs text-faint tabular-nums">
-              {formatTokens(usedTokens)} / {formatTokens(limit)}
-            </span>
-          </div>
-          <Meter rows={sorted} used={usedTokens} limit={limit} />
-          <div className="flex items-baseline justify-between gap-2 text-xs text-faint">
-            <span
-              title={
-                toCompact > 0
-                  ? `Expected to auto-compact around ${formatTokens(autocompactAt)}`
-                  : 'Past the expected auto-compact point'
-              }
-            >
-              {toCompact > 0
-                ? `${formatTokens(toCompact)} until compact`
-                : 'compact imminent'}
-            </span>
-            {snapshot.model && (
-              <span className="truncate">{shortModel(snapshot.model)}</span>
-            )}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          {sorted.map((r) => (
-            <BarRow key={r.label} row={r} used={usedTokens} />
-          ))}
-        </div>
-
-        {snapshot.compactions > 0 && (
-          <div className="text-xs text-faint">
-            {snapshot.compactions} compaction{snapshot.compactions === 1 ? '' : 's'} so far —
-            everything before the last one is gone.
-          </div>
-        )}
-
-        {snapshot.discoverableTools.length > 0 && (
-          <div className="flex flex-col gap-1">
-            <button
-              className="text-xs text-faint hover:text-text text-left"
-              onClick={() => setShowDiscoverable((v) => !v)}
-              title="Tools the agent can pull in on demand. Their schemas are not in the window until used."
-            >
-              {showDiscoverable ? '▾' : '▸'} {snapshot.discoverableTools.length} tools
-              discoverable, not loaded
-            </button>
-            {showDiscoverable && (
-              <div className="text-xs text-faint leading-relaxed break-words">
-                {snapshot.discoverableTools.map(shortToolName).join(', ')}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div
-          className="text-xs text-faint italic"
-          title="The total is exact — it comes off the last turn's usage record. The category split is anchored to the measured token delta between turns and divided within each turn by char proportion."
-        >
-          total is exact, split is estimated
-        </div>
-      </>
-    )
-  }
+  // Sorted so the biggest consumer is always the first thing read —
+  // that's the whole point of the panel.
+  const sorted = rows.filter((r) => r.tokens > 0).sort((a, b) => b.tokens - a.tokens)
+  const pct = snapshot && snapshot.limit > 0 ? (snapshot.usedTokens / snapshot.limit) * 100 : 0
+  const toCompact = snapshot ? snapshot.autocompactAt - snapshot.usedTokens : 0
 
   return (
     <RightPanel
@@ -234,12 +153,100 @@ export function ContextPanel({ focusedTabId }: ContextPanelProps): JSX.Element |
       actions={
         snapshot ? (
           <span className="text-xs text-faint tabular-nums">
-            {Math.round((snapshot.usedTokens / snapshot.limit) * 100)}%
+            {Math.round(pct)}%
           </span>
         ) : undefined
       }
     >
-      <div className="px-3 py-2 flex flex-col gap-3">{body()}</div>
+      {!snapshot ? (
+        <div className="px-3 py-2 text-xs text-faint italic">
+          No context data yet. Updates after each turn.
+        </div>
+      ) : (
+        <>
+          {/* Pinned: the headline stays readable while the list scrolls. */}
+          <div className="shrink-0 px-3 pt-2 pb-2 flex flex-col gap-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-base font-medium text-text tabular-nums">
+                {Math.round(pct)}%
+              </span>
+              <span className="text-xs text-faint tabular-nums">
+                {formatTokens(snapshot.usedTokens)} / {formatTokens(snapshot.limit)}
+              </span>
+            </div>
+            <Meter rows={sorted} used={snapshot.usedTokens} limit={snapshot.limit} />
+            <div className="flex items-baseline justify-between gap-2 text-xs text-faint">
+              <span
+                title={
+                  toCompact > 0
+                    ? `Expected to auto-compact around ${formatTokens(snapshot.autocompactAt)}`
+                    : 'Past the expected auto-compact point'
+                }
+              >
+                {toCompact > 0
+                  ? `${formatTokens(toCompact)} until compact`
+                  : 'compact imminent'}
+              </span>
+              {snapshot.model && (
+                <span className="truncate">{shortModel(snapshot.model)}</span>
+              )}
+            </div>
+          </div>
+
+          {/* The category list grows with however many distinct tools a
+              session has touched — unbounded in practice, and an
+              MCP-heavy session produces enough rows to push every panel
+              below it off screen.
+              The cap lives here rather than on RightPanel's maxHeight:
+              that would put a max-height on the body and leave this
+              region to work out its own share via flex-1, which only
+              resolves if every ancestor cooperates — and it didn't, so
+              the tail of the list ended up below the viewport instead of
+              inside a scroller. Capping the scroller itself is
+              self-contained and can't be undone by a parent.
+              The discoverable-tools list and the estimate caveat live in
+              here too, so neither is pinned. */}
+          <div className="max-h-48 overflow-y-auto px-3 pb-2 flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              {sorted.map((r) => (
+                <BarRow key={r.label} row={r} used={snapshot.usedTokens} />
+              ))}
+            </div>
+
+            {snapshot.compactions > 0 && (
+              <div className="text-xs text-faint">
+                {snapshot.compactions} compaction{snapshot.compactions === 1 ? '' : 's'} so
+                far — everything before the last one is gone.
+              </div>
+            )}
+
+            {snapshot.discoverableTools.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <button
+                  className="text-xs text-faint hover:text-text text-left"
+                  onClick={() => setShowDiscoverable((v) => !v)}
+                  title="Tools the agent can pull in on demand. Their schemas are not in the window until used."
+                >
+                  {showDiscoverable ? '▾' : '▸'} {snapshot.discoverableTools.length} tools
+                  discoverable, not loaded
+                </button>
+                {showDiscoverable && (
+                  <div className="text-xs text-faint leading-relaxed break-words">
+                    {snapshot.discoverableTools.map(shortToolName).join(', ')}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div
+              className="text-xs text-faint italic"
+              title="The total is exact — it comes off the last turn's usage record. The category split is anchored to the measured token delta between turns and divided within each turn by char proportion."
+            >
+              total is exact, split is estimated
+            </div>
+          </div>
+        </>
+      )}
     </RightPanel>
   )
 }
