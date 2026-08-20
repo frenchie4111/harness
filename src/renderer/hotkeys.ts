@@ -163,6 +163,18 @@ export function isEditableTarget(el: HTMLElement | null): boolean {
 }
 
 /**
+ * True when this binding is indistinguishable from typing a character.
+ * Any single-character key without Cmd or Ctrl produces text in a focused
+ * input — `a`, `Shift+A`, `Alt+A` (⌥A types "å" on macOS), space. Those
+ * must not be stolen from an editable target; `Cmd+A`, `Ctrl+Tab`, `F12`,
+ * `Escape` never insert text, so they stay live everywhere.
+ */
+export function isTypeableBinding(binding: HotkeyBinding): boolean {
+  if (binding.modifiers.cmd || binding.modifiers.ctrl) return false
+  return binding.key.length === 1
+}
+
+/**
  * Parse a shortcut string like "Cmd+Shift+T" into a HotkeyBinding.
  * Recognized modifier tokens: Cmd, Ctrl, Shift, Alt.
  * The last token is the key.

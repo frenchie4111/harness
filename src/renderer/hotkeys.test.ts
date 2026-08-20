@@ -3,6 +3,8 @@ import {
   DEFAULT_HOTKEYS,
   ACTION_CATEGORIES,
   formatBindingGlyphs,
+  isTypeableBinding,
+  parseBinding,
   type Action
 } from './hotkeys'
 
@@ -41,5 +43,35 @@ describe('formatBindingGlyphs', () => {
   it('formats single modifiers and special keys', () => {
     expect(formatBindingGlyphs('Cmd+,', '')).toBe('⌘,')
     expect(formatBindingGlyphs('Cmd+ArrowDown', '')).toBe('⌘↓')
+  })
+})
+
+describe('isTypeableBinding', () => {
+  it('treats a bare character key as typing', () => {
+    expect(isTypeableBinding(parseBinding('a'))).toBe(true)
+    expect(isTypeableBinding({ key: ' ', modifiers: {} })).toBe(true)
+  })
+
+  it('treats Shift+letter and Alt+letter as typing', () => {
+    expect(isTypeableBinding(parseBinding('Shift+A'))).toBe(true)
+    expect(isTypeableBinding(parseBinding('Alt+A'))).toBe(true)
+  })
+
+  it('does not treat Cmd or Ctrl chords as typing', () => {
+    expect(isTypeableBinding(parseBinding('Cmd+A'))).toBe(false)
+    expect(isTypeableBinding(parseBinding('Ctrl+A'))).toBe(false)
+    expect(isTypeableBinding(parseBinding('Cmd+Shift+Y'))).toBe(false)
+  })
+
+  it('does not treat named keys as typing', () => {
+    expect(isTypeableBinding(parseBinding('F12'))).toBe(false)
+    expect(isTypeableBinding(parseBinding('Escape'))).toBe(false)
+    expect(isTypeableBinding(parseBinding('ArrowDown'))).toBe(false)
+  })
+
+  it('leaves every default binding live inside editable targets', () => {
+    for (const binding of Object.values(DEFAULT_HOTKEYS)) {
+      expect(isTypeableBinding(binding)).toBe(false)
+    }
   })
 })
