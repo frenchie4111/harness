@@ -16,6 +16,7 @@ vi.mock('./worktree', () => ({
 }))
 
 vi.mock('./worktree-trash', () => ({
+  deleteWorktreeDirectory: vi.fn(async () => {}),
   isSameVolume: vi.fn(() => true),
   moveWorktreeToTrash: vi.fn(async (_p: string) => '/trash/uuid'),
   scheduleTrashUnlink: vi.fn(),
@@ -26,6 +27,7 @@ import { Store } from './store'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
 import { removeWorktree, pruneWorktrees, runWorktreeScript } from './worktree'
 import {
+  deleteWorktreeDirectory,
   isSameVolume,
   moveWorktreeToTrash,
   scheduleTrashUnlink
@@ -117,6 +119,42 @@ describe('WorktreeDeletionFSM — slow-path fallback (cross-volume)', () => {
     expect(moveWorktreeToTrash).not.toHaveBeenCalled()
     expect(scheduleTrashUnlink).not.toHaveBeenCalled()
     expect(refreshListDebounced).toHaveBeenCalledTimes(1)
+  })
+
+  it('deletes the directory and prunes when git rejects a worktree containing submodules', async () => {
+    ;(removeWorktree as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error(
+        'Command failed: git worktree remove /vol2/wt\nfatal: working trees containing submodules cannot be moved or removed'
+      )
+    )
+    const { fsm, events, refreshListDebounced } = makeFsm()
+
+    fsm.enqueue({ repoRoot: '/repo', path: '/vol2/wt', branch: 'x' })
+    await new Promise((r) => setImmediate(r))
+
+    expect(deleteWorktreeDirectory).toHaveBeenCalledWith('/vol2/wt')
+    expect(pruneWorktrees).toHaveBeenCalledWith('/repo')
+    expect(events.some((e) => e.type === 'worktrees/pendingDeletionRemoved')).toBe(true)
+    expect(refreshListDebounced).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not delete the directory directly for unrelated git errors', async () => {
+    ;(removeWorktree as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('fatal: worktree is locked')
+    )
+    const { fsm, events } = makeFsm()
+
+    fsm.enqueue({ repoRoot: '/repo', path: '/vol2/wt', branch: 'x' })
+    await new Promise((r) => setImmediate(r))
+
+    expect(deleteWorktreeDirectory).not.toHaveBeenCalled()
+    expect(
+      events.some(
+        (e) =>
+          e.type === 'worktrees/pendingDeletionUpdated' &&
+          e.payload.patch.phase === 'failed'
+      )
+    ).toBe(true)
   })
 })
 

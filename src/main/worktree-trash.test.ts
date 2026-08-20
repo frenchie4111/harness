@@ -13,6 +13,7 @@ vi.mock('./paths', () => ({
 let tmpUserData = ''
 
 import {
+  isSameVolume,
   sweepWorktreeTrashOnBoot,
   worktreeTrashDir,
   resetTrashDirCacheForTests
@@ -35,6 +36,13 @@ describe('worktree-trash boot sweep', () => {
 
   it('is a no-op when the trash dir does not exist', async () => {
     await expect(sweepWorktreeTrashOnBoot()).resolves.toBeUndefined()
+  })
+
+  it('detects the destination volume before the trash directory exists', () => {
+    const worktree = join(tmpUserData, 'worktree')
+    mkdirSync(worktree)
+
+    expect(isSameVolume(worktree, join(tmpUserData, 'missing', 'trash'))).toBe(true)
   })
 
   it('queues every entry in the trash dir for removal', async () => {
