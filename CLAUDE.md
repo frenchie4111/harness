@@ -391,10 +391,42 @@ replaced them:
    tasks, in a different process from the one `perf-monitor.ts` samples, so
    it is invisible to both React profiler callbacks and main-process
    event-loop lag. The `longtask` PerformanceObserver catches those pauses
-   (plus layout thrash and any non-React work), and per-second heap deltas
-   expose the allocate-and-collect sawtooth as `heapReclaimedMB`.
+   (plus layout thrash and any non-React work).
 3. **`[snapshot]` memory was main-only but unlabelled.** Now prefixed, per
    above.
+
+**Two fields lied for months, and both hid the same class of bug. Read this
+before trusting a `[renderer-*]` line.**
+
+- **`reactCommits` / `reactTotalMs` were structurally 0 in every packaged
+  build.** React's production build compiles out `enableProfilerTimer`, so
+  `<Profiler>`'s `onRender` is never called — `react-dom-client.production.js`
+  contains zero occurrences of `onRender`. `"reactCommits":0` appeared in
+  100% of ~1,823 samples across two log files and never once nonzero. Fixed
+  by aliasing `react-dom/client` → `react-dom/profiling` in
+  `electron.vite.config.ts`. **Do not add a bare `react-dom` alias** — the
+  profiling build itself does `require("react-dom")` for
+  `ReactDOMSharedInternals`, so that creates a cycle and the app dies at
+  startup on `reading 'd'`.
+- **`heapUsedMB` and its deltas are quantized and up to ~20 minutes stale.**
+  Chrome caches `performance.memory` on pages that aren't cross-origin
+  isolated. Observed: `heapUsedMB` pinned at exactly 560.8 for 40 minutes
+  across 617 samples (9 distinct values in an entire log) while real RSS swung
+  600MB inside 30 seconds. So `heapGrowthMB` / `heapReclaimedMB` **cannot**
+  show an allocate-and-collect sawtooth — the exact shape they were added to
+  catch — and when the cached value does refresh, the whole 20-minute delta
+  gets misattributed to one 1-second bucket. The trustworthy number is
+  `rendererRssMB` / `rendererCpuPct` in `[snapshot]`, sampled in main via
+  `app.getAppMetrics()` and scoped to `BrowserWindow` webContents (browser
+  tabs are separate renderer processes and are deliberately excluded). The
+  `performance.memory`-derived fields are suffixed `…Quantized` so they can't
+  be misread as live.
+
+The general lesson, since this has now cost three investigations: **a
+telemetry field that reads a constant is not evidence of a quiet system, it is
+evidence of broken instrumentation.** Before optimizing against a metric,
+confirm it has ever moved — `grep -oE '"field":[0-9.]+' perf.log | sort -u`
+takes seconds and would have caught both of these.
 
 The hard constraint when extending this: **the telemetry must not become
 the bottleneck.** `longtask` can fire continuously under load, so buckets

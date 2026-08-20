@@ -33,6 +33,13 @@ const SNAPSHOT_INTERVAL_MS = 30000
 const MICROTASK_PROBE_INTERVAL_MS = 50
 const MICROTASK_DRIFT_THRESHOLD_MS = 50
 
+/** Real per-process renderer usage, measured from main via app.getAppMetrics().
+ *  The renderer's own `performance.memory` is quantized and ~20min stale. */
+export interface RendererProcessMetrics {
+  rssMB: number
+  cpuPct: number
+}
+
 function formatBytes(n: number): string {
   if (n < 1024) return `${n}B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`
@@ -81,6 +88,21 @@ export class PerfMonitor {
   // under a bare `memoryHeapUsedMB` — it read 30MB while the renderer sat at
   // 900MB, which is worse than not reporting memory at all.
   private lastRendererSample: RendererPerfSample | null = null
+
+  // Real renderer RSS/CPU, sampled in main. The renderer CANNOT measure its
+  // own memory usefully: `performance.memory` is quantized and Chrome serves a
+  // cached value for ~20 minutes on pages that aren't cross-origin isolated.
+  // Observed in the wild — heapUsedMB sat at exactly 560.8 for 40 minutes
+  // across 617 samples (9 distinct values in an entire log) while the real RSS
+  // swung 600MB inside 30 seconds. So the renderer's heap* fields cannot show
+  // an allocate-and-collect sawtooth, which is precisely the shape this
+  // telemetry exists to catch. Injected rather than imported so the headless
+  // build doesn't pull in electron; null there, and the fields log as null.
+  private rendererProcessMetricsFn: (() => RendererProcessMetrics | null) | null = null
+
+  setRendererProcessMetricsProvider(fn: () => RendererProcessMetrics | null): void {
+    this.rendererProcessMetricsFn = fn
+  }
 
   start(store: Store, getActivePtyCount: () => number): void {
     this.activePtyCountFn = getActivePtyCount
@@ -172,9 +194,14 @@ export class PerfMonitor {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
     const r = this.lastRendererSample
+    const rp = this.rendererProcessMetricsFn?.() ?? null
+    // rendererRss is the trustworthy number; rendererHeap is quantized and can
+    // be up to ~20 minutes stale (see rendererProcessMetricsFn). Keep the label
+    // explicit so nobody reads the heap figure as a live value again.
+    const rssPart = rp ? ` rendererRss=${rp.rssMB}MB rendererCpu=${rp.cpuPct}%` : ''
     const rendererPart = r
-      ? ` rendererHeap=${r.heapUsedMB}MB rendererBlocked=${r.blockingMs}ms/s`
-      : ' rendererHeap=n/a'
+      ? `${rssPart} rendererHeapQuantized=${r.heapUsedMB}MB rendererBlocked=${r.blockingMs}ms/s`
+      : `${rssPart} rendererHeapQuantized=n/a`
     perfLog(
       'snapshot',
       `store=${this.storeEventsPerSec}/s ipc=${this.ipcMessagesPerSec}/s gh=${this.githubApiCallsPerSec}/s term=${formatBytes(this.totalTerminalBytesPerSec)}/s lag=${this.eventLoopLagMs}ms mainRss=${rssMB}MB${rendererPart} ptys=${ptys}`,
@@ -186,8 +213,13 @@ export class PerfMonitor {
         eventLoopLagMs: this.eventLoopLagMs,
         mainRssMB: rssMB,
         mainHeapUsedMB: heapMB,
-        rendererHeapUsedMB: r?.heapUsedMB ?? null,
-        rendererHeapTotalMB: r?.heapTotalMB ?? null,
+        rendererRssMB: rp?.rssMB ?? null,
+        rendererCpuPct: rp?.cpuPct ?? null,
+        // Suffixed, not bare: these come from `performance.memory` and are
+        // quantized + cached for ~20min, so a delta between two adjacent
+        // snapshots is meaningless. Compare rendererRssMB instead.
+        rendererHeapUsedMBQuantized: r?.heapUsedMB ?? null,
+        rendererHeapTotalMBQuantized: r?.heapTotalMB ?? null,
         rendererBlockingMsPerSec: r?.blockingMs ?? null,
         rendererLongTasksPerSec: r?.longTasks ?? null,
         rendererSampleAgeMs: r ? Date.now() - r.t : null,
