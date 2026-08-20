@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+/* These spawn real git. Under a full parallel suite run a handful of spawns
+ * can blow past vitest's 5s default, so every case here sets its own budget —
+ * a timeout in this file would otherwise read as a caching regression. */
 import { execFileSync } from 'child_process'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
@@ -17,6 +20,8 @@ function git(cwd: string, args: string[]): string {
     }
   }).toString()
 }
+
+const TIMEOUT = 60_000
 
 describe('getMainWorktreeStatus caching', () => {
   let repo: string
@@ -44,12 +49,12 @@ describe('getMainWorktreeStatus caching', () => {
       getMainWorktreeStatus(repo)
     ])
     expect(a).toBe(b)
-  })
+  }, TIMEOUT)
 
   it('serves a later caller from cache within the TTL', async () => {
     const first = await getMainWorktreeStatus(repo)
     expect(await getMainWorktreeStatus(repo)).toBe(first)
-  })
+  }, TIMEOUT)
 
   it('re-reads after an explicit invalidation', async () => {
     const first = await getMainWorktreeStatus(repo)
@@ -57,7 +62,7 @@ describe('getMainWorktreeStatus caching', () => {
     const second = await getMainWorktreeStatus(repo)
     expect(second).not.toBe(first)
     expect(second).toEqual(first)
-  })
+  }, TIMEOUT)
 
   it('re-reads when forced, and picks up a change the cache would have hidden', async () => {
     const clean = await getMainWorktreeStatus(repo)
@@ -72,7 +77,7 @@ describe('getMainWorktreeStatus caching', () => {
     const forced = await getMainWorktreeStatus(repo, { force: true })
     expect(forced.isDirty).toBe(true)
     expect(forced.ready).toBe(false)
-  })
+  }, TIMEOUT)
 
   it("keys by repo, so a second repo is not served the first one's answer", async () => {
     const other = mkdtempSync(join(tmpdir(), 'harness-mainstatus-b-'))
@@ -94,12 +99,12 @@ describe('getMainWorktreeStatus caching', () => {
     } finally {
       rmSync(other, { recursive: true, force: true })
     }
-  })
+  }, TIMEOUT)
 
   it('does not cache a failure', async () => {
     const missing = join(tmpdir(), 'harness-mainstatus-does-not-exist')
     await expect(getMainWorktreeStatus(missing)).rejects.toThrow()
     // A cached rejection here would poison the repo for the whole TTL.
     await expect(getMainWorktreeStatus(missing)).rejects.toThrow()
-  })
+  }, TIMEOUT)
 })

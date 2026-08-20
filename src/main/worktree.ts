@@ -1354,16 +1354,24 @@ export async function renameWorktreeBranch(
 // requests it directly in parallel. Each miss is four sequential git spawns,
 // one of which is a full `git status` on the main checkout.
 //
-// The in-flight entry is what collapses the concurrent pair; the TTL is what
+// An in-flight entry is what collapses the concurrent pair; the TTL is what
 // covers flipping back and forth between worktrees. It's deliberately short —
 // this answer gates the "main isn't ready" fixup button, so it should track
 // reality at human timescale — and any Ness-side mutation of main busts it
 // outright rather than waiting the TTL out.
+//
+// The TTL runs from when the read *settles*, not from when it was dispatched.
+// Dispatch-time would be self-defeating on exactly the repos this exists for:
+// where the four spawns take longer than the TTL, every entry would land
+// already expired and the cache would never serve anyone.
 const MAIN_STATUS_TTL_MS = 3000
-const mainStatusCache = new Map<
-  string,
-  { at: number; promise: Promise<MainWorktreeStatus> }
->()
+interface MainStatusEntry {
+  /** null while the read is still in flight — such an entry is always fresh,
+   *  which is what makes concurrent callers join rather than each spawn git. */
+  settledAt: number | null
+  promise: Promise<MainWorktreeStatus>
+}
+const mainStatusCache = new Map<string, MainStatusEntry>()
 
 export function invalidateMainWorktreeStatus(repoRoot?: string): void {
   if (repoRoot === undefined) mainStatusCache.clear()
@@ -1376,16 +1384,31 @@ export async function getMainWorktreeStatus(
   opts: { force?: boolean } = {}
 ): Promise<MainWorktreeStatus> {
   const hit = mainStatusCache.get(repoRoot)
-  if (!opts.force && hit && Date.now() - hit.at < MAIN_STATUS_TTL_MS) return hit.promise
+  if (
+    !opts.force &&
+    hit &&
+    (hit.settledAt === null || Date.now() - hit.settledAt < MAIN_STATUS_TTL_MS)
+  ) {
+    return hit.promise
+  }
 
-  const promise = readMainWorktreeStatus(repoRoot).catch((err) => {
-    // Never let a failure stick around for the TTL — the next caller should
-    // get a real attempt, not a cached rejection.
-    if (mainStatusCache.get(repoRoot)?.promise === promise) mainStatusCache.delete(repoRoot)
-    throw err
-  })
-  mainStatusCache.set(repoRoot, { at: Date.now(), promise })
-  return promise
+  const entry: MainStatusEntry = {
+    settledAt: null,
+    promise: readMainWorktreeStatus(repoRoot).then(
+      (value) => {
+        if (mainStatusCache.get(repoRoot) === entry) entry.settledAt = Date.now()
+        return value
+      },
+      (err) => {
+        // Never let a failure stick around for the TTL — the next caller
+        // should get a real attempt, not a cached rejection.
+        if (mainStatusCache.get(repoRoot) === entry) mainStatusCache.delete(repoRoot)
+        throw err
+      }
+    )
+  }
+  mainStatusCache.set(repoRoot, entry)
+  return entry.promise
 }
 
 async function readMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus> {
