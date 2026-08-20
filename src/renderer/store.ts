@@ -845,6 +845,10 @@ export function useAliases() {
   return useAppState((s) => s.aliases)
 }
 
+export function useSessionImport() {
+  return useAppState((s) => s.sessionImport)
+}
+
 /** Per-id alias selector. Accepts null/undefined for the "no active
  *  worktree" case so callers don't have to fall back to an empty-string
  *  path (which would still subscribe, just to a permanently-undefined

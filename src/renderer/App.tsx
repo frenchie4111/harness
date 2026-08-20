@@ -47,6 +47,7 @@ import { ResolveRepoModal } from './components/ResolveRepoModal'
 import { RepoAddErrorModal } from './components/RepoAddErrorModal'
 import { ReportIssueScreen, onOpenReportIssue, type OpenReportIssueDetail } from './components/ReportIssueScreen'
 import { AddBackendModal } from './components/AddBackendModal'
+import { SessionImportBrowser } from './components/SessionImportBrowser'
 import { InvalidConfigModal } from './components/InvalidConfigModal'
 import { MonacoWorkerFailedBanner } from './components/MonacoWorkerFailedBanner'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
@@ -290,6 +291,7 @@ function DesktopApp(): JSX.Element {
   const [showNewProject, setShowNewProject] = useState(false)
   const [reportIssueState, setReportIssueState] = useState<OpenReportIssueDetail | null>(null)
   const [showAddBackend, setShowAddBackend] = useState(false)
+  const [showSessionImport, setShowSessionImport] = useState(false)
   // Dev-only: forces the welcome / onboarding form to render even when
   // the user already has repos added, so the layout can be inspected
   // without wiping `userData/config.json`. Toggled from Help → Debug:
@@ -1845,6 +1847,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         }}
         onOpenFile={(filePath) => handleOpenFile(filePath)}
         onAddBackend={() => setShowAddBackend(true)}
+        onImportSessions={() => setShowSessionImport(true)}
       />
     )}
     {showHotkeyCheatsheet && (
@@ -1861,6 +1864,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
       isOpen={showAddBackend}
       onClose={() => setShowAddBackend(false)}
     />
+    {activeWorktreeId && (
+      <SessionImportBrowser
+        isOpen={showSessionImport}
+        onClose={() => setShowSessionImport(false)}
+        targetWorktreePath={activeWorktreeId}
+      />
+    )}
     {holdToQuit.phase !== 'idle' && (
       <HoldToQuitOverlay key={holdToQuit.holdId} fading={holdToQuit.phase === 'fading'} />
     )}

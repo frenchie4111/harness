@@ -48,8 +48,18 @@ export class SessionImportManager {
     this.scanning = true
     this.deps.dispatch({ type: 'sessionImport/scanStarted' })
     try {
+      // The scanner reports per file, which on a real corpus is 8000+ calls.
+      // Dispatching each one would push that many events through the reducer
+      // and out over IPC to every client -- the exact high-frequency-stream
+      // anti-pattern the store is not for. A progress bar can't render more
+      // than a few updates a second anyway, so coalesce to whole percent
+      // changes and always let the final file through so the bar lands full.
+      let lastPercent = -1
       const result = await scanSessions({
         onProgress: (scanned, total) => {
+          const percent = total > 0 ? Math.floor((scanned / total) * 100) : 0
+          if (percent === lastPercent && scanned !== total) return
+          lastPercent = percent
           this.deps.dispatch({
             type: 'sessionImport/scanProgress',
             payload: { scanned, total }

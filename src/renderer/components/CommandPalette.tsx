@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, GitPullRequest, ArrowRight, FileText, Server } from 'lucide-react'
+import { Search, GitPullRequest, ArrowRight, FileText, Server, MessageSquare } from 'lucide-react'
 import type { Worktree, PtyStatus, PRStatus, ChangedFile } from '../types'
 import type { Action, HotkeyBinding } from '../hotkeys'
 import { ACTION_LABELS, bindingToString } from '../hotkeys'
@@ -30,6 +30,7 @@ interface CommandPaletteProps {
   onAction: (action: Action) => void
   onOpenFile: (filePath: string) => void
   onAddBackend: () => void
+  onImportSessions: () => void
 }
 
 type PaletteItem =
@@ -37,6 +38,7 @@ type PaletteItem =
   | { kind: 'action'; action: Action; label: string; hint?: string }
   | { kind: 'open-files'; label: string }
   | { kind: 'add-backend'; label: string }
+  | { kind: 'import-sessions'; label: string }
   | { kind: 'heading'; label: string }
   | { kind: 'recent-worktree'; wt: Worktree }
   | { kind: 'recent-action'; action: Action; label: string; hint?: string }
@@ -195,6 +197,7 @@ export function CommandPalette({
   onAction,
   onOpenFile,
   onAddBackend,
+  onImportSessions,
 }: CommandPaletteProps): JSX.Element {
   const backend = useBackend()
   const changedFiles = useChangedFilesSet(activeWorktreeId)
@@ -394,6 +397,15 @@ export function CommandPalette({
         items.push({ kind: 'add-backend', label: 'Add Backend…' })
         selectable++
       }
+      // "Import chat history…" — fuzzy-matches the phrase plus the words
+      // people reach for when they mean it ("history", "resume", "session").
+      if (
+        fuzzyScore(query, 'Import chat history') > 0 ||
+        /import|history|resume|session/i.test(query)
+      ) {
+        items.push({ kind: 'import-sessions', label: 'Import Chat History…' })
+        selectable++
+      }
     } else {
       const recentPaletteItems: PaletteItem[] = []
       for (const r of recents) {
@@ -437,6 +449,8 @@ export function CommandPalette({
       items.push({ kind: 'open-files', label: 'Open File…' })
       selectable++
       items.push({ kind: 'add-backend', label: 'Add Backend…' })
+      selectable++
+      items.push({ kind: 'import-sessions', label: 'Import Chat History…' })
       selectable++
       for (const a of actionItems) {
         items.push({ kind: 'action', ...a })
@@ -497,6 +511,8 @@ export function CommandPalette({
         return
       } else if (item.kind === 'add-backend') {
         onAddBackend()
+      } else if (item.kind === 'import-sessions') {
+        onImportSessions()
       } else if (item.kind === 'recent-file') {
         if (activeWorktreeId) pushRecent(activeWorktreeId, item.path)
         pushPaletteRecent({
@@ -509,7 +525,15 @@ export function CommandPalette({
       }
       onClose()
     },
-    [onClose, onSelectWorktree, onAction, onOpenFile, onAddBackend, activeWorktreeId]
+    [
+      onClose,
+      onSelectWorktree,
+      onAction,
+      onOpenFile,
+      onAddBackend,
+      onImportSessions,
+      activeWorktreeId
+    ]
   )
 
   const handleKeyDown = useCallback(
@@ -766,6 +790,23 @@ export function CommandPalette({
                       {bindingToString(openBinding)}
                     </kbd>
                   )}
+                </button>
+              )
+            }
+
+            if (item.kind === 'import-sessions') {
+              return (
+                <button
+                  key={`import-sessions-${flatIdx}`}
+                  data-idx={flatIdx}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm cursor-pointer transition-colors ${
+                    isSelected ? 'bg-accent/15 text-fg-bright' : 'text-fg hover:bg-surface-hover'
+                  }`}
+                  onMouseEnter={() => setSelectedIndex(mySelectableIdx)}
+                  onClick={() => execute(item)}
+                >
+                  <MessageSquare className="icon-sm text-dim shrink-0" />
+                  <span className="truncate flex-1 text-left">{item.label}</span>
                 </button>
               )
             }

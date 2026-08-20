@@ -185,6 +185,30 @@ describe('scan', () => {
     })
   })
 
+  it('coalesces progress so a large corpus cannot flood the store', async () => {
+    // 300 files must not become 300 dispatches — at most one per whole
+    // percent, plus the final one.
+    const projects = join(fakeHome, '.claude', 'projects', 'dir-a')
+    mkdirSync(projects, { recursive: true })
+    for (let i = 0; i < 300; i++) {
+      writeFileSync(
+        join(projects, `s${i}.jsonl`),
+        JSON.stringify({ type: 'user', message: { role: 'user', content: 'x' } }) + '\n',
+        'utf8'
+      )
+    }
+    const h = harness([])
+    await h.manager.scan()
+    const progress = h.events.filter((e) => e.type === 'sessionImport/scanProgress')
+    expect(progress.length).toBeLessThanOrEqual(101)
+    // ...and the last one still reports completion, so the bar lands full.
+    const last = progress[progress.length - 1]
+    expect(last).toEqual({
+      type: 'sessionImport/scanProgress',
+      payload: { scanned: 300, total: 300 }
+    })
+  })
+
   it('reports not scanning once finished', async () => {
     const h = harness([])
     mkdirSync(join(fakeHome, '.claude', 'projects'), { recursive: true })
