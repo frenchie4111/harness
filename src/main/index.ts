@@ -13,6 +13,7 @@ import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { ApprovalBridge } from './approval-bridge'
 import { JsonClaudeManager, bundledClaudeBinPath, forkTranscript, hasForkableTranscript } from './json-claude-manager'
+import { SessionImportManager } from './session-import'
 import { buildRelocationPreamble } from './fork-relocation'
 import { shellQuote } from './shell-quote'
 import {
@@ -25,7 +26,7 @@ import { WebSocketServerTransport } from './transport-websocket'
 import { CompoundServerTransport } from './transport-compound'
 import { createWebClientServer } from './web-client-server'
 import { getOrCreateWsToken, rotateWsToken } from './ws-token'
-import { networkInterfaces } from 'os'
+import { homedir, networkInterfaces } from 'os'
 import type { Server as HttpServer } from 'http'
 import type { ServerTransport } from '../shared/transport/transport'
 import { detectRuntime } from './paths'
@@ -1025,6 +1026,18 @@ function startJsonClaudeSession(sessionId: string, worktreePath: string): void {
   jsonClaudeManager.create(sessionId, worktreePath, permMode, findJsonClaudeTabModel(sessionId))
 }
 
+/** Discovery + import of Claude Code sessions the user ran outside Ness.
+ *  Constructed after startJsonClaudeSession because importing a session is
+ *  "add a tab, then start it through the same path every other chat tab
+ *  uses" — adopting or forking the transcript is the only extra step. */
+const sessionImportManager = new SessionImportManager({
+  dispatch: (event) => store.dispatch(event),
+  getRepoRoots: () => config.repoRoots || [],
+  addTab: (worktreePath, tab) => panesFSM.addTab(worktreePath, tab),
+  startSession: (sessionId, worktreePath) => startJsonClaudeSession(sessionId, worktreePath),
+  homeDir: () => homedir()
+})
+
 /** Resolve what the new worktree's first agent tab should start from,
  *  performing the transcript fork when one was requested. Shared by the FSM
  *  path (UI creation) and the MCP path (worktrees:externalCreate) so both
@@ -1613,6 +1626,27 @@ function registerIpcHandlers(): void {
     if (!repoRoot) return []
     return listBranches(repoRoot)
   })
+
+  // Session import. The scan dispatches its own progress/status events; the
+  // tree comes back as a request payload rather than through the store
+  // because it's megabytes of re-derivable data that only this browser reads.
+  transport.onRequest('sessionImport:scan', async () => {
+    return sessionImportManager.scan()
+  })
+
+  transport.onRequest('sessionImport:getTree', async () => {
+    return sessionImportManager.getTree()
+  })
+
+  transport.onRequest(
+    'sessionImport:import',
+    async (_ctx, params: { sessionId: string; targetWorktreePath: string }) => {
+      if (!params?.sessionId || !params?.targetWorktreePath) {
+        return { ok: false, reason: 'sessionId and targetWorktreePath are required' }
+      }
+      return sessionImportManager.importSession(params.sessionId, params.targetWorktreePath)
+    }
+  )
 
   // Worktree creation flows through the WorktreesFSM in main; main also
   // creates the default Claude+Shell pane pair (with the initial prompt

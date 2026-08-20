@@ -1,4 +1,15 @@
-import type { DiscoveredSession } from './session-scanner'
+import type {
+  BranchNode,
+  DiscoveredSession,
+  SessionGroupKind,
+  SessionGroupNode
+} from '../shared/session-import-types'
+
+export type {
+  BranchNode,
+  SessionGroupKind,
+  SessionGroupNode
+} from '../shared/session-import-types'
 
 /** Groups scanned sessions into the repo → branch → sessions shape the import
  *  browser renders.
@@ -16,8 +27,6 @@ import type { DiscoveredSession } from './session-scanner'
  *  everything sorts by recency within its band, so the rows worth seeing are
  *  at the top without anything becoming unreachable. */
 
-export type SessionGroupKind = 'repo' | 'location' | 'temporary' | 'unknown'
-
 /** Sandbox and scratch directories. Each one is typically a single session in
  *  a uniquely-named temp dir, so left alone they produce hundreds of
  *  singleton groups — on a real corpus, 440 of them. Coalescing them into one
@@ -28,27 +37,6 @@ const TEMPORARY_GROUP_KEY = '(temporary)'
 
 export function isTemporaryPath(cwd: string): boolean {
   return TEMPORARY_PATH_RE.test(cwd)
-}
-
-export interface BranchNode {
-  key: string
-  branch: string | null
-  sessions: DiscoveredSession[]
-  sessionCount: number
-  latestTimestamp: number
-  prCount: number
-}
-
-export interface SessionGroupNode {
-  key: string
-  label: string
-  kind: SessionGroupKind
-  /** Resolved repository root, when one could be determined. */
-  path: string | null
-  branches: BranchNode[]
-  sessionCount: number
-  latestTimestamp: number
-  prCount: number
 }
 
 /** Ness's worktree layout puts checkouts in a sibling directory named after

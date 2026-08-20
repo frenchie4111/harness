@@ -14,6 +14,9 @@ import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { userDataDir } from './paths'
 import { log } from './debug'
+import type { DiscoveredSession } from '../shared/session-import-types'
+
+export type { DiscoveredSession } from '../shared/session-import-types'
 
 /** Scans `~/.claude/projects` for Claude Code transcripts the user produced
  *  outside Ness, so they can be browsed and imported.
@@ -40,31 +43,6 @@ import { log } from './debug'
 const TAIL_BYTES = 64 * 1024
 const HEAD_BYTES = 32 * 1024
 const CACHE_VERSION = 1
-
-export interface DiscoveredSession {
-  sessionId: string
-  transcriptPath: string
-  /** Working directory the session actually ran in, read from line content. */
-  cwd: string | null
-  gitBranch: string | null
-  title: string | null
-  titleSource: 'custom' | 'ai' | 'first-message' | null
-  prNumber: number | null
-  prUrl: string | null
-  prRepository: string | null
-  firstTimestamp: number | null
-  lastTimestamp: number | null
-  /** Count of turns the user would actually see in the transcript, using the
-   *  same filters as JsonClaudeManager.parseTranscriptEntries so the substance
-   *  filter agrees with what an import would render. */
-  userTurns: number
-  /** False when the file was too large to read whole — `userTurns` is then a
-   *  lower bound taken from the head+tail chunks. */
-  userTurnsExact: boolean
-  sizeBytes: number
-  mtimeMs: number
-  cliVersion: string | null
-}
 
 export interface ScanResult {
   sessions: DiscoveredSession[]

@@ -21,6 +21,7 @@ import { initialSshBootstrap } from '../shared/state/ssh-bootstrap'
 import { initialAssignedPRs } from '../shared/state/assigned-prs'
 import { initialConfigHealth, type ConfigLoadError } from '../shared/state/config-health'
 import { initialAliases } from '../shared/state/aliases'
+import { initialSessionImport } from '../shared/state/session-import'
 import {
   initialSettings,
   nessieColorById,
@@ -97,6 +98,7 @@ export function buildInitialAppState(
     aliases: config.aliases
       ? { byPath: { ...config.aliases } }
       : initialAliases,
+    sessionImport: initialSessionImport,
     settings: {
       ...initialSettings,
       themeMode:

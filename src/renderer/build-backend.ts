@@ -104,6 +104,11 @@ export function buildBackend(
     listWorktrees: (repoRoot: string) => req('worktree:list', repoRoot),
     listBranches: (repoRoot: string) => req('worktree:branches', repoRoot),
 
+    scanImportableSessions: () => req('sessionImport:scan'),
+    getImportableSessionTree: () => req('sessionImport:getTree'),
+    importSession: (params: { sessionId: string; targetWorktreePath: string }) =>
+      req('sessionImport:import', params),
+
     runPendingWorktree: (params: {
       id: string
       repoRoot: string

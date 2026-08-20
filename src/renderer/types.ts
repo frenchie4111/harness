@@ -1,4 +1,5 @@
 import type { StateEvent, StateSnapshot } from '../shared/state'
+import type { SessionGroupNode, ImportOutcome } from '../shared/session-import-types'
 export type { StateEvent, StateSnapshot }
 
 import type { Worktree, PendingWorktree, PendingDeletion, ForkSource } from '../shared/state/worktrees'
@@ -207,6 +208,12 @@ export interface MergeLocalResult {
 export interface ElectronAPI {
   listWorktrees(repoRoot: string): Promise<Worktree[]>
   listBranches(repoRoot: string): Promise<string[]>
+  scanImportableSessions(): Promise<{ sessionCount: number; groupCount: number }>
+  getImportableSessionTree(): Promise<SessionGroupNode[]>
+  importSession(params: {
+    sessionId: string
+    targetWorktreePath: string
+  }): Promise<ImportOutcome>
   runPendingWorktree(params: {
     id: string
     repoRoot: string
