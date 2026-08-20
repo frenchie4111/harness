@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from 'crypto'
 import type { AgentKind } from '../shared/state/terminals'
 import { addWorktree, listWorktrees, defaultWorktreeDir, WorktreeInfo } from './worktree'
 import { normalizeAlias } from '../shared/state/aliases'
+import { isValidBranchName, sanitizeBranchInput } from '../shared/branch-name'
 import { agentDisplayName, supportsConversationFork } from '../shared/agent-registry'
 import type { GroupKey } from '../shared/worktree-sort'
 import type { PRStatus } from '../shared/state/prs'
@@ -169,6 +170,16 @@ export interface ControlServerDeps {
    * Empty-after-trim routes to clearAlias — never stores an empty alias. */
   setAlias: (worktreePath: string, alias: string) => void
   clearAlias: (worktreePath: string) => void
+  /** Rename the branch a worktree has checked out, then resync the worktree
+   *  list so the sidebar picks the new name up. The directory keeps its
+   *  original name — see `renameWorktreeBranch`. */
+  renameBranch: (
+    worktreePath: string,
+    newBranch: string
+  ) => Promise<
+    | { ok: true; oldBranch: string; branch: string; renamed: boolean }
+    | { ok: false; error: string }
+  >
 }
 
 const FULL_CONTROL_BROWSER_PATHS = new Set([
@@ -426,6 +437,60 @@ async function handleRequest(
       baseRef: baseBranch
     })
     return sendJson(res, 200, created)
+  }
+
+  // rename_worktree — the git-level counterpart to /aliases. Renames the
+  // branch and/or sets the display alias in one call, because the auto-naming
+  // flow (a worktree created from just a kickoff prompt) always wants both.
+  if (req.method === 'POST' && path === '/worktrees/rename') {
+    const body = await readJson(req)
+    let worktreePath =
+      typeof body.worktreePath === 'string' ? body.worktreePath.trim() : ''
+    if (!worktreePath) {
+      const { scope } = resolveScope(req, deps)
+      if (scope) worktreePath = scope.worktreePath
+    }
+    if (!worktreePath) {
+      return sendJson(res, 400, {
+        error: 'worktreePath required when caller is not scoped to a worktree'
+      })
+    }
+
+    const requestedBranch =
+      typeof body.branchName === 'string' ? body.branchName.trim() : ''
+    const aliasInput = typeof body.alias === 'string' ? body.alias : undefined
+    if (!requestedBranch && aliasInput === undefined) {
+      return sendJson(res, 400, { error: 'branchName or alias required' })
+    }
+
+    let branch: string | undefined
+    let oldBranch: string | undefined
+    let renamed = false
+    if (requestedBranch) {
+      // Reject rather than silently sanitize: an agent that asked for
+      // `fix/the thing` should learn what it actually gets, not discover a
+      // differently-named branch three commits later.
+      if (
+        sanitizeBranchInput(requestedBranch) !== requestedBranch ||
+        !isValidBranchName(requestedBranch)
+      ) {
+        return sendJson(res, 400, {
+          error: `"${requestedBranch}" is not a valid git branch name — use kebab-case with no spaces (slashes are fine)`
+        })
+      }
+      const result = await deps.renameBranch(worktreePath, requestedBranch)
+      if (!result.ok) return sendJson(res, 409, { error: result.error })
+      branch = result.branch
+      oldBranch = result.oldBranch
+      renamed = result.renamed
+    }
+
+    let alias: string | undefined
+    if (aliasInput !== undefined) {
+      deps.setAlias(worktreePath, aliasInput)
+      alias = normalizeAlias(aliasInput) ?? ''
+    }
+    return sendJson(res, 200, { worktreePath, branch, oldBranch, renamed, alias })
   }
 
   if ((req.method === 'POST' || req.method === 'DELETE') && path === '/aliases') {

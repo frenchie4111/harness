@@ -136,6 +136,8 @@ export function buildInitialAppState(
       autoUpdateEnabled: config.autoUpdateEnabled !== false,
       warnBeforeQuitting: config.warnBeforeQuitting !== false,
       openPrInBrowserTab: config.openPrInBrowserTab === true,
+      newWorktreeAdvancedOpen: config.newWorktreeAdvancedOpen === true,
+      starterTasksDismissed: config.starterTasksDismissed === true,
       shareClaudeSettings: config.shareClaudeSettings !== false,
       harnessSystemPromptEnabled: config.harnessSystemPromptEnabled !== false,
       harnessSystemPrompt: config.harnessSystemPrompt || DEFAULT_HARNESS_SYSTEM_PROMPT,

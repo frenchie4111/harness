@@ -294,6 +294,14 @@ export interface SettingsState {
   mergeStrategy: MergeStrategy
   sidebarDensity: SidebarDensity
   sidebarDetails: SidebarDetailPrefsByMode
+  /** Set once the user dismisses the starter-task cards on the New
+   *  worktree screen. One-way — there is no UI to bring them back, which
+   *  is the point of a "don't show me this again" affordance. */
+  starterTasksDismissed: boolean
+  /** Whether the New worktree screen opens with its Advanced section
+   *  expanded. Sticky across restarts: someone who works in there wants it
+   *  open every time, and someone who never touches it never sees it. */
+  newWorktreeAdvancedOpen: boolean
   shareClaudeSettings: boolean
   claudeModel: string | null
   codexModel: string | null
@@ -465,6 +473,8 @@ export type SettingsEvent =
   | { type: 'settings/mergeStrategyChanged'; payload: MergeStrategy }
   | { type: 'settings/sidebarDensityChanged'; payload: SidebarDensity }
   | { type: 'settings/sidebarDetailsChanged'; payload: SidebarDetailPrefsByMode }
+  | { type: 'settings/newWorktreeAdvancedOpenChanged'; payload: boolean }
+  | { type: 'settings/starterTasksDismissedChanged'; payload: boolean }
   | { type: 'settings/shareClaudeSettingsChanged'; payload: boolean }
   | { type: 'settings/hasGithubTokenChanged'; payload: boolean }
   | { type: 'settings/githubAuthSourceChanged'; payload: 'pat' | 'gh-cli' | null }
@@ -539,6 +549,8 @@ export const initialSettings: SettingsState = {
   mergeStrategy: 'squash',
   sidebarDensity: 'comfy',
   sidebarDetails: DEFAULT_SIDEBAR_DETAILS,
+  newWorktreeAdvancedOpen: false,
+  starterTasksDismissed: false,
   shareClaudeSettings: true,
   claudeModel: null,
   codexModel: null,
@@ -652,6 +664,10 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, sidebarDensity: event.payload }
     case 'settings/sidebarDetailsChanged':
       return { ...state, sidebarDetails: event.payload }
+    case 'settings/newWorktreeAdvancedOpenChanged':
+      return { ...state, newWorktreeAdvancedOpen: event.payload }
+    case 'settings/starterTasksDismissedChanged':
+      return { ...state, starterTasksDismissed: event.payload }
     case 'settings/shareClaudeSettingsChanged':
       return { ...state, shareClaudeSettings: event.payload }
     case 'settings/hasGithubTokenChanged':

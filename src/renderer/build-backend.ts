@@ -314,6 +314,10 @@ export function buildBackend(
     setShowAssignedPRs: (enabled: boolean) => req('config:setShowAssignedPRs', enabled),
     refreshAssignedPRs: () => req('prs:refreshAssigned'),
     setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),
+    setNewWorktreeAdvancedOpen: (open: boolean) =>
+      req('config:setNewWorktreeAdvancedOpen', open),
+    setStarterTasksDismissed: (dismissed: boolean) =>
+      req('config:setStarterTasksDismissed', dismissed),
     setHarnessSystemPromptEnabled: (enabled: boolean) =>
       req('config:setHarnessSystemPromptEnabled', enabled),
     setHarnessSystemPrompt: (prompt: string) => req('config:setHarnessSystemPrompt', prompt),

@@ -21,6 +21,14 @@ import { parseAutomatedMessage } from '../shared/state/json-claude'
 
 const setAlias = vi.fn<(worktreePath: string, alias: string) => void>()
 const clearAlias = vi.fn<(worktreePath: string) => void>()
+/** Stands in for the real `git branch -m`. Tests that need a failure flip
+ *  `renameFailure` rather than re-registering the mock. */
+let renameFailure: string | null = null
+const renameBranch = vi.fn(async (worktreePath: string, newBranch: string) =>
+  renameFailure
+    ? ({ ok: false as const, error: renameFailure })
+    : ({ ok: true as const, oldBranch: 'old-branch', branch: newBranch, renamed: true })
+)
 const sendMessage = vi.fn<(worktreePath: string, message: string) => ChatDeliveryResult>(
   () => ({ ok: true, sessionId: 'tab-1', woke: false })
 )
@@ -108,7 +116,8 @@ const deps: ControlServerDeps = {
     },
     describe: (path) => (path === CALLER_WORKTREE ? 'Callers Tree' : 'Other Tree'),
     send: (path, message) => sendMessage(path, message)
-  }
+  },
+  renameBranch: (worktreePath, newBranch) => renameBranch(worktreePath, newBranch)
 }
 
 let baseUrl: string
@@ -156,6 +165,75 @@ beforeAll(async () => {
   if (!info) throw new Error('control server failed to start')
   baseUrl = `http://127.0.0.1:${info.port}`
   token = info.token
+})
+
+describe('control-server /worktrees/rename endpoint', () => {
+  it('renames the branch and sets the alias in one call', async () => {
+    renameBranch.mockClear()
+    setAlias.mockClear()
+    const r = await call('POST', '/worktrees/rename', {
+      branchName: 'fix-login-redirect',
+      alias: 'Login Redirect'
+    })
+    expect(r.status).toBe(200)
+    expect(r.json).toMatchObject({
+      worktreePath: CALLER_WORKTREE,
+      branch: 'fix-login-redirect',
+      oldBranch: 'old-branch',
+      renamed: true,
+      alias: 'Login Redirect'
+    })
+    expect(renameBranch).toHaveBeenCalledWith(CALLER_WORKTREE, 'fix-login-redirect')
+    expect(setAlias).toHaveBeenCalledWith(CALLER_WORKTREE, 'Login Redirect')
+  })
+
+  it('accepts an alias on its own without touching git', async () => {
+    renameBranch.mockClear()
+    const r = await call('POST', '/worktrees/rename', {
+      worktreePath: EXPLICIT_WORKTREE,
+      alias: 'Just A Label'
+    })
+    expect(r.status).toBe(200)
+    expect(r.json.branch).toBeUndefined()
+    expect(renameBranch).not.toHaveBeenCalled()
+  })
+
+  it('rejects a branch name that would need sanitizing', async () => {
+    renameBranch.mockClear()
+    const r = await call('POST', '/worktrees/rename', { branchName: 'fix the thing' })
+    expect(r.status).toBe(400)
+    expect(String(r.json.error)).toContain('not a valid git branch name')
+    expect(renameBranch).not.toHaveBeenCalled()
+  })
+
+  it('requires at least one of branchName / alias', async () => {
+    const r = await call('POST', '/worktrees/rename', {})
+    expect(r.status).toBe(400)
+    expect(r.json.error).toBe('branchName or alias required')
+  })
+
+  it('surfaces a git-level refusal as 409 and leaves the alias alone', async () => {
+    setAlias.mockClear()
+    renameFailure = 'branch "old-branch" is already published'
+    const r = await call('POST', '/worktrees/rename', {
+      branchName: 'renamed-anyway',
+      alias: 'Should Not Apply'
+    })
+    renameFailure = null
+    expect(r.status).toBe(409)
+    expect(String(r.json.error)).toContain('already published')
+    expect(setAlias).not.toHaveBeenCalled()
+  })
+
+  it('returns 400 when the caller has no scope and no explicit path', async () => {
+    const r = await call(
+      'POST',
+      '/worktrees/rename',
+      { branchName: 'orphan' },
+      { terminalId: 'unknown-terminal' }
+    )
+    expect(r.status).toBe(400)
+  })
 })
 
 describe('control-server /aliases endpoint', () => {

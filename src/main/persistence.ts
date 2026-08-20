@@ -218,6 +218,12 @@ export interface Config {
   // to the main worktree's copy, and the boot migration doesn't convert
   // existing regular files. Default is enabled (undefined/true).
   shareClaudeSettings?: boolean
+  // Sticky expand state for the New worktree screen's Advanced section.
+  // Default is collapsed (undefined/false).
+  newWorktreeAdvancedOpen?: boolean
+  // Set once the user dismisses the New worktree screen's starter-task
+  // cards. Default is showing them (undefined/false).
+  starterTasksDismissed?: boolean
   // User's choice for installing agent status hooks at user scope
   // (~/.claude/settings.json, ~/.codex/hooks.json). Persisted so a
   // declined user doesn't see the banner again on next launch.
