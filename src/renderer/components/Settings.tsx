@@ -3321,7 +3321,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                         <span className="text-sm text-fg">{ACTION_LABELS[action]}</span>
                         {isTypeableBinding(binding) && (
                           <span className="text-xs text-faint">
-                            No ⌘/⌃ — won&apos;t fire while typing in chat, a terminal, or an editor.
+                            No ⌘/⌃ — types instead of firing while an input has focus. Press ⎋ to leave the chat composer first.
                           </span>
                         )}
                       </span>

@@ -18,7 +18,12 @@ import {
   isFileToolCrossCwd,
   type PermissionPatternSuggestion
 } from '../../shared/permission-patterns'
-import { resolveHotkeys, bindingToString, formatBindingGlyphs } from '../hotkeys'
+import {
+  resolveHotkeys,
+  bindingToString,
+  formatBindingGlyphs,
+  isTypeableBinding
+} from '../hotkeys'
 
 interface JsonClaudeApprovalCardProps {
   approval: JsonClaudePendingApproval
@@ -68,12 +73,18 @@ export function JsonClaudeApprovalCard({
     () => resolveHotkeys(settings.hotkeys ?? undefined),
     [settings.hotkeys]
   )
-  const approveHotkeyLabel = formatBindingGlyphs(
-    bindingToString(resolvedHotkeys.approveToolUse)
-  )
-  const denyHotkeyLabel = formatBindingGlyphs(
-    bindingToString(resolvedHotkeys.denyToolUse)
-  )
+  // A binding with no ⌘/⌃ can't fire while the composer holds focus — it
+  // would type instead. Escape parks focus on the transcript, so the honest
+  // label for those is the two-key sequence the user actually presses.
+  const approveNeedsEscape = isTypeableBinding(resolvedHotkeys.approveToolUse)
+  const denyNeedsEscape = isTypeableBinding(resolvedHotkeys.denyToolUse)
+  const approveHotkeyLabel =
+    (approveNeedsEscape ? '⎋ ' : '') +
+    formatBindingGlyphs(bindingToString(resolvedHotkeys.approveToolUse))
+  const denyHotkeyLabel =
+    (denyNeedsEscape ? '⎋ ' : '') +
+    formatBindingGlyphs(bindingToString(resolvedHotkeys.denyToolUse))
+  const escapeNote = ' — Esc leaves the composer first'
   const [mode, setMode] = useState<
     'summary' | 'edit' | 'deny' | 'edit-guidance' | 'always'
   >('summary')
@@ -352,7 +363,7 @@ export function JsonClaudeApprovalCard({
           <div className="flex items-center gap-1.5 flex-wrap">
             <button
               onClick={allow}
-              title={`Allow once (${bindingToString(resolvedHotkeys.approveToolUse)})`}
+              title={`Allow once (${bindingToString(resolvedHotkeys.approveToolUse)}${approveNeedsEscape ? escapeNote : ''})`}
               className={BTN_ALLOW}
             >
               Allow once
@@ -384,7 +395,7 @@ export function JsonClaudeApprovalCard({
             </button>
             <button
               onClick={() => setMode('deny')}
-              title={`Deny (${bindingToString(resolvedHotkeys.denyToolUse)})`}
+              title={`Deny (${bindingToString(resolvedHotkeys.denyToolUse)}${denyNeedsEscape ? escapeNote : ''})`}
               className={BTN_DENY}
             >
               Deny
