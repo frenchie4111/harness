@@ -1,5 +1,6 @@
 import { pruneWorktrees, removeWorktree, runWorktreeScript } from './worktree'
 import {
+  deleteWorktreeDirectory,
   isSameVolume,
   moveWorktreeToTrash,
   scheduleTrashUnlink,
@@ -127,7 +128,17 @@ export class WorktreeDeletionFSM {
       }
 
       log('worktree-deletion-fsm', `cross-volume fallback for ${path} — using slow git worktree remove`)
-      await removeWorktree(repoRoot, path, force)
+      try {
+        await removeWorktree(repoRoot, path, force)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        if (!/working trees containing submodules cannot be moved or removed/i.test(message)) {
+          throw err
+        }
+        log('worktree-deletion-fsm', `removing submodule worktree directory directly: ${path}`)
+        await deleteWorktreeDirectory(path)
+        await pruneWorktrees(repoRoot)
+      }
       this.store.dispatch({ type: 'worktrees/pendingDeletionRemoved', payload: path })
       this.opts.worktreesFSM.refreshListDebounced()
     } catch (err) {

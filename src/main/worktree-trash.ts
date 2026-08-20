@@ -16,7 +16,7 @@
 // orphans left by a mid-delete crash.
 
 import { promises as fsp, statSync, mkdirSync, existsSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { randomUUID } from 'crypto'
 import { userDataDir } from './paths'
 import { log } from './debug'
@@ -42,14 +42,24 @@ function ensureTrashDir(): string {
   return dir
 }
 
+function nearestExistingPath(path: string): string {
+  let candidate = path
+  while (!existsSync(candidate)) {
+    const parent = dirname(candidate)
+    if (parent === candidate) return candidate
+    candidate = parent
+  }
+  return candidate
+}
+
 /** True if `a` and `b` live on the same volume (i.e. an `fs.rename`
- *  between them is O(1) metadata). Any stat failure (e.g. the trash
- *  root doesn't exist yet, or the worktree path is already gone) is
- *  treated as "not same-volume" so the caller falls back to the slow
- *  path rather than crashing. */
+ *  between them is O(1) metadata). For a destination that does not exist
+ *  yet, its nearest existing ancestor determines the destination volume.
+ *  Any stat failure is treated as "not same-volume" so the caller falls
+ *  back to the slow path rather than crashing. */
 export function isSameVolume(a: string, b: string): boolean {
   try {
-    return statSync(a).dev === statSync(b).dev
+    return statSync(a).dev === statSync(nearestExistingPath(b)).dev
   } catch {
     return false
   }
@@ -63,6 +73,10 @@ export async function moveWorktreeToTrash(worktreePath: string): Promise<string>
   const trashPath = join(dir, randomUUID())
   await fsp.rename(worktreePath, trashPath)
   return trashPath
+}
+
+export async function deleteWorktreeDirectory(worktreePath: string): Promise<void> {
+  await fsp.rm(worktreePath, { recursive: true, force: true })
 }
 
 /** Fire-and-forget: unlink one trashed worktree. Errors are logged
