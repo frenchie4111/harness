@@ -42,7 +42,10 @@ export type { DiscoveredSession } from '../shared/session-import-types'
 
 const TAIL_BYTES = 64 * 1024
 const HEAD_BYTES = 32 * 1024
-const CACHE_VERSION = 1
+/** Bump whenever the shape or derivation of a DiscoveredSession changes.
+ *  Entries are keyed by mtime + size, so a transcript that hasn't been
+ *  touched since the last scan would otherwise keep its old fields forever. */
+const CACHE_VERSION = 2
 
 export interface ScanResult {
   sessions: DiscoveredSession[]
@@ -241,11 +244,21 @@ function readRange(path: string, start: number, length: number): string {
   return buf.toString('utf8')
 }
 
+/** Ness labels each worktree chat tab `<repo>/<branch>` and writes that back
+ *  as a custom title. Taken at face value it outranks the ai-title from the
+ *  same chat, so a whole repo's history reads as a list of branch names it
+ *  already shows in the adjacent column. A real title has spaces. */
+function isAutoLabel(title: string): boolean {
+  return title.includes('/') && !/\s/.test(title)
+}
+
 function titleFrom(acc: Accumulator): {
   title: string | null
   titleSource: DiscoveredSession['titleSource']
 } {
-  if (acc.customTitle) return { title: acc.customTitle, titleSource: 'custom' }
+  if (acc.customTitle && !isAutoLabel(acc.customTitle)) {
+    return { title: acc.customTitle, titleSource: 'custom' }
+  }
   if (acc.aiTitle) return { title: acc.aiTitle, titleSource: 'ai' }
   if (acc.firstUserMessage) {
     const oneLine = acc.firstUserMessage.replace(/\s+/g, ' ')

@@ -95,6 +95,25 @@ describe('readSessionFile', () => {
     expect(session.titleSource).toBe('custom')
   })
 
+  it('ignores the repo/branch label Ness writes as a custom title', () => {
+    const path = writeSession('d', 'abc', [
+      userLine('do the thing'),
+      JSON.stringify({ type: 'ai-title', aiTitle: 'AI generated' }),
+      JSON.stringify({ type: 'custom-title', customTitle: 'claude-harness/rename/ness' })
+    ])
+    const session = read(path)
+    expect(session.title).toBe('AI generated')
+    expect(session.titleSource).toBe('ai')
+  })
+
+  it('keeps a custom title that reads like a sentence', () => {
+    const path = writeSession('d', 'abc', [
+      userLine('x'),
+      JSON.stringify({ type: 'custom-title', customTitle: 'Rename harness/ness everywhere' })
+    ])
+    expect(read(path).title).toBe('Rename harness/ness everywhere')
+  })
+
   it('prefers an ai title over the first message', () => {
     const path = writeSession('d', 'abc', [
       userLine('do the thing'),
