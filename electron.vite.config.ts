@@ -21,6 +21,20 @@ function currentGitBranch(): string {
 
 const DEV_BRANCH = currentGitBranch()
 
+// Opt-in, because the profiling build is not free. React 19.2's profiling
+// entry emits a performance.measure() per component render to populate the
+// DevTools Performance track, and in a trace of a loaded session that logging
+// — logComponentRender + logComponentEffect + the performance.now() calls
+// feeding them — was ~15% of total renderer CPU, alongside 21k retained
+// PerformanceMeasure objects in a heap snapshot taken while nothing was
+// recording. That is a permanent tax on every user to populate a counter that
+// only matters while someone is actively debugging. Build with
+// HARNESS_REACT_PROFILING=1 to get reactCommits back; otherwise samples carry
+// reactProfiling:false and consumers render "n/a" rather than a zero that
+// reads as "React is idle" — the exact misreading that cost two prior
+// investigations.
+const REACT_PROFILING = process.env.HARNESS_REACT_PROFILING === '1'
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin({ exclude: [] })],
@@ -56,17 +70,18 @@ export default defineConfig({
   renderer: {
     plugins: [react(), tailwindcss()],
     define: {
-      __HARNESS_DEV_BRANCH__: JSON.stringify(DEV_BRANCH)
+      __HARNESS_DEV_BRANCH__: JSON.stringify(DEV_BRANCH),
+      __HARNESS_REACT_PROFILING__: JSON.stringify(REACT_PROFILING)
     },
     resolve: {
       // React's production build compiles out `enableProfilerTimer`, so
       // <Profiler>'s onRender is never called and rendererPerf's reactCommits
       // reads 0 in every packaged build — `react-dom-client.production.js`
-      // contains zero occurrences of `onRender`. That is not a hypothetical:
-      // it made `react=0c/0ms` a measurement artifact in 100% of ~1,800
+      // contains zero occurrences of `onRender`. That is why the alias exists
+      // at all: `react=0c/0ms` was a measurement artifact in 100% of ~1,800
       // renderer samples and sent two separate perf investigations looking at
-      // the main process. The profiling build costs a per-commit timestamp;
-      // that is cheaper than shipping telemetry that silently reports zero.
+      // the main process. Under HARNESS_REACT_PROFILING=1 the numbers are real;
+      // by default nothing pretends to measure them.
       //
       // ONLY the client entry is swapped. Do not add a bare `react-dom` alias:
       // react-dom-profiling.profiling.js itself does require("react-dom") to
@@ -79,7 +94,9 @@ export default defineConfig({
       // Anchored regex, not a bare string: alias `find` also matches on a `/`
       // prefix, so a plain 'react-dom' key would additionally rewrite
       // `react-dom/server` to `react-dom/profiling/server`.
-      alias: [{ find: /^react-dom\/client$/, replacement: 'react-dom/profiling' }]
+      alias: REACT_PROFILING
+        ? [{ find: /^react-dom\/client$/, replacement: 'react-dom/profiling' }]
+        : []
     },
     build: {
       ssr: false

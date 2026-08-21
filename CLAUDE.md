@@ -402,12 +402,25 @@ before trusting a `[renderer-*]` line.**
   build.** React's production build compiles out `enableProfilerTimer`, so
   `<Profiler>`'s `onRender` is never called — `react-dom-client.production.js`
   contains zero occurrences of `onRender`. `"reactCommits":0` appeared in
-  100% of ~1,823 samples across two log files and never once nonzero. Fixed
-  by aliasing `react-dom/client` → `react-dom/profiling` in
-  `electron.vite.config.ts`. **Do not add a bare `react-dom` alias** — the
-  profiling build itself does `require("react-dom")` for
-  `ReactDOMSharedInternals`, so that creates a cycle and the app dies at
-  startup on `reading 'd'`.
+  100% of ~1,823 samples across two log files and never once nonzero. The fix
+  — aliasing `react-dom/client` → `react-dom/profiling` in
+  `electron.vite.config.ts` — turned out to cost more than the number was
+  worth: React 19.2's profiling entry emits a `performance.measure()` per
+  component render for the DevTools Performance track, and in a trace of a
+  loaded session `logComponentRender` + `logComponentEffect` + their
+  `performance.now()` calls were **~15% of total renderer CPU**, plus 21k
+  retained `PerformanceMeasure` objects in a heap snapshot taken while nothing
+  was recording. So the alias is now **opt-in via `HARNESS_REACT_PROFILING=1`**.
+  Default builds ship `reactProfiling: false` on every sample and every
+  consumer renders `n/a` — never `0`, which is what caused the original
+  misreading. **Do not add a bare `react-dom` alias** — the profiling build
+  itself does `require("react-dom")` for `ReactDOMSharedInternals`, so that
+  creates a cycle and the app dies at startup on `reading 'd'`.
+
+  The meta-lesson, since this bug's *fix* became the next bug: **profiling
+  builds are not free, and instrumentation added to explain a slowdown can
+  become a measurable share of it.** After enabling any always-on profiler,
+  re-profile and confirm the instrumentation isn't in its own top-10.
 - **`heapUsedMB` and its deltas are quantized and up to ~20 minutes stale.**
   Chrome caches `performance.memory` on pages that aren't cross-origin
   isolated. Observed: `heapUsedMB` pinned at exactly 560.8 for 40 minutes

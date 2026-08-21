@@ -13,7 +13,7 @@ export function formatRendererSample(s: RendererPerfSample): string {
     `longtasks=${s.longTasks}`,
     `blocked=${s.blockingMs}ms`,
     `maxtask=${s.longTaskMaxMs}ms`,
-    `react=${s.reactCommits}c/${s.reactTotalMs}ms`
+    s.reactProfiling ? `react=${s.reactCommits}c/${s.reactTotalMs}ms` : 'react=n/a'
   ]
   if (s.slowEvents > 0) {
     parts.push(`input=${s.slowEventMaxMs}ms(${s.slowEventName ?? '?'})`)
