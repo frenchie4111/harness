@@ -121,7 +121,14 @@ function load(): ActivityLog {
 
 /** Debounced, asynchronous, and serialized. The write used to be a blocking
  *  writeFileSync of the whole log on the main thread once a second; the
- *  temp-then-rename keeps it atomic now that it can be interrupted. */
+ *  temp-then-rename keeps it atomic now that it can be interrupted.
+ *
+ *  Main-thread blocking here is reduced, NOT eliminated. The JSON.stringify
+ *  below is still synchronous, and it is the larger half: on a 2.5MB log it
+ *  measured ~10ms against ~6ms for the write it replaced. Getting rid of the
+ *  remainder needs a worker or an append-only format, neither of which this
+ *  debounce can do on its own — don't read the async write as "the blocking
+ *  save was fixed." */
 function scheduleSave(): void {
   if (saveTimer) return
   saveTimer = setTimeout(() => {
