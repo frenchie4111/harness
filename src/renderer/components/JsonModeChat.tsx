@@ -31,7 +31,8 @@ import {
   ShieldAlert,
   Sparkles,
   GitBranch,
-  GitBranchPlus
+  GitBranchPlus,
+  Mic
 } from 'lucide-react'
 import { openForkIntoWorktree } from './NewWorktreeScreen'
 import { useAliases, useJsonClaudeSession, useSettings, useWorktrees } from '../store'
@@ -46,6 +47,7 @@ import { ToolGroup } from './json-mode-cards/ToolGroup'
 import { TaskCard } from './json-mode-cards/TaskCard'
 import { buildChildrenMap, isSubAgentToolName } from './json-mode-cards/grouping'
 import { JsonModeMentionPopover, type MentionPopoverItem } from './JsonModeMentionPopover'
+import { usePushToTalk } from '../hooks/usePushToTalk'
 import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
 import { worktreeHandle } from '../../shared/state/worktrees'
@@ -1322,6 +1324,27 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       void backend.touchWorktreeLastActive(worktreePath)
     }
   }, [backend, mode, sessionId, worktreePath])
+  const dictation = usePushToTalk({
+    onUpdate: useCallback(
+      (text: string): void => {
+        setDraft(text)
+        setCursorPos(text.length)
+        handleComposerActivity()
+      },
+      [handleComposerActivity]
+    ),
+    onFinal: useCallback((text: string): void => {
+      const next = text ? text + ' ' : ''
+      setDraft(next)
+      setCursorPos(next.length)
+      requestAnimationFrame(() => {
+        const ta = textareaRef.current
+        if (!ta) return
+        ta.focus()
+        ta.setSelectionRange(next.length, next.length)
+      })
+    }, [])
+  })
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const findInputRef = useRef<HTMLInputElement>(null)
   // dragenter fires for every child element entered, dragleave for every
@@ -2818,6 +2841,22 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                   return
                 }
               }
+              if (
+                e.code === 'Space' &&
+                !e.repeat &&
+                !e.metaKey &&
+                !e.ctrlKey &&
+                !e.altKey &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing &&
+                draft === '' &&
+                dictation.supported &&
+                !dictation.recording
+              ) {
+                e.preventDefault()
+                dictation.start()
+                return
+              }
               if (e.key === 'Escape') {
                 // Leave the composer. Global hotkeys bound to a bare key
                 // (approve = "a") are suppressed while an editable element
@@ -2855,6 +2894,15 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                 // textarea inserts a newline as usual.
               }
             }}
+            onKeyUp={(e) => {
+              if (e.code === 'Space' && dictation.recording) {
+                e.preventDefault()
+                dictation.stop()
+              }
+            }}
+            onBlur={() => {
+              if (dictation.recording) dictation.stop()
+            }}
             placeholder={
               mode === 'asleep'
                 ? 'Type to wake this session…'
@@ -2887,6 +2935,30 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             >
               {modeBadgeLabel}
             </button>
+            {dictation.supported && (
+              <button
+                onClick={dictation.recording ? dictation.stop : dictation.start}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs cursor-pointer hover:opacity-80 transition-opacity ${
+                  dictation.recording ? 'text-danger' : 'text-muted'
+                }`}
+                title="Dictate. Or hold Space with an empty composer."
+                aria-label={dictation.recording ? 'Stop dictation' : 'Dictate'}
+              >
+                <Mic
+                  className={`icon-sm ${dictation.recording ? 'animate-pulse' : ''}`}
+                />
+                {dictation.recording && <span>Listening…</span>}
+              </button>
+            )}
+            {!dictation.recording && dictation.error && (
+              <button
+                onClick={dictation.clearError}
+                className="text-xs text-danger cursor-pointer hover:opacity-80"
+                title="Dismiss"
+              >
+                {dictation.error}
+              </button>
+            )}
             <div className="flex-1" />
             {busy && (
               <button
