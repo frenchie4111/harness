@@ -103,13 +103,15 @@ describe('buildRepoImportPlan', () => {
     expect(result.recommendedCount).toBe(1)
   })
 
-  it('does not recommend a branch already checked out somewhere', () => {
+  it('drops a branch already checked out somewhere and counts it instead', () => {
     const result = plan(
       [session()],
       [branch({ checkedOutAt: '/work/repo-worktrees/feature' })]
     )
-    expect(result.candidates[0].recommended).toBe(false)
-    expect(result.candidates[0].checkedOutAt).toBe('/work/repo-worktrees/feature')
+    expect(result.candidates).toHaveLength(0)
+    expect(result.alreadyOpenCount).toBe(1)
+    // The chat is still real work in this repo — the total must not shrink.
+    expect(result.totalSessionCount).toBe(1)
   })
 
   it('does not recommend a merged branch', () => {
@@ -161,6 +163,63 @@ describe('buildRepoImportPlan', () => {
       [branch()]
     )
     expect(result.candidates[0].latestTitle).toBe('Newest')
+  })
+
+  it('prefers a named title over a newer first-message fallback', () => {
+    const result = plan(
+      [
+        session({
+          sessionId: 'a',
+          title: 'repo/feature',
+          titleSource: 'first-message',
+          lastTimestamp: NOW - DAY
+        }),
+        session({
+          sessionId: 'b',
+          title: 'Fix the merge conflict banner',
+          titleSource: 'ai',
+          lastTimestamp: NOW - 5 * DAY
+        })
+      ],
+      [branch()]
+    )
+    expect(result.candidates[0].latestTitle).toBe('Fix the merge conflict banner')
+  })
+
+  it('drops a first message that only restates the branch name', () => {
+    const result = plan(
+      [
+        session({
+          sessionId: 'a',
+          gitBranch: 'rename/ness',
+          title: 'claude-harness/rename/ness',
+          titleSource: 'first-message'
+        })
+      ],
+      [branch({ name: 'rename/ness' })]
+    )
+    expect(result.candidates[0].latestTitle).toBeNull()
+  })
+
+  it('skips a trivially short first message rather than showing it', () => {
+    const result = plan(
+      [
+        session({
+          sessionId: 'a',
+          title: '.',
+          titleSource: 'first-message',
+          lastTimestamp: NOW - DAY
+        }),
+        session({
+          sessionId: 'b',
+          title: 'Wire up the importer',
+          titleSource: 'first-message',
+          lastTimestamp: NOW - 5 * DAY
+        })
+      ],
+      [branch()]
+    )
+    expect(result.candidates[0].latestTitle).toBe('Wire up the importer')
   })
 
   it('carries a PR number from whichever chat recorded it', () => {

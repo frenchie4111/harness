@@ -1,5 +1,10 @@
 import type { StateEvent, StateSnapshot } from '../shared/state'
 import type { SessionGroupNode, ImportOutcome } from '../shared/session-import-types'
+import type {
+  RepoImportPlan,
+  RepoImportRequest,
+  RepoImportResult
+} from '../shared/repo-import-types'
 export type { StateEvent, StateSnapshot }
 
 import type { Worktree, PendingWorktree, PendingDeletion, ForkSource } from '../shared/state/worktrees'
@@ -214,6 +219,8 @@ export interface ElectronAPI {
     sessionId: string
     targetWorktreePath: string
   }): Promise<ImportOutcome>
+  probeRepoImport(repoRoot: string): Promise<RepoImportPlan | null>
+  importRepoBranches(params: RepoImportRequest): Promise<RepoImportResult>
   runPendingWorktree(params: {
     id: string
     repoRoot: string

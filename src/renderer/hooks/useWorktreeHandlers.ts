@@ -37,6 +37,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
   } = args
 
   const [repoPickerOpen, setRepoPickerOpen] = useState(false)
+  const [repoImportRoot, setRepoImportRoot] = useState<string | null>(null)
   const [repoAddPrompt, setRepoAddPrompt] = useState<
     | { kind: 'resolve'; picked: string; resolved: string }
     | { kind: 'error'; message: string }
@@ -75,6 +76,12 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       switch (result.kind) {
         case 'added':
           focusNewRepo(result.repoRoot)
+          // A repo the user already worked in outside Ness usually has chat
+          // history on disk. Offer to bring it in rather than making them
+          // find the importer later. The modal probes first and dismisses
+          // itself when there's nothing to offer, so this is silent on a
+          // repo Ness has never seen.
+          setRepoImportRoot(result.repoRoot)
           return
         case 'walked-up':
           setRepoAddPrompt({ kind: 'resolve', picked: result.picked, resolved: result.resolved })
@@ -445,6 +452,9 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
     handleRepoPickerCancel,
     repoAddPrompt,
     handleConfirmRepoResolve,
-    handleDismissRepoPrompt
+    handleDismissRepoPrompt,
+    repoImportRoot,
+    openRepoImport: setRepoImportRoot,
+    dismissRepoImport: useCallback(() => setRepoImportRoot(null), [])
   }
 }

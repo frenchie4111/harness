@@ -16,13 +16,8 @@ export interface RepoImportCandidate {
   /** Ancestor-of-base only, so it under-reports on squash/rebase merges.
    *  A badge, never a filter — see buildRepoImportPlan. */
   merged: boolean
-  /** Set when the branch is already checked out somewhere, in which case
-   *  importing would collide with an existing worktree. */
-  checkedOutAt: string | null
-  /** Whether a local git ref still exists to check out. */
-  hasLocalRef: boolean
   prNumber: number | null
-  /** Title of the most recent chat — reads as "where I left off". */
+  /** Best available chat title — reads as "what this branch was for". */
   latestTitle: string | null
   /** Whether Ness pre-checks this row. */
   recommended: boolean
@@ -35,6 +30,9 @@ export interface RepoImportPlan {
   /** Chats whose branch no longer has a local ref, so they can't become a
    *  worktree. Surfaced as a count so the number never silently shrinks. */
   strandedSessionCount: number
+  /** Branches Ness already has open as worktrees, so there is nothing to
+   *  import. Counted rather than listed — see buildRepoImportPlan. */
+  alreadyOpenCount: number
   totalSessionCount: number
   recommendedCount: number
 }

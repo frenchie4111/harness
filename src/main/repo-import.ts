@@ -25,10 +25,12 @@ export type {
  *  question.
  *
  *  Nothing is dropped for being old or merged — those rows are present and
- *  unchecked, per the same reasoning as session-tree.ts. The one genuine
- *  exclusion is a branch with no local ref, because there is no commit to
- *  check out; those are counted in `strandedSessionCount` so the total never
- *  silently shrinks. */
+ *  unchecked, per the same reasoning as session-tree.ts. The two exclusions
+ *  are both "git cannot produce a worktree for this": a branch with no local
+ *  ref has no commit to check out, and a branch already checked out somewhere
+ *  would make `git worktree add` fail outright. Both are counted
+ *  (`strandedSessionCount`, `alreadyOpenCount`) so the totals never silently
+ *  shrink. */
 
 /** Chats touched inside this window pre-check their branch. A week is what
  *  separates "open loop" from "I remember doing that" for most people, and
@@ -43,6 +45,21 @@ function basename(path: string): string {
 
 function sessionTime(session: DiscoveredSession): number {
   return session.lastTimestamp ?? session.mtimeMs
+}
+
+/** A named title beats a first-message fallback even from an older chat.
+ *  First messages here are frequently a Ness kickoff prompt (which just
+ *  restates the branch name) or a bare "." — a real title from two chats
+ *  back tells the user far more about what the branch was for, and no title
+ *  at all beats one that repeats the branch name already on the row. */
+function pickTitle(ordered: DiscoveredSession[], branch: string): string | null {
+  const named = ordered.find((s) => s.titleSource === 'custom' || s.titleSource === 'ai')
+  if (named?.title) return named.title
+  const fallback = ordered.find((s) => {
+    const t = s.title?.trim() ?? ''
+    return t.length > 2 && !t.endsWith(branch)
+  })
+  return fallback?.title ?? null
 }
 
 export interface BuildPlanOptions {
@@ -74,6 +91,7 @@ export function buildRepoImportPlan(options: BuildPlanOptions): RepoImportPlan {
 
   const candidates: RepoImportCandidate[] = []
   let strandedSessionCount = 0
+  let alreadyOpenCount = 0
 
   for (const [branch, branchSessions] of grouped) {
     const entry = byName.get(branch)
@@ -81,6 +99,12 @@ export function buildRepoImportPlan(options: BuildPlanOptions): RepoImportPlan {
       // Branch was deleted after the work landed. The chats survive and stay
       // reachable through the session browser; they just can't be a worktree.
       strandedSessionCount += branchSessions.length
+      continue
+    }
+    if (entry.checkedOutAt !== null) {
+      // Already a worktree (or the repo's own checkout). Importing it is a
+      // no-op the user can't act on, and listing it buries the rows they can.
+      alreadyOpenCount++
       continue
     }
 
@@ -95,14 +119,9 @@ export function buildRepoImportPlan(options: BuildPlanOptions): RepoImportPlan {
       latestActivityMs,
       lastCommitMs: entry.lastCommitMs || null,
       merged: entry.merged,
-      checkedOutAt: entry.checkedOutAt,
-      hasLocalRef: true,
       prNumber: withPr?.prNumber ?? null,
-      latestTitle: ordered[0].title,
-      recommended:
-        entry.checkedOutAt === null &&
-        !entry.merged &&
-        now - latestActivityMs <= activeWindowMs
+      latestTitle: pickTitle(ordered, branch),
+      recommended: !entry.merged && now - latestActivityMs <= activeWindowMs
     })
   }
 
@@ -113,6 +132,7 @@ export function buildRepoImportPlan(options: BuildPlanOptions): RepoImportPlan {
     repoLabel: basename(repoRoot),
     candidates,
     strandedSessionCount,
+    alreadyOpenCount,
     totalSessionCount,
     recommendedCount: candidates.filter((c) => c.recommended).length
   }

@@ -40,6 +40,7 @@ import type {
 } from '../shared/transport/transport'
 import type { ElectronAPI, AgentKind } from './types'
 import type { RendererPerfSample } from '../shared/perf-types'
+import type { RepoImportRequest } from '../shared/repo-import-types'
 import type { ForkSource } from '../shared/state/worktrees'
 import type { JsonClaudePermissionMode } from '../shared/state/json-claude'
 import type {
@@ -108,6 +109,8 @@ export function buildBackend(
     getImportableSessionTree: () => req('sessionImport:getTree'),
     importSession: (params: { sessionId: string; targetWorktreePath: string }) =>
       req('sessionImport:import', params),
+    probeRepoImport: (repoRoot: string) => req('sessionImport:probeRepo', repoRoot),
+    importRepoBranches: (params: RepoImportRequest) => req('sessionImport:importRepo', params),
 
     runPendingWorktree: (params: {
       id: string

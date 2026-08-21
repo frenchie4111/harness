@@ -45,6 +45,7 @@ import { NewProjectScreen } from './components/NewProjectScreen'
 import { RemoteFilePicker } from './components/RemoteFilePicker'
 import { ResolveRepoModal } from './components/ResolveRepoModal'
 import { RepoAddErrorModal } from './components/RepoAddErrorModal'
+import { RepoImportModal } from './components/RepoImportModal'
 import { ReportIssueScreen, onOpenReportIssue, type OpenReportIssueDetail } from './components/ReportIssueScreen'
 import { AddBackendModal } from './components/AddBackendModal'
 import { SessionImportBrowser } from './components/SessionImportBrowser'
@@ -691,7 +692,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleRepoPickerCancel,
     repoAddPrompt,
     handleConfirmRepoResolve,
-    handleDismissRepoPrompt
+    handleDismissRepoPrompt,
+    repoImportRoot,
+    dismissRepoImport
   } = useWorktreeHandlers({
     worktrees,
     pendingWorktrees,
@@ -952,6 +955,20 @@ const setQuestStep = useCallback((next: QuestStep) => {
     ) : repoAddPrompt?.kind === 'error' ? (
       <RepoAddErrorModal message={repoAddPrompt.message} onDismiss={handleDismissRepoPrompt} />
     ) : null
+
+  // Rendered alongside repoAddPromptOverlay in both trees: adding the first
+  // repo happens on the onboarding screen, which is exactly the case this
+  // is for.
+  const repoImportOverlay = repoImportRoot ? (
+    <RepoImportModal
+      key={repoImportRoot}
+      repoRoot={repoImportRoot}
+      onDismiss={dismissRepoImport}
+      onImported={(path) => {
+        if (path) setActiveWorktreeId(path)
+      }}
+    />
+  ) : null
 
 
   // A corrupt config preempts everything, including the onboarding screen
@@ -1303,6 +1320,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       {myWeekOverlay}
       {repoPickerOverlay}
       {repoAddPromptOverlay}
+    {repoImportOverlay}
       </HotkeysProvider>
     )
   }
@@ -1819,6 +1837,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     {myWeekOverlay}
     {repoPickerOverlay}
     {repoAddPromptOverlay}
+    {repoImportOverlay}
     {showPerfMonitor && <PerfMonitorHUD onClose={() => setShowPerfMonitor(false)} />}
     {showGitHubApiLog && (
       <GitHubApiLogPanel onClose={() => setShowGitHubApiLog(false)} />
