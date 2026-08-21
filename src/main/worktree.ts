@@ -204,6 +204,64 @@ export async function listBranches(repoRoot: string): Promise<string[]> {
   return stdout.trim().split('\n').filter(Boolean)
 }
 
+export interface BranchInventoryEntry {
+  name: string
+  lastCommitMs: number
+  /** Worktree this branch is already checked out in, or null if free. */
+  checkedOutAt: string | null
+  merged: boolean
+}
+
+/** Every local branch with the three facts the repo-import picker needs, in
+ *  two git calls rather than three per branch — on a real repo this is 461
+ *  branches, so a per-branch `git log` would be 461 subprocesses.
+ *
+ *  `merged` is ancestor-of-base, which catches fast-forward and merge-commit
+ *  landings but NOT squash or rebase merges (both rewrite the SHA, so the
+ *  original branch tip is no longer reachable from base). On a rebase-merging
+ *  repo it found 57 of 461 branches. That gap is why the import picker treats
+ *  merged as a badge and recency as the actual default-selection signal. */
+export async function listBranchInventory(repoRoot: string): Promise<BranchInventoryEntry[]> {
+  const { stdout } = await execFileAsync(
+    'git',
+    ['for-each-ref', '--format=%(refname:short)\t%(committerdate:unix)\t%(worktreepath)', 'refs/heads'],
+    { cwd: repoRoot, maxBuffer: 16 * 1024 * 1024 }
+  )
+
+  const merged = new Set<string>()
+  try {
+    const base = await getDefaultBaseRef(repoRoot)
+    if (base !== 'HEAD') {
+      const { stdout: mergedOut } = await execFileAsync(
+        'git',
+        ['branch', '--merged', base, '--format=%(refname:short)'],
+        { cwd: repoRoot, maxBuffer: 16 * 1024 * 1024 }
+      )
+      for (const name of mergedOut.split('\n')) {
+        const trimmed = name.trim()
+        if (trimmed) merged.add(trimmed)
+      }
+    }
+  } catch {
+    // No resolvable base (no remote, fresh repo). Every branch reads as
+    // unmerged, which is the safe direction: nothing gets deselected.
+  }
+
+  const entries: BranchInventoryEntry[] = []
+  for (const line of stdout.split('\n')) {
+    if (!line) continue
+    const [name, date, worktreePath] = line.split('\t')
+    if (!name) continue
+    entries.push({
+      name,
+      lastCommitMs: Number(date) * 1000 || 0,
+      checkedOutAt: worktreePath || null,
+      merged: merged.has(name)
+    })
+  }
+  return entries
+}
+
 export interface AddWorktreeOptions {
   /** Explicit base branch to fork from. Overrides fetchRemote detection. */
   baseBranch?: string
