@@ -267,9 +267,6 @@ interface XTerminalProps {
   initialPrompt?: string
   teleportSessionId?: string
   modelOverride?: string
-  /** Shell tabs only: when set, spawn `<user-shell> -ilc <command>` instead
-   * of an interactive login shell. Used for agent-spawned shells. */
-  shellCommand?: string
   /** Shell tabs only: directory to spawn in. Relative paths resolve against
    * `cwd` (the worktree root); absolute paths are used as-is. */
   shellCwd?: string
@@ -292,7 +289,7 @@ interface XTerminalProps {
   onSwitchToChat?: () => void
 }
 
-export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, modelOverride, shellCommand, shellCwd, backgroundVar, preamble, hideRestoreNotice, onRestartAgent, onSwitchToChat }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, modelOverride, shellCwd, backgroundVar, preamble, hideRestoreNotice, onRestartAgent, onSwitchToChat }: XTerminalProps): JSX.Element {
   // Lazy font-cache init — fires once on first XTerminal mount. See
   // initFontCache() comment for why this is lazy rather than at module
   // top.
@@ -634,12 +631,12 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       const shell = ''
       const agentArg = type === 'agent' ? await buildAgentArg() : ''
       if (disposed) return
-      const args =
-        type === 'agent'
-          ? ['-ilc', agentArg]
-          : shellCommand
-            ? ['-ilc', shellCommand]
-            : ['-il']
+      // Shell tabs always come up as a plain interactive shell, even when the
+      // tab carries a `command`. Executing it belongs to the create_shell
+      // path in main, which spawns eagerly at creation time; doing it here too
+      // would re-run the command every time the PTY is gone but the tab isn't
+      // — i.e. on every app restart, and after the command's shell exits.
+      const args = type === 'agent' ? ['-ilc', agentArg] : ['-il']
       const spawnCwd = shellCwd
         ? shellCwd.startsWith('/')
           ? shellCwd
