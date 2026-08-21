@@ -140,6 +140,7 @@ import {
   describeWorktree,
   resolveWorktreeQuery
 } from './chat-delivery'
+import { buildMergeConflictMessage } from './merge-conflict-request'
 import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
 import { getControlServerInfo } from './control-server'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
@@ -1973,6 +1974,41 @@ function registerIpcHandlers(): void {
     await prPoller.refreshAssignedPRs()
     return true
   })
+
+  // Manual counterpart to the CI-failure notifier: the user asks the agent
+  // to go resolve this PR's conflicts. Never fires on its own — see
+  // buildMergeConflictMessage.
+  transport.onRequest(
+    'prs:requestConflictFix',
+    (_ctx, worktreePath: string): { ok: boolean; error?: string } => {
+      if (typeof worktreePath !== 'string' || !worktreePath) {
+        return { ok: false, error: 'No worktree' }
+      }
+      const state = store.getSnapshot().state
+      const pr = state.prs.byPath[worktreePath]
+      if (!pr) return { ok: false, error: 'No PR for this branch' }
+      const result = deliverToWorktreeChat(
+        state,
+        chatDeliveryDeps,
+        worktreePath,
+        buildMergeConflictMessage(pr)
+      )
+      if (!result.ok) {
+        return {
+          ok: false,
+          error:
+            result.reason === 'no-chat-tab'
+              ? 'No agent chat tab in this worktree'
+              : "Couldn't wake the agent chat tab"
+        }
+      }
+      log(
+        'merge-conflict',
+        `asked ${result.sessionId} to fix conflicts on ${worktreePath}${result.woke ? ' (woke tab)' : ''}`
+      )
+      return { ok: true }
+    }
+  )
 
   transport.onRequest('announcements:refresh', async (_ctx) => {
     await announcementsPoller.refresh()

@@ -433,6 +433,8 @@ export function buildBackend(
       req('ciNotify:setOverride', path, enabled),
     setNotifyChatOnCiFailure: (enabled: boolean) =>
       req('config:setNotifyChatOnCiFailure', enabled),
+    requestMergeConflictFix: (worktreePath: string) =>
+      req('prs:requestConflictFix', worktreePath),
     setAlias: (path: string, alias: string) => req('aliases:set', path, alias),
     clearAlias: (path: string) => req('aliases:clear', path),
 

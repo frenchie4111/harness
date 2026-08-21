@@ -53,6 +53,11 @@ export interface FileWriteResult {
   error?: string
 }
 
+export interface MergeConflictFixResult {
+  ok: boolean
+  error?: string
+}
+
 export interface FileDiffSides {
   original: string
   modified: string
@@ -445,6 +450,9 @@ export interface ElectronAPI {
    *  global `notifyChatOnCiFailure` setting again. */
   setCiNotifyOverride(path: string, enabled: boolean | null): Promise<boolean>
   setNotifyChatOnCiFailure(enabled: boolean): Promise<boolean>
+  /** Injects a "resolve this PR's conflicts" turn into the worktree's agent
+   *  chat, waking a slept tab if needed. */
+  requestMergeConflictFix(worktreePath: string): Promise<MergeConflictFixResult>
   setScratchpadText(worktreePath: string, text: string): Promise<boolean>
   setAlias(path: string, alias: string): Promise<boolean>
   clearAlias(path: string): Promise<boolean>

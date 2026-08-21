@@ -761,6 +761,14 @@ function automationLabel(
       brand: true
     }
   }
+  // The one automation the user fires by hand, so it says who asked.
+  if (source === 'merge-conflict') {
+    return {
+      label: 'Ness · Merge conflicts',
+      note: 'you asked the agent to resolve them',
+      brand: false
+    }
+  }
   return { label: 'Ness · CI failure', note: 'sent automatically', brand: false }
 }
 
