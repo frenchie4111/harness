@@ -421,6 +421,23 @@ before trusting a `[renderer-*]` line.**
   tabs are separate renderer processes and are deliberately excluded). The
   `performance.memory`-derived fields are suffixed `…Quantized` so they can't
   be misread as live.
+- **`rendererBlockingMsPerSec` was not per second.** It logged the renderer
+  bucket's raw `blockingMs`. That bucket is nominally 1 s but stretches without
+  bound when the renderer's timer is starved — a DevTools heap snapshot
+  produced a single ~104 s bucket, which surfaced as `blocked=103792ms/s`.
+  Reading those totals as rates overstates blocking by 20-100x and makes a
+  mostly-idle renderer look pegged. Now normalized by `elapsedMs`, with
+  `rendererBucketMs` and `rendererBlockingMsTotal` logged alongside so the raw
+  numbers stay recoverable. **Check `rendererBucketMs` before comparing
+  blocking across snapshots** — a long window is itself a signal that the
+  renderer stalled, and it means everything derived from that bucket is
+  averaged over a period long enough to hide the spike.
+
+Two of these three were caught only because someone asked whether a number
+could physically be what it claimed: 100% zeros, a heap that never moved, and
+1399 ms of blocking inside a 1000 ms second. **Sanity-check units and ranges
+against physical limits before drawing conclusions** — a rate that exceeds its
+own denominator is a units bug, not a finding.
 
 The general lesson, since this has now cost three investigations: **a
 telemetry field that reads a constant is not evidence of a quiet system, it is

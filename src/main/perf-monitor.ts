@@ -199,8 +199,15 @@ export class PerfMonitor {
     // be up to ~20 minutes stale (see rendererProcessMetricsFn). Keep the label
     // explicit so nobody reads the heap figure as a live value again.
     const rssPart = rp ? ` rendererRss=${rp.rssMB}MB rendererCpu=${rp.cpuPct}%` : ''
+    // The renderer's bucket is nominally 1s but stretches without bound when
+    // its timer is starved — a DevTools heap snapshot produced a single 104s
+    // bucket. So `blockingMs` is a per-bucket total, not a rate, and dividing
+    // by a presumed 1s overstated blocking by 20-100x. Normalize here and log
+    // the window alongside so the raw total stays recoverable.
+    const bucketSec = r ? Math.max(r.elapsedMs, 1) / 1000 : 1
+    const blockedPerSec = r ? Math.round(r.blockingMs / bucketSec) : null
     const rendererPart = r
-      ? `${rssPart} rendererHeapQuantized=${r.heapUsedMB}MB rendererBlocked=${r.blockingMs}ms/s`
+      ? `${rssPart} rendererHeapQuantized=${r.heapUsedMB}MB rendererBlocked=${blockedPerSec}ms/s window=${bucketSec.toFixed(1)}s`
       : `${rssPart} rendererHeapQuantized=n/a`
     perfLog(
       'snapshot',
@@ -220,8 +227,11 @@ export class PerfMonitor {
         // snapshots is meaningless. Compare rendererRssMB instead.
         rendererHeapUsedMBQuantized: r?.heapUsedMB ?? null,
         rendererHeapTotalMBQuantized: r?.heapTotalMB ?? null,
-        rendererBlockingMsPerSec: r?.blockingMs ?? null,
-        rendererLongTasksPerSec: r?.longTasks ?? null,
+        rendererBlockingMsPerSec: blockedPerSec,
+        rendererLongTasksPerSec: r ? Math.round(r.longTasks / bucketSec) : null,
+        rendererBlockingMsTotal: r?.blockingMs ?? null,
+        rendererLongTasksTotal: r?.longTasks ?? null,
+        rendererBucketMs: r?.elapsedMs ?? null,
         rendererSampleAgeMs: r ? Date.now() - r.t : null,
         activePtyCount: ptys,
         topEventTypes: Object.fromEntries(top)
