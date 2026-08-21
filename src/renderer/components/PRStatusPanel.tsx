@@ -1211,7 +1211,7 @@ function FixConflictsButton({ worktreePath }: { worktreePath: string }): JSX.Ele
       <button
         onClick={() => void send()}
         disabled={phase !== 'idle'}
-        title="Post a message into this worktree's agent chat asking it to merge the base branch in and resolve the conflicts."
+        title="Post a message into this worktree's agent chat asking it to bring the branch up to date with its base and resolve the conflicts."
         className="w-full text-xs bg-danger/15 hover:bg-danger/25 text-danger px-2 py-1.5 rounded flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-default disabled:opacity-70"
       >
         {phase === 'sending' ? (
