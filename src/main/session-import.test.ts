@@ -4,8 +4,9 @@ import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SessionImportEvent } from '../shared/state/session-import'
 import type { TerminalTab } from '../shared/state/terminals'
-import { SessionImportManager } from './session-import'
+import { SessionImportManager, type CreateWorktreeParams } from './session-import'
 import type { DiscoveredSession } from './session-scanner'
+import type { BranchInventoryEntry } from './worktree'
 
 /** forkTranscript reads and writes under the real ~/.claude/projects tree,
  *  so these tests point it at a scratch HOME. */
@@ -52,22 +53,43 @@ interface Harness {
   events: SessionImportEvent[]
   tabs: { worktreePath: string; tab: TerminalTab }[]
   started: { sessionId: string; worktreePath: string }[]
+  created: CreateWorktreeParams[]
 }
 
-function harness(sessions: DiscoveredSession[]): Harness {
+interface HarnessOptions {
+  inventory?: BranchInventoryEntry[]
+  /** Branches whose worktree creation should fail. */
+  failBranches?: string[]
+}
+
+function harness(sessions: DiscoveredSession[], options: HarnessOptions = {}): Harness {
   const events: SessionImportEvent[] = []
   const tabs: { worktreePath: string; tab: TerminalTab }[] = []
   const started: { sessionId: string; worktreePath: string }[] = []
+  const created: CreateWorktreeParams[] = []
   const manager = new SessionImportManager({
     dispatch: (e) => events.push(e),
     getRepoRoots: () => [],
     addTab: (worktreePath, tab) => tabs.push({ worktreePath, tab }),
     startSession: (sessionId, worktreePath) => started.push({ sessionId, worktreePath }),
     homeDir: () => fakeHome,
+    listBranchInventory: async () => options.inventory ?? [],
+    createWorktree: async (params) => {
+      created.push(params)
+      if (options.failBranches?.includes(params.branchName)) {
+        return { ok: false, path: null, error: 'branch is checked out elsewhere' }
+      }
+      return { ok: true, path: `/work/repo-worktrees/${params.branchName}` }
+    },
     now: () => 1234
   })
   ;(manager as unknown as { sessions: DiscoveredSession[] }).sessions = sessions
-  return { manager, events, tabs, started }
+  ;(manager as unknown as { scanned: boolean }).scanned = true
+  return { manager, events, tabs, started, created }
+}
+
+function inventoryEntry(over: Partial<BranchInventoryEntry> = {}): BranchInventoryEntry {
+  return { name: 'main', lastCommitMs: 1000, checkedOutAt: null, merged: false, ...over }
 }
 
 beforeEach(() => {
@@ -216,6 +238,150 @@ describe('scan', () => {
     expect(h.manager.isScanning()).toBe(true)
     await inFlight
     expect(h.manager.isScanning()).toBe(false)
+  })
+})
+
+describe('importRepoBranches', () => {
+  function repoHarness(over: HarnessOptions = {}): Harness {
+    return harness(
+      [
+        session({ sessionId: 'new', gitBranch: 'feat', cwd: '/work/repo', lastTimestamp: 900 }),
+        session({ sessionId: 'old', gitBranch: 'feat', cwd: '/work/repo', lastTimestamp: 100 }),
+        session({ sessionId: 'other', gitBranch: 'fix', cwd: '/work/repo', lastTimestamp: 500 })
+      ],
+      { inventory: [inventoryEntry({ name: 'feat' }), inventoryEntry({ name: 'fix' })], ...over }
+    )
+  }
+
+  it('creates a worktree per requested branch', async () => {
+    const h = repoHarness()
+    const result = await h.manager.importRepoBranches({
+      repoRoot: '/work/repo',
+      branches: ['feat', 'fix'],
+      chatDepth: 'latest'
+    })
+    expect(result.ok).toBe(true)
+    expect(result.created).toBe(2)
+    expect(h.created.map((c) => c.branchName)).toEqual(['feat', 'fix'])
+  })
+
+  it('checks out the existing branch rather than cutting a new one', async () => {
+    const h = repoHarness()
+    await h.manager.importRepoBranches({
+      repoRoot: '/work/repo',
+      branches: ['feat'],
+      chatDepth: 'latest'
+    })
+    // runPending would otherwise try `-b feat` against a branch that exists.
+    expect(h.created[0].forkSource).toBeDefined()
+  })
+
+  it('seeds the worktree with the most recent chat, not an arbitrary one', async () => {
+    const h = repoHarness()
+    await h.manager.importRepoBranches({
+      repoRoot: '/work/repo',
+      branches: ['feat'],
+      chatDepth: 'latest'
+    })
+    expect(h.created[0].forkSource?.sessionId).toBe('new')
+  })
+
+  it('forks silently so a bulk import does not fire an agent turn per worktree', async () => {
+    const h = repoHarness()
+    await h.manager.importRepoBranches({
+      repoRoot: '/work/repo',
+      branches: ['feat', 'fix'],
+      chatDepth: 'latest'
+    })
+    expect(h.created.every((c) => c.forkSource?.silent === true)).toBe(true)
+  })
+
+  it('opens only the latest chat at depth "latest"', async () => {
+    const h = repoHarness()
+    const result = await h.manager.importRepoBranches({
+      repoRoot: '/work/repo',
+      branches: ['feat'],
+      chatDepth: 'latest'
+    })
+    // The lead chat rides in via forkSource, so no extra tab is added.
+    expect(h.tabs).toHaveLength(0)
+    expect(result.importedChats).toBe(1)
+  })
+
+  it('attaches the remaining chats as extra tabs at depth "all"', async () => {
+    writeTranscript('/work/repo', 'old', [
+      { type: 'user', sessionId: 'old', message: { role: 'user', content: 'hi' } }
+    ])
+    const h = repoHarness()
+    const result = await h.manager.importRepoBranches({
+      repoRoot: '/work/repo',
+      branches: ['feat'],
+      chatDepth: 'all'
+    })
+    expect(h.tabs).toHaveLength(1)
+    expect(h.tabs[0].worktreePath).toBe('/work/repo-worktrees/feat')
+    expect(result.importedChats).toBe(2)
+  })
+
+  it('leaves the extra chat tabs asleep so 40 chats are not 40 subprocesses', async () => {
+    writeTranscript('/work/repo', 'old', [
+      { type: 'user', sessionId: 'old', message: { role: 'user', content: 'hi' } }
+    ])
+    const h = repoHarness()
+    await h.manager.importRepoBranches({
+      repoRoot: '/work/repo',
+      branches: ['feat'],
+      chatDepth: 'all'
+    })
+    expect(h.tabs[0].tab.mode).toBe('asleep')
+    expect(h.started).toHaveLength(0)
+  })
+
+  it('keeps going when one branch fails, and names the one that did', async () => {
+    const h = repoHarness({ failBranches: ['feat'] })
+    const result = await h.manager.importRepoBranches({
+      repoRoot: '/work/repo',
+      branches: ['feat', 'fix'],
+      chatDepth: 'latest'
+    })
+    expect(result.created).toBe(1)
+    expect(result.ok).toBe(true)
+    const failed = result.branches.find((b) => b.branch === 'feat')
+    expect(failed?.ok).toBe(false)
+    expect(failed?.error).toBe('branch is checked out elsewhere')
+    expect(result.branches.find((b) => b.branch === 'fix')?.ok).toBe(true)
+  })
+
+  it('rejects a branch with no importable history instead of creating an empty worktree', async () => {
+    const h = repoHarness()
+    const result = await h.manager.importRepoBranches({
+      repoRoot: '/work/repo',
+      branches: ['never-chatted'],
+      chatDepth: 'latest'
+    })
+    expect(result.created).toBe(0)
+    expect(result.ok).toBe(false)
+    expect(h.created).toHaveLength(0)
+  })
+})
+
+describe('probeRepo', () => {
+  it('reports the branches worth importing', async () => {
+    const h = harness(
+      [session({ sessionId: 'a', gitBranch: 'feat', cwd: '/work/repo', lastTimestamp: 1000 })],
+      { inventory: [inventoryEntry({ name: 'feat' })] }
+    )
+    const plan = await h.manager.probeRepo('/work/repo')
+    expect(plan.repoLabel).toBe('repo')
+    expect(plan.candidates.map((c) => c.branch)).toEqual(['feat'])
+  })
+
+  it('scans on first call so callers can fire it straight off a repo add', async () => {
+    mkdirSync(join(fakeHome, '.claude', 'projects'), { recursive: true })
+    const h = harness([])
+    ;(h.manager as unknown as { scanned: boolean }).scanned = false
+    await h.manager.probeRepo('/work/repo')
+    expect(h.events.some((e) => e.type === 'sessionImport/scanStarted')).toBe(true)
   })
 })
 

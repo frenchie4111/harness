@@ -124,6 +124,12 @@ export interface PendingWorktree {
 export interface ForkSource {
   sessionId: string
   worktreePath: string
+  /** Resume the forked conversation without sending the relocation preamble
+   *  as a first message. Bulk repo import sets this: recreating 20 branches
+   *  would otherwise spawn 20 subprocesses and fire 20 agent turns to
+   *  announce a move nobody asked about. The user opens one and continues;
+   *  the CLI reports the new cwd on resume anyway. */
+  silent?: boolean
 }
 
 export type PendingDeletionPhase =

@@ -14,6 +14,7 @@ import { PtyManager } from './pty-manager'
 import { ApprovalBridge } from './approval-bridge'
 import { JsonClaudeManager, bundledClaudeBinPath, forkTranscript, hasForkableTranscript } from './json-claude-manager'
 import { SessionImportManager } from './session-import'
+import type { RepoImportRequest } from '../shared/repo-import-types'
 import { buildRelocationPreamble } from './fork-relocation'
 import { shellQuote } from './shell-quote'
 import {
@@ -58,7 +59,7 @@ import { SnoozeTimer } from './snooze-timer'
 import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
-import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitMeta, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, listRecentCommitShas, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, renameWorktreeBranch, symlinkClaudeSettings, pruneWorktrees, type MergeStrategy } from './worktree'
+import { listWorktrees, listBranches, listBranchInventory, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitMeta, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, listRecentCommitShas, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, renameWorktreeBranch, symlinkClaudeSettings, pruneWorktrees, type MergeStrategy } from './worktree'
 import { listOpenPRs, getPRByNumber, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, approvePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult, type PRLookupResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
@@ -1035,7 +1036,27 @@ const sessionImportManager = new SessionImportManager({
   getRepoRoots: () => config.repoRoots || [],
   addTab: (worktreePath, tab) => panesFSM.addTab(worktreePath, tab),
   startSession: (sessionId, worktreePath) => startJsonClaudeSession(sessionId, worktreePath),
-  homeDir: () => homedir()
+  homeDir: () => homedir(),
+  listBranchInventory: (repoRoot) => listBranchInventory(repoRoot),
+  // worktreesFSM is constructed below; this closure only runs on an import,
+  // long after both exist.
+  createWorktree: async ({ repoRoot, branchName, forkSource }) => {
+    const outcome = await worktreesFSM.runPending({
+      id: crypto.randomUUID(),
+      repoRoot,
+      branchName,
+      // The branch already exists — that's the whole premise of importing
+      // it — so check it out rather than trying to cut a new one.
+      checkoutExisting: true,
+      forkSource
+    })
+    if (outcome.outcome === 'error') {
+      return { ok: false, path: null, error: outcome.error }
+    }
+    // 'setup-failed' still produced a usable worktree; the setup script's
+    // failure is surfaced separately by the FSM's own pending state.
+    return { ok: true, path: outcome.createdPath ?? null }
+  }
 })
 
 /** Resolve what the new worktree's first agent tab should start from,
@@ -1062,6 +1083,8 @@ async function resolveForkedKickoff(args: {
     log('worktrees', `conversation fork into ${createdPath} failed: ${outcome.reason}`)
     return { initialPrompt }
   }
+
+  if (forkSource.silent) return { forkedSessionId: outcome.newSessionId }
 
   const preamble = await buildRelocationPreamble({
     sourceWorktreePath: forkSource.worktreePath,
@@ -1647,6 +1670,23 @@ function registerIpcHandlers(): void {
       return sessionImportManager.importSession(params.sessionId, params.targetWorktreePath)
     }
   )
+
+  // Repo-scoped bulk import: "this repo already has history — want it back?"
+  transport.onRequest('sessionImport:probeRepo', async (_ctx, repoRoot: string) => {
+    if (!repoRoot) return null
+    return sessionImportManager.probeRepo(repoRoot)
+  })
+
+  transport.onRequest('sessionImport:importRepo', async (_ctx, params: RepoImportRequest) => {
+    if (!params?.repoRoot || !Array.isArray(params.branches) || params.branches.length === 0) {
+      return { ok: false, created: 0, importedChats: 0, branches: [] }
+    }
+    return sessionImportManager.importRepoBranches({
+      repoRoot: params.repoRoot,
+      branches: params.branches,
+      chatDepth: params.chatDepth === 'all' ? 'all' : 'latest'
+    })
+  })
 
   // Worktree creation flows through the WorktreesFSM in main; main also
   // creates the default Claude+Shell pane pair (with the initial prompt

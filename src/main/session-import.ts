@@ -3,10 +3,18 @@ import type { SessionImportEvent } from '../shared/state/session-import'
 import type { ImportOutcome } from '../shared/session-import-types'
 
 export type { ImportOutcome } from '../shared/session-import-types'
+import type {
+  RepoImportPlan,
+  RepoImportRequest,
+  RepoImportBranchResult,
+  RepoImportResult
+} from '../shared/repo-import-types'
 import { log } from './debug'
 import { forkTranscript } from './json-claude-manager'
+import { buildRepoImportPlan } from './repo-import'
 import { scanSessions, type DiscoveredSession } from './session-scanner'
 import { buildSessionTree, type SessionGroupNode } from './session-tree'
+import type { BranchInventoryEntry } from './worktree'
 
 /** Owns discovery and import of Claude Code sessions the user ran outside
  *  Ness.
@@ -16,18 +24,33 @@ import { buildSessionTree, type SessionGroupNode } from './session-tree'
  *  scan's status is dispatched (see shared/state/session-import.ts); the tree
  *  is handed over a request IPC when the browser opens. */
 
+export interface CreateWorktreeParams {
+  repoRoot: string
+  branchName: string
+  forkSource?: { sessionId: string; worktreePath: string; silent?: boolean }
+}
+
+export interface CreateWorktreeOutcome {
+  ok: boolean
+  path: string | null
+  error?: string
+}
+
 export interface SessionImportDeps {
   dispatch: (event: SessionImportEvent) => void
   getRepoRoots: () => string[]
   addTab: (worktreePath: string, tab: TerminalTab) => void
   startSession: (sessionId: string, worktreePath: string) => void
   homeDir: () => string
+  listBranchInventory: (repoRoot: string) => Promise<BranchInventoryEntry[]>
+  createWorktree: (params: CreateWorktreeParams) => Promise<CreateWorktreeOutcome>
   now?: () => number
 }
 
 export class SessionImportManager {
   private sessions: DiscoveredSession[] = []
   private scanning = false
+  private scanned = false
 
   constructor(private readonly deps: SessionImportDeps) {}
 
@@ -67,6 +90,7 @@ export class SessionImportManager {
         }
       })
       this.sessions = result.sessions
+      this.scanned = true
       const groupCount = this.getTree().length
       this.deps.dispatch({
         type: 'sessionImport/scanCompleted',
@@ -96,6 +120,95 @@ export class SessionImportManager {
     return this.sessions.find((s) => s.sessionId === sessionId) ?? null
   }
 
+  /** What Ness would offer to import for a repo the user just added.
+   *
+   *  Scans on first call (~5.5s over an 8000-session corpus, ~170ms once
+   *  the mtime cache is warm) so the caller can fire this straight off a
+   *  repo-add without sequencing a scan itself. */
+  async probeRepo(repoRoot: string): Promise<RepoImportPlan> {
+    if (!this.scanned) await this.scan()
+    const inventory = await this.deps.listBranchInventory(repoRoot)
+    return buildRepoImportPlan({ repoRoot, sessions: this.sessions, inventory, now: this.now() })
+  }
+
+  /** Recreate the chosen branches as worktrees with their chat history
+   *  attached.
+   *
+   *  Serial on purpose. `git worktree add` takes a repo-wide lock, and each
+   *  creation also runs the repo's setup script (`npm install` and friends);
+   *  twenty of those in parallel would thrash the machine for no wall-clock
+   *  win. One failure doesn't abort the batch — the user asked for fifteen
+   *  branches and should get the fourteen that work, with the fifteenth
+   *  named. */
+  async importRepoBranches(request: RepoImportRequest): Promise<RepoImportResult> {
+    const { repoRoot, branches, chatDepth } = request
+    const plan = await this.probeRepo(repoRoot)
+    const byBranch = new Map(plan.candidates.map((c) => [c.branch, c]))
+    const results: RepoImportBranchResult[] = []
+
+    for (const branch of branches) {
+      const candidate = byBranch.get(branch)
+      if (!candidate) {
+        results.push({
+          branch,
+          ok: false,
+          worktreePath: null,
+          importedChats: 0,
+          error: 'no importable chat history for this branch'
+        })
+        continue
+      }
+
+      // The most recent chat rides in as the worktree's first agent tab via
+      // the existing fork-on-create path, so the worktree opens on "where I
+      // left off" rather than on an empty session nobody wanted.
+      const lead = this.findSession(candidate.sessionIds[0])
+      const created = await this.deps.createWorktree({
+        repoRoot,
+        branchName: branch,
+        forkSource:
+          lead?.cwd != null
+            ? { sessionId: lead.sessionId, worktreePath: lead.cwd, silent: true }
+            : undefined
+      })
+
+      if (!created.ok || !created.path) {
+        results.push({
+          branch,
+          ok: false,
+          worktreePath: null,
+          importedChats: 0,
+          error: created.error ?? 'worktree creation failed'
+        })
+        continue
+      }
+
+      let importedChats = lead?.cwd != null ? 1 : 0
+      if (chatDepth === 'all') {
+        for (const sessionId of candidate.sessionIds.slice(1)) {
+          // Asleep: a branch with 40 chats must not become 40 subprocesses.
+          // The tab resumes when the user clicks it.
+          const outcome = this.importSession(sessionId, created.path, { spawn: false })
+          if (outcome.ok) importedChats++
+        }
+      }
+
+      results.push({ branch, ok: true, worktreePath: created.path, importedChats, error: null })
+    }
+
+    const created = results.filter((r) => r.ok).length
+    log(
+      'session-import',
+      `repo import ${repoRoot} requested=${branches.length} created=${created} depth=${chatDepth}`
+    )
+    return {
+      ok: created > 0,
+      created,
+      importedChats: results.reduce((n, r) => n + r.importedChats, 0),
+      branches: results
+    }
+  }
+
   /** Attach a discovered session to a worktree as a chat tab.
    *
    *  When the session already ran in the target worktree the transcript is
@@ -108,7 +221,12 @@ export class SessionImportManager {
    *  rewrite; the resumed agent learns it moved via the relocation preamble
    *  that the fork path already injects. The source transcript is untouched
    *  either way, so importing never mutates the user's existing history. */
-  importSession(sessionId: string, targetWorktreePath: string): ImportOutcome {
+  importSession(
+    sessionId: string,
+    targetWorktreePath: string,
+    opts: { spawn?: boolean } = {}
+  ): ImportOutcome {
+    const spawn = opts.spawn ?? true
     const session = this.findSession(sessionId)
     if (!session) return { ok: false, reason: 'session not found' }
     if (!session.cwd) return { ok: false, reason: 'session has no recorded working directory' }
@@ -133,10 +251,10 @@ export class SessionImportManager {
       type: 'json-claude',
       label: session.title ? session.title.slice(0, 40) : 'Imported chat',
       sessionId: attachedId,
-      mode: 'awake'
+      mode: spawn ? 'awake' : 'asleep'
     }
     this.deps.addTab(targetWorktreePath, tab)
-    this.deps.startSession(attachedId, targetWorktreePath)
+    if (spawn) this.deps.startSession(attachedId, targetWorktreePath)
 
     log(
       'session-import',
