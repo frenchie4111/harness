@@ -1,4 +1,4 @@
-import { log } from './debug'
+import { log, formatErr } from './debug'
 import type {
   GitHubApiEntry,
   GitHubApiLogSnapshot,
@@ -246,10 +246,12 @@ export async function trackedFetch(
       (!init?.signal || !init.signal.aborted) &&
       err instanceof Error &&
       err.name === 'AbortError'
-    const originalMessage = err instanceof Error ? err.message : String(err)
+    // formatErr, not err.message: undici surfaces every transport failure as
+    // a bare "fetch failed" and puts the actionable part (ECONNRESET,
+    // UND_ERR_CONNECT_TIMEOUT, ENOTFOUND) on err.cause.
     const message = timedOut
       ? `GitHub request timed out after ${DEFAULT_TIMEOUT_MS}ms: ${method} ${shortPath(cleanUrl)}`
-      : originalMessage
+      : formatErr(err)
     const entry: GitHubApiEntry = {
       id: nextId++,
       startedAt: started,

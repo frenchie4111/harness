@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-vi.mock('./debug', () => ({ log: vi.fn() }))
+vi.mock('./debug', async () => ({
+  ...(await vi.importActual<typeof import('./debug')>('./debug')),
+  log: vi.fn()
+}))
 
 import {
   MAX_ENTRIES,
@@ -46,6 +49,18 @@ describe('trackedFetch', () => {
     expect(snap.entries).toHaveLength(1)
     expect(snap.entries[0].status).toBeUndefined()
     expect(snap.entries[0].error).toBe('boom')
+  })
+
+  it('unwraps err.cause so undici failures are not just "fetch failed"', async () => {
+    const cause = Object.assign(
+      new Error('Connect Timeout Error (attempted address: api.github.com:443, timeout: 10000ms)'),
+      { code: 'UND_ERR_CONNECT_TIMEOUT' }
+    )
+    fetchSpy.mockRejectedValueOnce(new TypeError('fetch failed', { cause }))
+    await expect(trackedFetch('https://api.github.com/graphql')).rejects.toThrow('fetch failed')
+    const snap = getGitHubApiLogSnapshot()
+    expect(snap.entries[0].error).toContain('Connect Timeout Error')
+    expect(snap.entries[0].error).toContain('UND_ERR_CONNECT_TIMEOUT')
   })
 
   it('caps the ring buffer at MAX_ENTRIES', async () => {
