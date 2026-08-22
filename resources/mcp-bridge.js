@@ -89,7 +89,7 @@ function send(msg) {
 // control-server handler that never responds would hang the tool call — and
 // therefore the agent — forever. Sits well above every server-side timeout so
 // the server's own (more specific) error wins the race in the normal case.
-const CALL_TIMEOUT_MS = 60_000
+const CALL_TIMEOUT_MS = Number(process.env.HARNESS_CALL_TIMEOUT_MS) || 60_000
 // Worktree creation legitimately blocks on git fetch / PR checkout.
 const WORKTREE_CREATE_TIMEOUT_MS = 300_000
 
@@ -134,6 +134,30 @@ function callControl(method, path, body, timeoutMs) {
     if (data) req.write(data)
     req.end()
   })
+}
+
+// Every other browser tool bounds its output (console logs at 200 entries,
+// clickables at 500 items, screenshots at JPEG q70). Raw outerHTML is 1-5MB on
+// a heavy page, which is a context-blowing tool result.
+const DOM_DEFAULT_MAX_BYTES = 100_000
+const DOM_HARD_MAX_BYTES = 2_000_000
+
+function truncateDom(html, maxBytes) {
+  const requested = Number(maxBytes)
+  const cap = Number.isFinite(requested) && requested > 0
+    ? Math.min(Math.round(requested), DOM_HARD_MAX_BYTES)
+    : DOM_DEFAULT_MAX_BYTES
+  const total = Buffer.byteLength(html, 'utf-8')
+  if (total <= cap) return html
+  const head = Buffer.from(html, 'utf-8').subarray(0, cap).toString('utf-8')
+  return (
+    head +
+    '\n<!-- truncated by Ness: showing the first ' +
+    cap +
+    ' of ' +
+    total +
+    ' bytes. Pass max_bytes to raise the cap, or use get_tab_clickables for a compact view. -->'
+  )
 }
 
 // Appended to create_worktree's description, and removed again by
@@ -347,11 +371,15 @@ const TOOLS = [
   {
     name: 'get_tab_dom',
     description:
-      "Return the serialized outer HTML of the tab's document. Useful for inspecting rendered DOM that an HTTP fetch wouldn't see.",
+      "Return the serialized outer HTML of the tab's document. Useful for inspecting rendered DOM that an HTTP fetch wouldn't see. Truncated to 100KB by default — a heavy page's markup will blow your context otherwise, so prefer get_tab_clickables when you just need something to click.",
     inputSchema: {
       type: 'object',
       properties: {
-        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' }
+        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' },
+        max_bytes: {
+          type: 'number',
+          description: 'Truncate the markup to this many bytes. Default 100000, max 2000000.'
+        }
       },
       required: ['tab_id']
     }
@@ -803,7 +831,7 @@ async function handleToolCall(name, args) {
       '/browser/dom?tabId=' + encodeURIComponent(args.tab_id)
     )
     if (r == null || r.html == null) throw new Error(r && r.error ? r.error : 'dom read failed')
-    return r.html
+    return truncateDom(r.html, args.max_bytes)
   }
   if (name === 'get_tab_url') {
     if (!args || !args.tab_id) throw new Error('tab_id is required')
