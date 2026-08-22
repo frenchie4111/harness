@@ -1291,6 +1291,37 @@ export type RenameBranchResult =
   | { ok: false; error: string }
 
 /**
+ * The remote ref `branch` would keep pushing to after a rename, or '' if it
+ * has never been pushed.
+ *
+ * A tracked upstream on its own does NOT mean published: git's default
+ * `branch.autoSetupMerge` points a branch cut from `origin/main` at
+ * `origin/main`, so every freshly created worktree looks tracked. What
+ * matters is whether a remote ref named after *this branch* exists — that's
+ * the ref a renamed branch would silently keep pushing to. The upstream is
+ * only considered when it names this branch (covers a branch whose remote
+ * counterpart was deleted, which `git push` would recreate under the old
+ * name).
+ */
+async function publishedRemoteRef(worktreePath: string, branch: string): Promise<string> {
+  const remoteRef = await execGitRead(
+    ['for-each-ref', '--format=%(refname:short)', `refs/remotes/*/${branch}`],
+    { cwd: worktreePath }
+  )
+    .then(({ stdout }) => stdout.trim().split('\n')[0]?.trim() || '')
+    .catch(() => '')
+  if (remoteRef) return remoteRef
+
+  const upstream = await execGitRead(
+    ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'],
+    { cwd: worktreePath }
+  )
+    .then(({ stdout }) => stdout.trim())
+    .catch(() => '')
+  return upstream.endsWith(`/${branch}`) ? upstream : ''
+}
+
+/**
  * Rename the branch a worktree has checked out (`git branch -m`). The
  * directory on disk keeps its original name — it's the key every other
  * piece of Ness state (panes, aliases, terminal cwds, running PTYs) is
@@ -1317,17 +1348,12 @@ export async function renameWorktreeBranch(
     return { ok: true, oldBranch, branch: newBranch, renamed: false }
   }
 
-  const upstream = await execGitRead(
-    ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'],
-    { cwd: worktreePath }
-  )
-    .then(({ stdout }) => stdout.trim())
-    .catch(() => '')
-  if (upstream) {
+  const remoteRef = await publishedRemoteRef(worktreePath, oldBranch)
+  if (remoteRef) {
     return {
       ok: false,
       error:
-        `branch "${oldBranch}" is already published (tracking ${upstream}) — renaming it locally ` +
+        `branch "${oldBranch}" is already published (pushed to ${remoteRef}) — renaming it locally ` +
         `would leave it pushing to the old remote branch. Set a display alias instead.`
     }
   }
