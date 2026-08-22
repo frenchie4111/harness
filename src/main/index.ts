@@ -2413,6 +2413,17 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setTerminalPlainClickOpensInApp', (_ctx, enabled: boolean) => {
+    if (enabled) {
+      config.terminalPlainClickOpensInApp = true
+    } else {
+      delete config.terminalPlainClickOpensInApp
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/terminalPlainClickOpensInAppChanged', payload: enabled })
+    return true
+  })
+
   transport.onRequest('config:setExpandedDiagnosticLoggingEnabled', (_ctx, enabled: boolean) => {
     if (enabled) {
       config.expandedDiagnosticLoggingEnabled = true

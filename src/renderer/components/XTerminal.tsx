@@ -299,6 +299,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   initFontCache()
   const backend = useBackend()
   const chatPromotionDismissed = useSettings().chatPromotionDismissed
+  const plainClickOpensInApp = useSettings().terminalPlainClickOpensInApp
 
   // Prime + refresh the worktree file list that validates file-path links.
   // Shared across this worktree's tabs and rate-limited inside
@@ -353,6 +354,11 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     session === null || session.controllerClientId === null || session.controllerClientId === myClientId
   const isControllerRef = useRef(isController)
   isControllerRef.current = isController
+  // The terminal + its link providers are built once, so the click-modifier
+  // setting is read through a ref — toggling it applies to live terminals
+  // without a rebuild.
+  const plainClickOpensInAppRef = useRef(plainClickOpensInApp)
+  plainClickOpensInAppRef.current = plainClickOpensInApp
   // When the terminal mounts in a display:none wrapper (background tab or
   // non-active worktree), the container has zero size and FitAddon can't
   // compute dimensions. We stash the deferred spawn here so the visible
@@ -384,8 +390,9 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     // Both link providers — xterm's core OSC 8 provider (via `linkHandler`)
     // and the WebLinksAddon (plain-text URLs) — route through this one
     // closure so the destination logic can't drift. Plain click → OS
-    // default browser; Cmd/Ctrl-click → in-app browser tab; mailto →
-    // external (the in-app browser can't open it).
+    // default browser; Cmd/Ctrl-click → in-app browser tab (swapped when
+    // the terminalPlainClickOpensInApp setting is on); mailto → external
+    // either way (the in-app browser can't open it).
     const isWebUri = (uri: string): boolean =>
       uri.startsWith('http://') || uri.startsWith('https://')
     // Schemes we'll hand to the OS on a plain click. vnc:// resolves to the
@@ -395,7 +402,9 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     const activateUri = (event: { metaKey: boolean; ctrlKey: boolean }, uri: string): void => {
       // Only web URLs can render in an in-app browser tab; vnc:// and mailto:
       // are OS-handled schemes, so they always go external.
-      const inApp = (event.metaKey || event.ctrlKey) && isWebUri(uri)
+      const wantsInApp =
+        (event.metaKey || event.ctrlKey) !== plainClickOpensInAppRef.current
+      const inApp = wantsInApp && isWebUri(uri)
       if (inApp) {
         openUrlInBrowserTab(uri)
         return
@@ -486,6 +495,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
         openInEditor: (rel) => {
           void backend.openInEditor(cwd, rel)
         },
+        plainClickOpensInApp: () => plainClickOpensInAppRef.current,
         onHoverChange: (hovering) => setHoveredLink(hovering ? 'file:' : null)
       })
     )

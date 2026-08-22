@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import type { ILink, Terminal } from '@xterm/xterm'
 import {
   parseFilePaths,
   toWorktreeRelative,
   loadWorktreeFiles,
   getCachedWorktreeFiles,
+  makeFileLinkProvider,
   __resetWorktreeFileCache
 } from './terminal-file-links'
 
@@ -108,5 +110,63 @@ describe('worktree file cache', () => {
     expect(calls).toBe(2)
     await loadWorktreeFiles(cwd, list, { now: 99999 }) // window elapsed → reload
     expect(calls).toBe(3)
+  })
+})
+
+describe('makeFileLinkProvider activation', () => {
+  const cwd = '/repo'
+  const fakeTerminal = (text: string): Terminal =>
+    ({
+      buffer: { active: { getLine: () => ({ translateToString: () => text }) } }
+    }) as unknown as Terminal
+
+  const firstLink = (plainClickOpensInApp: () => boolean, opened: string[]): ILink => {
+    const provider = makeFileLinkProvider({
+      terminal: fakeTerminal('see src/a.ts here'),
+      cwd,
+      getKnownFiles: () => new Set(['src/a.ts']),
+      openInApp: () => opened.push('app'),
+      openInEditor: () => opened.push('editor'),
+      plainClickOpensInApp
+    })
+    let links: ILink[] | undefined
+    provider.provideLinks(1, (l) => {
+      links = l
+    })
+    if (!links?.[0]) throw new Error('expected a file link')
+    return links[0]
+  }
+
+  const click = (link: ILink, modified: boolean): void => {
+    link.activate(
+      { metaKey: modified, ctrlKey: false } as unknown as MouseEvent,
+      'src/a.ts'
+    )
+  }
+
+  it('defaults to plain click → editor, ⌘-click → in-app tab', () => {
+    const opened: string[] = []
+    const link = firstLink(() => false, opened)
+    click(link, false)
+    click(link, true)
+    expect(opened).toEqual(['editor', 'app'])
+  })
+
+  it('swaps both roles when plainClickOpensInApp is on', () => {
+    const opened: string[] = []
+    const link = firstLink(() => true, opened)
+    click(link, false)
+    click(link, true)
+    expect(opened).toEqual(['app', 'editor'])
+  })
+
+  it('reads the swap per click, so toggling applies to a live terminal', () => {
+    const opened: string[] = []
+    let inverted = false
+    const link = firstLink(() => inverted, opened)
+    click(link, false)
+    inverted = true
+    click(link, false)
+    expect(opened).toEqual(['editor', 'app'])
   })
 })

@@ -136,6 +136,7 @@ export function buildInitialAppState(
       autoUpdateEnabled: config.autoUpdateEnabled !== false,
       warnBeforeQuitting: config.warnBeforeQuitting !== false,
       openPrInBrowserTab: config.openPrInBrowserTab === true,
+      terminalPlainClickOpensInApp: config.terminalPlainClickOpensInApp === true,
       newWorktreeAdvancedOpen: config.newWorktreeAdvancedOpen === true,
       starterTasksDismissed: config.starterTasksDismissed === true,
       shareClaudeSettings: config.shareClaudeSettings !== false,

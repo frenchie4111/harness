@@ -148,6 +148,20 @@ describe('settingsReducer', () => {
     expect(off.openPrInBrowserTab).toBe(false)
   })
 
+  it('terminalPlainClickOpensInAppChanged toggles the link-modifier swap', () => {
+    expect(initialSettings.terminalPlainClickOpensInApp).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/terminalPlainClickOpensInAppChanged',
+      payload: true
+    })
+    expect(on.terminalPlainClickOpensInApp).toBe(true)
+    const off = apply(on, {
+      type: 'settings/terminalPlainClickOpensInAppChanged',
+      payload: false
+    })
+    expect(off.terminalPlainClickOpensInApp).toBe(false)
+  })
+
   it('shareClaudeSettingsChanged toggles the share flag', () => {
     expect(initialSettings.shareClaudeSettings).toBe(true)
     const off = apply(initialSettings, {
