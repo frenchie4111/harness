@@ -74,12 +74,14 @@ export interface JsonClaudeMessageBlock {
  *  Extend the union when a new automation learns to talk to the chat. */
 export type JsonClaudeAutomationSource =
   | 'ci-failure'
+  | 'merge-conflict'
   | 'worktree-message'
   | 'worktree-kickoff'
   | 'worktree-autoname'
 
 const AUTOMATION_SOURCES: readonly string[] = [
   'ci-failure',
+  'merge-conflict',
   'worktree-message',
   'worktree-kickoff',
   'worktree-autoname'

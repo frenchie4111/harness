@@ -1193,6 +1193,11 @@ export function PRStatusPanel({
             </div>
           )}
 
+          {worktree &&
+            pr.hasConflict === true &&
+            pr.state !== 'merged' &&
+            pr.state !== 'closed' && <FixConflictsButton worktreePath={worktree.path} />}
+
           {worktree && (
             <CiNotifyToggle
               worktreePath={worktree.path}
@@ -1207,6 +1212,57 @@ export function PRStatusPanel({
         </div>
       )}
     </RightPanel>
+  )
+}
+
+/** Hands the conflict off to the worktree's agent. A button rather than the
+ *  standing opt-in CI failures get: a branch that conflicts with its base
+ *  usually conflicts with every other in-flight branch too, so firing this
+ *  automatically would put the whole workspace to work over one bad merge
+ *  base. */
+function FixConflictsButton({ worktreePath }: { worktreePath: string }): JSX.Element {
+  const backend = useBackend()
+  const [phase, setPhase] = useState<'idle' | 'sending' | 'sent'>('idle')
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (phase !== 'sent') return
+    const t = setTimeout(() => setPhase('idle'), 4000)
+    return () => clearTimeout(t)
+  }, [phase])
+
+  const send = useCallback(async () => {
+    setPhase('sending')
+    setError(null)
+    try {
+      const result = await backend.requestMergeConflictFix(worktreePath)
+      setPhase(result.ok ? 'sent' : 'idle')
+      if (!result.ok) setError(result.error || 'Failed to reach the agent')
+    } catch (err) {
+      setPhase('idle')
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }, [backend, worktreePath])
+
+  return (
+    <div className="space-y-1 mt-1.5">
+      <button
+        onClick={() => void send()}
+        disabled={phase !== 'idle'}
+        title="Post a message into this worktree's agent chat asking it to bring the branch up to date with its base and resolve the conflicts."
+        className="w-full text-xs bg-danger/15 hover:bg-danger/25 text-danger px-2 py-1.5 rounded flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-default disabled:opacity-70"
+      >
+        {phase === 'sending' ? (
+          <Loader2 className="icon-xs animate-spin" />
+        ) : phase === 'sent' ? (
+          <Check className="icon-xs" />
+        ) : (
+          <GitMergeConflict className="icon-xs" />
+        )}
+        {phase === 'sent' ? 'Asked the agent' : 'Ask the agent to fix conflicts'}
+      </button>
+      {error && <div className="text-xs text-danger leading-snug break-words">{error}</div>}
+    </div>
   )
 }
 
