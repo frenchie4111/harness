@@ -17,6 +17,70 @@ import type { AssignedPR } from '../shared/state/assigned-prs'
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000
 const STALE_WINDOW_MS = 60 * 1000
+/** How long to wait before re-querying PRs whose mergeability GitHub was
+ *  still computing. Long enough for that computation to land, short enough
+ *  that a newly-conflicted PR surfaces in seconds rather than next poll. */
+const MERGEABLE_RECHECK_DELAY_MS = 2000
+/** Ceiling on re-queries per round — one GraphQL call each, and a push to a
+ *  busy base branch invalidates every open PR in the repo at once. */
+const MERGEABLE_RECHECK_MAX = 20
+
+/** A PR whose `mergeable` came back UNKNOWN, worth exactly one re-query. */
+export interface MergeableRecheck {
+  path: string
+  root: string
+  branch: string
+  prNumber: number
+}
+
+/** Reconcile PRs whose mergeability GitHub hadn't finished computing.
+ *
+ *  GitHub computes mergeability lazily: any push to the base branch
+ *  invalidates the cached merge commit for every open PR, and the first
+ *  query after that returns UNKNOWN — which `buildPRStatus` surfaces as
+ *  `hasConflict === null`. **UNKNOWN is not "no conflict."** Letting the
+ *  null through drops a genuinely-conflicted worktree out of the
+ *  Needs Attention sidebar group until the next poll five minutes later.
+ *
+ *  `hasConflict === null` is an exact signal here: `buildPRStatus` maps
+ *  CONFLICTING→true and MERGEABLE→false, so null means UNKNOWN and
+ *  nothing else. That's why this needs no extra plumbing through the
+ *  fetch layer.
+ *
+ *  Carries the last known verdict forward while the PR number and head SHA
+ *  are unchanged (a new head SHA invalidates the old verdict, so null is
+ *  correct there), and returns the PRs worth re-querying. */
+export function reconcileUnknownMergeable(
+  prev: Record<string, PRStatus | null>,
+  next: Record<string, PRStatus | null>,
+  worktrees: ReadonlyArray<{ path: string; branch: string; repoRoot: string }>
+): { byPath: Record<string, PRStatus | null>; rechecks: MergeableRecheck[] } {
+  const byPath = { ...next }
+  const rechecks: MergeableRecheck[] = []
+  for (const wt of worktrees) {
+    const status = byPath[wt.path]
+    if (!status || status.hasConflict !== null) continue
+    // Conflicts are meaningless once a PR is merged or closed.
+    if (status.state === 'merged' || status.state === 'closed') continue
+    rechecks.push({
+      path: wt.path,
+      root: wt.repoRoot,
+      branch: wt.branch,
+      prNumber: status.number
+    })
+    const prior = prev[wt.path]
+    if (
+      prior &&
+      prior.hasConflict !== null &&
+      prior.number === status.number &&
+      !!prior.headSha &&
+      prior.headSha === status.headSha
+    ) {
+      byPath[wt.path] = { ...status, hasConflict: prior.hasConflict }
+    }
+  }
+  return { byPath, rechecks }
+}
 
 interface PRPollerOptions {
   getRepoRoots: () => string[]
@@ -40,6 +104,7 @@ export class PRPoller {
   // Fix 1+2+3 together, switch this to a per-repo Set.
   private inFlightAll = false
   private inFlightAssigned = false
+  private recheckTimer: NodeJS.Timeout | null = null
 
   constructor(store: Store, opts: PRPollerOptions) {
     this.store = store
@@ -60,6 +125,10 @@ export class PRPoller {
     if (this.timer) {
       clearInterval(this.timer)
       this.timer = null
+    }
+    if (this.recheckTimer) {
+      clearTimeout(this.recheckTimer)
+      this.recheckTimer = null
     }
   }
 
@@ -244,10 +313,72 @@ export class PRPoller {
         }
       }
     }
+    const { byPath: reconciled, rechecks } = reconcileUnknownMergeable(
+      currentByPath,
+      newByPath,
+      allWorktrees
+    )
     this.store.dispatch({
       type: 'prs/bulkStatusChanged',
-      payload: newByPath
+      payload: reconciled
     })
+    this.scheduleMergeableRecheck(rechecks)
+  }
+
+  /** Queue one deferred re-query round for PRs GitHub reported as UNKNOWN.
+   *  Deliberately not awaited by `refreshAll` — holding `prs.loading` true
+   *  for the delay would just spin the sidebar spinner longer. */
+  private scheduleMergeableRecheck(rechecks: MergeableRecheck[]): void {
+    if (rechecks.length === 0) return
+    if (this.recheckTimer) clearTimeout(this.recheckTimer)
+    const capped = rechecks.slice(0, MERGEABLE_RECHECK_MAX)
+    this.recheckTimer = setTimeout(() => {
+      this.recheckTimer = null
+      void this.runMergeableRecheck(capped)
+    }, MERGEABLE_RECHECK_DELAY_MS)
+  }
+
+  /** One re-query round, no retry loop. A PR still UNKNOWN keeps whatever
+   *  `reconcileUnknownMergeable` carried forward and waits for the next
+   *  poll. Only `hasConflict` is patched onto the cached status:
+   *  `fetchPRStatusByNumber` doesn't compute `behindBy`, so replacing the
+   *  status wholesale would blank the "N commits behind" indicator. */
+  private async runMergeableRecheck(rechecks: MergeableRecheck[]): Promise<void> {
+    try {
+      const ctxByRoot = new Map<string, RepoContext | null>()
+      await Promise.all(
+        Array.from(new Set(rechecks.map((r) => r.root))).map(async (root) => {
+          ctxByRoot.set(root, await getRepoContext(root).catch(() => null))
+        })
+      )
+      const results = await Promise.all(
+        rechecks.map(async (r) => {
+          const ctx = ctxByRoot.get(r.root)
+          if (!ctx) return null
+          return await fetchPRStatusByNumber(ctx, r.prNumber, r.path, r.branch).catch((err) => {
+            log('pr-poller', `mergeable recheck #${r.prNumber} failed for ${r.path}`, formatErr(err))
+            return null
+          })
+        })
+      )
+      for (let i = 0; i < rechecks.length; i++) {
+        const fresh = results[i]
+        if (!fresh || fresh.hasConflict === null) continue
+        const path = rechecks[i].path
+        const current = this.store.getSnapshot().state.prs.byPath[path]
+        // The worktree may have been removed, or moved on to a different
+        // PR / commit, while the recheck was in flight.
+        if (!current || current.number !== fresh.number) continue
+        if (current.headSha !== fresh.headSha) continue
+        if (current.hasConflict === fresh.hasConflict) continue
+        this.store.dispatch({
+          type: 'prs/statusChanged',
+          payload: { path, status: { ...current, hasConflict: fresh.hasConflict } }
+        })
+      }
+    } catch (err) {
+      log('pr-poller', 'mergeable recheck round failed', formatErr(err))
+    }
   }
 
   /** Local-git side of a full refresh: `git rev-parse` per worktree
@@ -330,10 +461,16 @@ export class PRPoller {
         }
       }
       this.lastFetchAtByPath.set(wtPath, Date.now())
+      const { byPath, rechecks } = reconcileUnknownMergeable(
+        this.store.getSnapshot().state.prs.byPath,
+        { [wtPath]: status },
+        [wt]
+      )
       this.store.dispatch({
         type: 'prs/statusChanged',
-        payload: { path: wtPath, status }
+        payload: { path: wtPath, status: byPath[wtPath] }
       })
+      this.scheduleMergeableRecheck(rechecks)
     } catch (err) {
       log('pr-poller', `refreshOne failed for ${wtPath}`, formatErr(err))
     }

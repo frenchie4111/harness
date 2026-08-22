@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('./debug', () => ({
   log: () => {},
@@ -14,7 +14,7 @@ vi.mock('./github', () => ({
   fetchPRStatusByNumber: vi.fn()
 }))
 
-import { PRPoller } from './pr-poller'
+import { PRPoller, reconcileUnknownMergeable } from './pr-poller'
 import { Store } from './store'
 import { initialState, type AppState } from '../shared/state'
 import type { PRStatus } from '../shared/state/prs'
@@ -31,7 +31,7 @@ function fakePRStatus(number: number): PRStatus {
     author: null,
     checks: [],
     checksOverall: 'none',
-    hasConflict: null,
+    hasConflict: false,
     reviews: [],
     reviewDecision: 'none',
     baseBranch: 'main',
@@ -189,6 +189,281 @@ describe('PRPoller.refreshAll — offline / failure preservation', () => {
     )
 
     await poller.refreshAll()
+
+    expect(vi.mocked(fetchPRStatusByNumber)).not.toHaveBeenCalled()
+  })
+})
+
+/** A PR whose mergeability GitHub is still computing: `mergeable: UNKNOWN`
+ *  arrives as `hasConflict: null`. */
+function unknownMergeable(number: number, headSha: string): PRStatus {
+  return { ...fakePRStatus(number), headSha, hasConflict: null }
+}
+
+describe('PRPoller — UNKNOWN mergeability (sticky carry-forward)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getRepoContext).mockResolvedValue({
+      origin: { owner: 'o', repo: 'r' },
+      upstream: { owner: 'o', repo: 'r' }
+    })
+    vi.mocked(getBranchSha).mockResolvedValue(null)
+  })
+
+  it('preserves a cached conflict when GitHub returns UNKNOWN for the same head SHA', async () => {
+    const { store, poller } = makePoller({
+      '/wt/a': { ...fakePRStatus(1), headSha: 'sha-1', hasConflict: true }
+    })
+    vi.mocked(listWorktrees).mockResolvedValue([wt('/wt/a', 'a', 'sha-a')])
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([['/wt/a', unknownMergeable(1, 'sha-1')]])
+    )
+
+    await poller.refreshAll()
+
+    expect(store.getSnapshot().state.prs.byPath['/wt/a']?.hasConflict).toBe(true)
+  })
+
+  it('preserves a cached non-conflict when GitHub returns UNKNOWN', async () => {
+    const { store, poller } = makePoller({
+      '/wt/a': { ...fakePRStatus(1), headSha: 'sha-1', hasConflict: false }
+    })
+    vi.mocked(listWorktrees).mockResolvedValue([wt('/wt/a', 'a', 'sha-a')])
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([['/wt/a', unknownMergeable(1, 'sha-1')]])
+    )
+
+    await poller.refreshAll()
+
+    expect(store.getSnapshot().state.prs.byPath['/wt/a']?.hasConflict).toBe(false)
+  })
+
+  it('does not carry a conflict forward across a new head SHA (force-push / new commit)', async () => {
+    const { store, poller } = makePoller({
+      '/wt/a': { ...fakePRStatus(1), headSha: 'sha-old', hasConflict: true }
+    })
+    vi.mocked(listWorktrees).mockResolvedValue([wt('/wt/a', 'a', 'sha-a')])
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([['/wt/a', unknownMergeable(1, 'sha-new')]])
+    )
+
+    await poller.refreshAll()
+
+    expect(store.getSnapshot().state.prs.byPath['/wt/a']?.hasConflict).toBeNull()
+  })
+
+  it('does not carry a conflict forward across a different PR number', async () => {
+    const { store, poller } = makePoller({
+      '/wt/a': { ...fakePRStatus(1), headSha: 'sha-1', hasConflict: true }
+    })
+    vi.mocked(listWorktrees).mockResolvedValue([wt('/wt/a', 'a', 'sha-a')])
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([['/wt/a', unknownMergeable(2, 'sha-1')]])
+    )
+
+    await poller.refreshAll()
+
+    expect(store.getSnapshot().state.prs.byPath['/wt/a']?.hasConflict).toBeNull()
+  })
+
+  it('leaves UNKNOWN as null when there is no cached entry', async () => {
+    const { store, poller } = makePoller({})
+    vi.mocked(listWorktrees).mockResolvedValue([wt('/wt/a', 'a', 'sha-a')])
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([['/wt/a', unknownMergeable(1, 'sha-1')]])
+    )
+
+    await poller.refreshAll()
+
+    expect(store.getSnapshot().state.prs.byPath['/wt/a']?.hasConflict).toBeNull()
+  })
+
+  it('lets a definitive CONFLICTING / MERGEABLE answer win over the cached value', async () => {
+    const { store, poller } = makePoller({
+      '/wt/a': { ...fakePRStatus(1), headSha: 'sha-1', hasConflict: true },
+      '/wt/b': { ...fakePRStatus(2), headSha: 'sha-2', hasConflict: false }
+    })
+    vi.mocked(listWorktrees).mockResolvedValue([
+      wt('/wt/a', 'a', 'sha-a'),
+      wt('/wt/b', 'b', 'sha-b')
+    ])
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([
+        // Conflict resolved upstream.
+        ['/wt/a', { ...fakePRStatus(1), headSha: 'sha-1', hasConflict: false }],
+        // Newly conflicted.
+        ['/wt/b', { ...fakePRStatus(2), headSha: 'sha-2', hasConflict: true }]
+      ])
+    )
+
+    await poller.refreshAll()
+
+    const byPath = store.getSnapshot().state.prs.byPath
+    expect(byPath['/wt/a']?.hasConflict).toBe(false)
+    expect(byPath['/wt/b']?.hasConflict).toBe(true)
+  })
+})
+
+describe('reconcileUnknownMergeable — recheck collection', () => {
+  const trees = [{ path: '/wt/a', branch: 'a', repoRoot: '/repo' }]
+
+  it('collects an UNKNOWN open PR for recheck', () => {
+    const { rechecks } = reconcileUnknownMergeable(
+      {},
+      { '/wt/a': unknownMergeable(7, 'sha-1') },
+      trees
+    )
+    expect(rechecks).toEqual([{ path: '/wt/a', root: '/repo', branch: 'a', prNumber: 7 }])
+  })
+
+  it('does not recheck a PR with a definitive answer', () => {
+    const { rechecks } = reconcileUnknownMergeable(
+      {},
+      { '/wt/a': { ...fakePRStatus(7), hasConflict: true } },
+      trees
+    )
+    expect(rechecks).toEqual([])
+  })
+
+  it('does not recheck merged or closed PRs — conflicts are moot there', () => {
+    for (const state of ['merged', 'closed'] as const) {
+      const { rechecks } = reconcileUnknownMergeable(
+        {},
+        { '/wt/a': { ...unknownMergeable(7, 'sha-1'), state } },
+        trees
+      )
+      expect(rechecks).toEqual([])
+    }
+  })
+
+  it('does not mutate the input map', () => {
+    const next = { '/wt/a': unknownMergeable(7, 'sha-1') }
+    const prev = { '/wt/a': { ...fakePRStatus(7), headSha: 'sha-1', hasConflict: true } }
+    const { byPath } = reconcileUnknownMergeable(prev, next, trees)
+    expect(next['/wt/a']?.hasConflict).toBeNull()
+    expect(byPath['/wt/a']?.hasConflict).toBe(true)
+  })
+})
+
+describe('PRPoller — UNKNOWN mergeability (bounded recheck)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.mocked(getRepoContext).mockResolvedValue({
+      origin: { owner: 'o', repo: 'r' },
+      upstream: { owner: 'o', repo: 'r' }
+    })
+    vi.mocked(getBranchSha).mockResolvedValue(null)
+    vi.mocked(listWorktrees).mockResolvedValue([wt('/wt/a', 'a', 'sha-a')])
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('re-queries by number and applies a definitive answer', async () => {
+    const { store, poller } = makePoller({})
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([['/wt/a', unknownMergeable(7, 'sha-1')]])
+    )
+    vi.mocked(fetchPRStatusByNumber).mockResolvedValue({
+      ...fakePRStatus(7),
+      headSha: 'sha-1',
+      hasConflict: true
+    })
+
+    await poller.refreshAll()
+    expect(store.getSnapshot().state.prs.byPath['/wt/a']?.hasConflict).toBeNull()
+
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(vi.mocked(fetchPRStatusByNumber)).toHaveBeenCalledWith(
+      expect.any(Object),
+      7,
+      '/wt/a',
+      'a'
+    )
+    expect(store.getSnapshot().state.prs.byPath['/wt/a']?.hasConflict).toBe(true)
+  })
+
+  it('patches only hasConflict, preserving fields the by-number fetch does not compute', async () => {
+    const { store, poller } = makePoller({})
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([
+        ['/wt/a', { ...unknownMergeable(7, 'sha-1'), behindBy: 12 }]
+      ])
+    )
+    // fetchPRStatusByNumber passes behindBy: null — a wholesale replace
+    // would blank the "N commits behind" indicator.
+    vi.mocked(fetchPRStatusByNumber).mockResolvedValue({
+      ...fakePRStatus(7),
+      headSha: 'sha-1',
+      hasConflict: true,
+      behindBy: undefined
+    })
+
+    await poller.refreshAll()
+    await vi.advanceTimersByTimeAsync(2000)
+
+    const status = store.getSnapshot().state.prs.byPath['/wt/a']
+    expect(status?.hasConflict).toBe(true)
+    expect(status?.behindBy).toBe(12)
+  })
+
+  it('leaves the sticky value alone when the recheck is still UNKNOWN', async () => {
+    const { store, poller } = makePoller({
+      '/wt/a': { ...fakePRStatus(7), headSha: 'sha-1', hasConflict: true }
+    })
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([['/wt/a', unknownMergeable(7, 'sha-1')]])
+    )
+    vi.mocked(fetchPRStatusByNumber).mockResolvedValue(unknownMergeable(7, 'sha-1'))
+
+    await poller.refreshAll()
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(store.getSnapshot().state.prs.byPath['/wt/a']?.hasConflict).toBe(true)
+  })
+
+  it('discards a recheck result whose head SHA moved on while it was in flight', async () => {
+    const { store, poller } = makePoller({})
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([['/wt/a', unknownMergeable(7, 'sha-new')]])
+    )
+    vi.mocked(fetchPRStatusByNumber).mockResolvedValue({
+      ...fakePRStatus(7),
+      headSha: 'sha-stale',
+      hasConflict: true
+    })
+
+    await poller.refreshAll()
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(store.getSnapshot().state.prs.byPath['/wt/a']?.hasConflict).toBeNull()
+  })
+
+  it('runs exactly one recheck round — no retry loop', async () => {
+    const { poller } = makePoller({})
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([['/wt/a', unknownMergeable(7, 'sha-1')]])
+    )
+    vi.mocked(fetchPRStatusByNumber).mockResolvedValue(unknownMergeable(7, 'sha-1'))
+
+    await poller.refreshAll()
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    expect(vi.mocked(fetchPRStatusByNumber)).toHaveBeenCalledTimes(1)
+  })
+
+  it('stop() cancels a pending recheck', async () => {
+    const { poller } = makePoller({})
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([['/wt/a', unknownMergeable(7, 'sha-1')]])
+    )
+
+    await poller.refreshAll()
+    poller.stop()
+    await vi.advanceTimersByTimeAsync(2000)
 
     expect(vi.mocked(fetchPRStatusByNumber)).not.toHaveBeenCalled()
   })
