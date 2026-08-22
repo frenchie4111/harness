@@ -17,6 +17,7 @@ import { perfLog } from './perf-log'
 import { resolveUserShell, loginShellCommandArgs } from './user-shell'
 import { detectInProgressOp } from './git-ops-state'
 import { cachedGitRead } from './git-poll-cache'
+import { runGitRead, type GitPriority } from './git-limiter'
 import type { Worktree } from '../shared/state/worktrees'
 
 const execFileAsync = promisify(execFile)
@@ -33,15 +34,46 @@ function readOnlyGitEnv(): NodeJS.ProcessEnv {
   return { ...process.env, GIT_OPTIONAL_LOCKS: '0' }
 }
 
+/** Every read-only git spawn goes through here so the concurrency gate in
+ * git-limiter.ts sees all of them. Gating at the leaf exec — rather than around
+ * a whole helper — is what keeps callers that issue several reads in sequence
+ * (getMainWorktreeStatus, resolveDefaultBaseRef) from holding a permit while
+ * waiting for one, which would deadlock at the cap. Writes bypass this on
+ * purpose; see the module comment in git-limiter.ts. */
+function execGitRead(
+  args: string[],
+  opts: ExecOpts,
+  priority: GitPriority = 'interactive'
+): Promise<{ stdout: string }> {
+  return gatedExec(args, opts, priority)
+}
+
+/** Shared body of execGitRead/tracedExec. `execMs` is measured *inside* the
+ * gate so it stays comparable with pre-limiter `[git-op]` lines — time spent
+ * queueing is reported separately as `waitMs` rather than folded into exec. */
+async function gatedExec(
+  args: string[],
+  opts: ExecOpts,
+  priority: GitPriority
+): Promise<{ stdout: string; execMs: number; waitMs: number }> {
+  const queued = performance.now()
+  return runGitRead(priority, async () => {
+    const started = performance.now()
+    const { stdout } = await execFileAsync('git', args, { env: readOnlyGitEnv(), ...opts })
+    return {
+      stdout: typeof stdout === 'string' ? stdout : stdout.toString(),
+      execMs: performance.now() - started,
+      waitMs: started - queued
+    }
+  })
+}
+
 async function tracedExec(
   args: string[],
   opts: ExecOpts
 ): Promise<{ stdout: string; execMs: number; outputBytes: number }> {
-  const t0 = performance.now()
-  const { stdout } = await execFileAsync('git', args, { env: readOnlyGitEnv(), ...opts })
-  const execMs = performance.now() - t0
-  const text = typeof stdout === 'string' ? stdout : stdout.toString()
-  return { stdout: text, execMs, outputBytes: text.length }
+  const { stdout, execMs } = await gatedExec(args, opts, 'interactive')
+  return { stdout, execMs, outputBytes: stdout.length }
 }
 
 // Alias so existing imports of WorktreeInfo keep working; the canonical
@@ -116,7 +148,7 @@ export function parseWorktreeListPorcelain(
 }
 
 export async function listWorktrees(repoRoot: string): Promise<WorktreeInfo[]> {
-  const { stdout } = await execFileAsync('git', ['worktree', 'list', '--porcelain'], {
+  const { stdout } = await execGitRead(['worktree', 'list', '--porcelain'], {
     cwd: repoRoot
   })
 
@@ -182,7 +214,7 @@ export async function fetchPullRequestRef(
 /** True if a local branch with this name already exists in the repo. */
 export async function localBranchExists(repoRoot: string, branchName: string): Promise<boolean> {
   try {
-    await execFileAsync('git', ['rev-parse', '--verify', '--quiet', `refs/heads/${branchName}`], {
+    await execGitRead(['rev-parse', '--verify', '--quiet', `refs/heads/${branchName}`], {
       cwd: repoRoot
     })
     return true
@@ -196,8 +228,7 @@ export async function listBranches(repoRoot: string): Promise<string[]> {
   // excluded — hundreds of remote branches make the picker UI unusable. Users
   // who need a remote ref can type it into the Ref tab on the New worktree
   // screen.
-  const { stdout } = await execFileAsync(
-    'git',
+  const { stdout } = await execGitRead(
     ['branch', '--format=%(refname:short)'],
     { cwd: repoRoot }
   )
@@ -364,13 +395,17 @@ export async function continueWorktree(
   return { worktree: updated, stashReapplied, stashConflict }
 }
 
-/** Check if a worktree has uncommitted changes */
-export async function isWorktreeDirty(path: string): Promise<boolean> {
+/** Check if a worktree has uncommitted changes.
+ *
+ * `priority` exists for the Cleanup modal, which asks this of every worktree at
+ * once. At 'bulk' that sweep queues behind anything the user is actually
+ * looking at instead of burying it. */
+export async function isWorktreeDirty(
+  path: string,
+  priority: GitPriority = 'interactive'
+): Promise<boolean> {
   try {
-    const { stdout } = await execFileAsync('git', ['status', '--porcelain'], {
-      cwd: path,
-      env: readOnlyGitEnv()
-    })
+    const { stdout } = await execGitRead(['status', '--porcelain'], { cwd: path }, priority)
     return stdout.trim().length > 0
   } catch {
     return false
@@ -411,8 +446,7 @@ export async function getDefaultBaseRef(worktreePath: string): Promise<string> {
 
 async function resolveDefaultBaseRef(worktreePath: string): Promise<string> {
   try {
-    const { stdout } = await execFileAsync(
-      'git',
+    const { stdout } = await execGitRead(
       ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
       { cwd: worktreePath }
     )
@@ -421,7 +455,7 @@ async function resolveDefaultBaseRef(worktreePath: string): Promise<string> {
   } catch {}
   for (const candidate of ['origin/main', 'origin/master', 'main', 'master']) {
     try {
-      await execFileAsync('git', ['rev-parse', '--verify', candidate], { cwd: worktreePath })
+      await execGitRead(['rev-parse', '--verify', candidate], { cwd: worktreePath })
       return candidate
     } catch {}
   }
@@ -476,15 +510,14 @@ async function getUnpushedHashes(worktreePath: string): Promise<Set<string> | nu
   if (!branch) return null
   const remoteRef = `refs/remotes/origin/${branch}`
   try {
-    await execFileAsync('git', ['rev-parse', '--verify', '--quiet', remoteRef], {
+    await execGitRead(['rev-parse', '--verify', '--quiet', remoteRef], {
       cwd: worktreePath
     })
   } catch {
     return null
   }
   try {
-    const { stdout } = await execFileAsync(
-      'git',
+    const { stdout } = await execGitRead(
       ['log', `origin/${branch}..HEAD`, '--pretty=format:%H', '--max-count=500'],
       { cwd: worktreePath }
     )
@@ -807,8 +840,7 @@ export async function getCommitMeta(
   try {
     const sep = '\x1f'
     const end = '\x1e'
-    const { stdout: meta } = await execFileAsync(
-      'git',
+    const { stdout: meta } = await execGitRead(
       ['show', '-s', `--pretty=format:%H${sep}%h${sep}%an${sep}%ae${sep}%aI${sep}%s${sep}%b${end}`, hash],
       { cwd: worktreePath }
     )
@@ -828,8 +860,7 @@ export async function getCommitDiff(
   const meta = await getCommitMeta(worktreePath, hash)
   if (!meta) return null
   try {
-    const { stdout: diff } = await execFileAsync(
-      'git',
+    const { stdout: diff } = await execGitRead(
       ['show', '--no-color', '--pretty=format:', hash],
       { cwd: worktreePath, maxBuffer: 32 * 1024 * 1024 }
     )
@@ -845,8 +876,7 @@ export async function getCommitDiff(
  *  resolve; the cap keeps the payload bounded on large repos. */
 export async function listRecentCommitShas(worktreePath: string): Promise<string[]> {
   try {
-    const { stdout } = await execFileAsync(
-      'git',
+    const { stdout } = await execGitRead(
       ['rev-list', '--all', '--max-count=10000'],
       { cwd: worktreePath, maxBuffer: 16 * 1024 * 1024 }
     )
@@ -1116,7 +1146,7 @@ async function getFileAtRef(
   filePath: string
 ): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync('git', ['show', `${ref}:${filePath}`], {
+    const { stdout } = await execGitRead(['show', `${ref}:${filePath}`], {
       cwd: worktreePath,
       maxBuffer: 16 * 1024 * 1024
     })
@@ -1128,7 +1158,7 @@ async function getFileAtRef(
 
 async function getMergeBase(worktreePath: string, ref: string): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync('git', ['merge-base', ref, 'HEAD'], {
+    const { stdout } = await execGitRead(['merge-base', ref, 'HEAD'], {
       cwd: worktreePath
     })
     return stdout.trim() || null
@@ -1247,7 +1277,7 @@ async function getLocalBaseBranch(repoRoot: string): Promise<string> {
 /** Get the current branch of a worktree, or empty string if detached. */
 export async function getCurrentBranch(worktreePath: string): Promise<string> {
   try {
-    const { stdout } = await execFileAsync('git', ['symbolic-ref', '--short', 'HEAD'], {
+    const { stdout } = await execGitRead(['symbolic-ref', '--short', 'HEAD'], {
       cwd: worktreePath
     })
     return stdout.trim()
@@ -1287,8 +1317,7 @@ export async function renameWorktreeBranch(
     return { ok: true, oldBranch, branch: newBranch, renamed: false }
   }
 
-  const upstream = await execFileAsync(
-    'git',
+  const upstream = await execGitRead(
     ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'],
     { cwd: worktreePath }
   )
@@ -1318,8 +1347,71 @@ export async function renameWorktreeBranch(
   return { ok: true, oldBranch, branch: newBranch, renamed: true }
 }
 
+// Main-worktree status is asked for far more often than it changes. It's keyed
+// by repoRoot, not worktree, so switching between two worktrees of the same
+// repo recomputes an identical answer — and a single switch asks for it twice
+// over, because `worktree:previewMerge` needs it internally while the panel
+// requests it directly in parallel. Each miss is four sequential git spawns,
+// one of which is a full `git status` on the main checkout.
+//
+// An in-flight entry is what collapses the concurrent pair; the TTL is what
+// covers flipping back and forth between worktrees. It's deliberately short —
+// this answer gates the "main isn't ready" fixup button, so it should track
+// reality at human timescale — and any Ness-side mutation of main busts it
+// outright rather than waiting the TTL out.
+//
+// The TTL runs from when the read *settles*, not from when it was dispatched.
+// Dispatch-time would be self-defeating on exactly the repos this exists for:
+// where the four spawns take longer than the TTL, every entry would land
+// already expired and the cache would never serve anyone.
+const MAIN_STATUS_TTL_MS = 3000
+interface MainStatusEntry {
+  /** null while the read is still in flight — such an entry is always fresh,
+   *  which is what makes concurrent callers join rather than each spawn git. */
+  settledAt: number | null
+  promise: Promise<MainWorktreeStatus>
+}
+const mainStatusCache = new Map<string, MainStatusEntry>()
+
+export function invalidateMainWorktreeStatus(repoRoot?: string): void {
+  if (repoRoot === undefined) mainStatusCache.clear()
+  else mainStatusCache.delete(repoRoot)
+}
+
 /** Report status of the main worktree for a local merge. */
-export async function getMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus> {
+export async function getMainWorktreeStatus(
+  repoRoot: string,
+  opts: { force?: boolean } = {}
+): Promise<MainWorktreeStatus> {
+  const hit = mainStatusCache.get(repoRoot)
+  if (
+    !opts.force &&
+    hit &&
+    (hit.settledAt === null || Date.now() - hit.settledAt < MAIN_STATUS_TTL_MS)
+  ) {
+    return hit.promise
+  }
+
+  const entry: MainStatusEntry = {
+    settledAt: null,
+    promise: readMainWorktreeStatus(repoRoot).then(
+      (value) => {
+        if (mainStatusCache.get(repoRoot) === entry) entry.settledAt = Date.now()
+        return value
+      },
+      (err) => {
+        // Never let a failure stick around for the TTL — the next caller
+        // should get a real attempt, not a cached rejection.
+        if (mainStatusCache.get(repoRoot) === entry) mainStatusCache.delete(repoRoot)
+        throw err
+      }
+    )
+  }
+  mainStatusCache.set(repoRoot, entry)
+  return entry.promise
+}
+
+async function readMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus> {
   const t0 = performance.now()
   let walledExec = 0
   let cumExec = 0
@@ -1376,7 +1468,7 @@ export async function prepareMainForMerge(repoRoot: string): Promise<MainWorktre
     log('worktree', `checking out ${status.baseBranch} in main worktree ${status.path}`)
     await execFileAsync('git', ['checkout', status.baseBranch], { cwd: status.path })
   }
-  return getMainWorktreeStatus(repoRoot)
+  return getMainWorktreeStatus(repoRoot, { force: true })
 }
 
 export interface MergeLocalResult {
@@ -1395,7 +1487,9 @@ export async function mergeWorktreeLocally(
   sourceBranch: string,
   strategy: MergeStrategy
 ): Promise<MergeLocalResult> {
-  const status = await getMainWorktreeStatus(repoRoot)
+  // Forced: this read is the gate on whether merging is safe at all, so it
+  // must reflect the repo right now rather than up to a TTL ago.
+  const status = await getMainWorktreeStatus(repoRoot, { force: true })
   if (!status.ready) {
     throw new Error(
       `Main worktree is not ready: ${status.isDirty ? 'has uncommitted changes' : `on ${status.currentBranch || 'detached HEAD'}, not ${status.baseBranch}`}`
@@ -1459,6 +1553,11 @@ export async function mergeWorktreeLocally(
       )
     }
     throw new Error(`Merge failed and was aborted: ${detail}`)
+  } finally {
+    // Main moved either way — a landed merge, or the abort/reset on the
+    // failure path. Dropped after the fact rather than before, so a read
+    // racing the merge can't repopulate the entry with mid-merge state.
+    invalidateMainWorktreeStatus(repoRoot)
   }
 
   return {
@@ -1486,8 +1585,7 @@ export async function previewMergeConflicts(
   baseBranch: string
 ): Promise<MergeConflictPreview> {
   try {
-    await execFileAsync(
-      'git',
+    await execGitRead(
       ['merge-tree', '--write-tree', '--name-only', baseBranch, sourceBranch],
       { cwd: repoRoot }
     )
@@ -1517,7 +1615,7 @@ export async function previewMergeConflicts(
 /** Resolve a branch ref to its current SHA, or null if it doesn't exist. */
 export async function getBranchSha(repoRoot: string, branch: string): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync('git', ['rev-parse', '--verify', `refs/heads/${branch}`], {
+    const { stdout } = await execGitRead(['rev-parse', '--verify', `refs/heads/${branch}`], {
       cwd: repoRoot
     })
     return stdout.trim() || null
@@ -1533,7 +1631,7 @@ export async function isBranchAncestorOfBase(
   base: string
 ): Promise<boolean> {
   try {
-    await execFileAsync('git', ['merge-base', '--is-ancestor', branch, base], { cwd: repoRoot })
+    await execGitRead(['merge-base', '--is-ancestor', branch, base], { cwd: repoRoot })
     return true
   } catch {
     return false
@@ -1548,8 +1646,7 @@ export async function getBranchDiffStats(
   try {
     const base = await getDefaultBaseRef(worktreePath)
     if (!base || base === 'HEAD') return { added: 0, removed: 0, files: 0 }
-    const { stdout } = await execFileAsync(
-      'git',
+    const { stdout } = await execGitRead(
       ['diff', '--numstat', `${base}...HEAD`],
       { cwd: worktreePath, maxBuffer: 8 * 1024 * 1024 }
     )

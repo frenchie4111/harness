@@ -41,6 +41,11 @@ const STRATEGY_MENU_LABELS: Record<MergeStrategy, string> = {
   'fast-forward': 'Fast-forward merge'
 }
 
+/** How long after a worktree switch to wait before simulating the merge.
+ * Long enough that scrubbing through worktrees fires none of them, short
+ * enough that the conflict warning is there by the time anyone reads it. */
+const CONFLICT_PREVIEW_DELAY_MS = 500
+
 const STRATEGY_DESCRIPTIONS: Record<MergeStrategy, string> = {
   squash:
     'The commits from this branch will be combined into one commit on the base branch.',
@@ -98,6 +103,9 @@ function MergeLocallyBody({
   const [success, setSuccess] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  // The in-flight (or settled) preview for the current worktree, so a merge
+  // can wait on it rather than racing the deferral below.
+  const previewRef = useRef<Promise<MergeConflictPreview | null> | null>(null)
 
   // Effective merge strategy = repo override → global default. Both come
   // from the main-process store, so this re-renders automatically when
@@ -108,28 +116,48 @@ function MergeLocallyBody({
     repoConfigs[worktree.repoRoot]?.mergeStrategy || globalStrategy
   const strategyLoaded = true
 
+  const { repoRoot, branch, path } = worktree
+
   const refreshStatus = useCallback(async () => {
     setBusy('checking')
     try {
-      const [status, preview] = await Promise.all([
-        backend.getMainWorktreeStatus(worktree.repoRoot),
-        backend.previewMergeConflicts(worktree.repoRoot, worktree.branch, worktree.path).catch(() => null)
-      ])
-      setMainStatus(status)
-      setConflictPreview(preview)
+      setMainStatus(await backend.getMainWorktreeStatus(repoRoot))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy('idle')
     }
-  }, [worktree.branch])
+  }, [backend, repoRoot])
 
   useEffect(() => {
     setError(null)
     setSuccess(null)
-    setConflictPreview(null)
     void refreshStatus()
-  }, [worktree.path, refreshStatus])
+  }, [path, refreshStatus])
+
+  // The conflict preview is a real three-way merge simulation (`git merge-tree
+  // --write-tree`) answering a question the user hasn't asked yet — it only
+  // matters once they're looking at the merge button. Running it on the switch
+  // itself put it on the click-to-populated path, so it waits for the switch to
+  // settle instead, which also means a run of rapid switches fires none at all.
+  useEffect(() => {
+    setConflictPreview(null)
+    previewRef.current = null
+    let cancelled = false
+    const timer = setTimeout(() => {
+      const pending = backend
+        .previewMergeConflicts(repoRoot, branch, path)
+        .catch(() => null)
+      previewRef.current = pending
+      void pending.then((preview) => {
+        if (!cancelled) setConflictPreview(preview)
+      })
+    }, CONFLICT_PREVIEW_DELAY_MS)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [backend, repoRoot, branch, path])
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -154,14 +182,14 @@ function MergeLocallyBody({
     setError(null)
     setBusy('fixing')
     try {
-      const status = await backend.prepareMainForMerge(worktree.repoRoot)
+      const status = await backend.prepareMainForMerge(repoRoot)
       setMainStatus(status)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy('idle')
     }
-  }, [])
+  }, [backend, repoRoot])
 
   const handleMerge = useCallback(async () => {
     if (!mainStatus) return
@@ -169,9 +197,19 @@ function MergeLocallyBody({
     setSuccess(null)
     setBusy('merging')
     try {
+      // The preview is deferred, so on a fast click it may not have been
+      // started yet. Settle it here rather than letting the deferral quietly
+      // downgrade the conflict guard to "whatever had landed by click time".
+      const preview = await (previewRef.current ??
+        backend.previewMergeConflicts(repoRoot, branch, path).catch(() => null))
+      if (preview?.hasConflict) {
+        setConflictPreview(preview)
+        setError('Resolve merge conflicts before merging.')
+        return
+      }
       // Persist strategy on use too, in case the user never opened the dropdown.
       void backend.setMergeStrategy(strategy)
-      const result = await backend.mergeWorktreeLocally(worktree.repoRoot, worktree.branch, strategy, worktree.path)
+      const result = await backend.mergeWorktreeLocally(repoRoot, branch, strategy, path)
       setSuccess(`Merged into ${result.baseBranch}`)
       if (onMerged) await onMerged()
     } catch (err) {
@@ -179,7 +217,7 @@ function MergeLocallyBody({
     } finally {
       setBusy('idle')
     }
-  }, [mainStatus, strategy, worktree.repoRoot, worktree.branch, onMerged])
+  }, [backend, mainStatus, strategy, repoRoot, branch, path, onMerged])
 
   const handleRemoveAfterMerge = useCallback(async () => {
     if (!onRemoveWorktree) return

@@ -1674,8 +1674,8 @@ function registerIpcHandlers(): void {
     }
   )
 
-  transport.onRequest('worktree:isDirty', async (_ctx, path: string) => {
-    const git = await isWorktreeDirty(path)
+  transport.onRequest('worktree:isDirty', async (_ctx, path: string, opts?: { bulk?: boolean }) => {
+    const git = await isWorktreeDirty(path, opts?.bulk ? 'bulk' : 'interactive')
     const scratchpad = hasScratchpadNote(store.getSnapshot().state.scratchpad, path)
     return { git, scratchpad }
   })

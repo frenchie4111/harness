@@ -248,7 +248,9 @@ export interface ElectronAPI {
     newBranchName: string,
     baseBranch?: string
   ): Promise<{ worktree: Worktree; stashReapplied: boolean; stashConflict: boolean }>
-  isWorktreeDirty(path: string): Promise<WorktreeDirtyStatus>
+  /** `bulk` marks a sweep over many worktrees, so the main process dequeues
+   *  it behind interactive reads instead of starving them. */
+  isWorktreeDirty(path: string, opts?: { bulk?: boolean }): Promise<WorktreeDirtyStatus>
   removeWorktree(
     repoRoot: string,
     path: string,
