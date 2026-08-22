@@ -267,9 +267,6 @@ interface XTerminalProps {
   initialPrompt?: string
   teleportSessionId?: string
   modelOverride?: string
-  /** Shell tabs only: when set, spawn `<user-shell> -ilc <command>` instead
-   * of an interactive login shell. Used for agent-spawned shells. */
-  shellCommand?: string
   /** Shell tabs only: directory to spawn in. Relative paths resolve against
    * `cwd` (the worktree root); absolute paths are used as-is. */
   shellCwd?: string
@@ -292,7 +289,7 @@ interface XTerminalProps {
   onSwitchToChat?: () => void
 }
 
-export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, modelOverride, shellCommand, shellCwd, backgroundVar, preamble, hideRestoreNotice, onRestartAgent, onSwitchToChat }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, modelOverride, shellCwd, backgroundVar, preamble, hideRestoreNotice, onRestartAgent, onSwitchToChat }: XTerminalProps): JSX.Element {
   // Lazy font-cache init — fires once on first XTerminal mount. See
   // initFontCache() comment for why this is lazy rather than at module
   // top.
@@ -644,12 +641,12 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       const shell = ''
       const agentArg = type === 'agent' ? await buildAgentArg() : ''
       if (disposed) return
-      const args =
-        type === 'agent'
-          ? ['-ilc', agentArg]
-          : shellCommand
-            ? ['-ilc', shellCommand]
-            : ['-il']
+      // Shell tabs always come up as a plain interactive shell, even when the
+      // tab carries a `command`. Executing it belongs to the create_shell
+      // path in main, which spawns eagerly at creation time; doing it here too
+      // would re-run the command every time the PTY is gone but the tab isn't
+      // — i.e. on every app restart, and after the command's shell exits.
+      const args = type === 'agent' ? ['-ilc', agentArg] : ['-il']
       const spawnCwd = shellCwd
         ? shellCwd.startsWith('/')
           ? shellCwd
@@ -712,11 +709,11 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
         spawnPty()
         return
       }
-      // A non-empty history means main already has a live PTY for this id
-      // — the agent isn't "starting," we're attaching to a running one.
-      // Clear the loading overlay so the restored scrollback is visible
-      // without waiting for new bytes (which may never come if the agent
-      // is idle at its prompt).
+      // A non-empty history means this tab has run before — either main
+      // still holds a live PTY for it (we're attaching to a running one) or
+      // the scrollback came off disk from a previous app run. Clear the
+      // loading overlay so it's visible without waiting for new bytes
+      // (which may never come if the agent is idle at its prompt).
       setLoading(false)
       // Replay raw scrollback. Wait for xterm to finish parsing before
       // attaching onData, otherwise any response sequences xterm generates

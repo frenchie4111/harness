@@ -634,7 +634,6 @@ export function WorkspaceView({
                     initialPrompt={tab.initialPrompt}
                     teleportSessionId={tab.teleportSessionId}
                     modelOverride={tab.type === 'agent' ? tab.model : undefined}
-                    shellCommand={tab.type === 'shell' ? tab.command : undefined}
                     shellCwd={tab.type === 'shell' ? tab.cwd : undefined}
                     onRestartAgent={
                       tab.type === 'agent'

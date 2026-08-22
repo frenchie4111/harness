@@ -56,7 +56,7 @@ import { FileContentWatcher } from './file-content-watcher'
 import { SnoozeTimer } from './snooze-timer'
 import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
-import { getLeaves, mapLeaves } from '../shared/state/terminals'
+import { findTabById, getLeaves, mapLeaves } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitMeta, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, listRecentCommitShas, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, renameWorktreeBranch, symlinkClaudeSettings, pruneWorktrees, type MergeStrategy } from './worktree'
 import { listOpenPRs, getPRByNumber, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, approvePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult, type PRLookupResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
@@ -266,6 +266,18 @@ function findShellWorktree(shellId: string): string | null {
     }
   }
   return null
+}
+
+/** True for a shell tab that was created with a command (`create_shell`) and
+ * whose process is gone. That command runs exactly once, in createShell's
+ * eager spawn; afterwards the tab is a transcript of the run, not a live
+ * shell — which is also how it behaves when the command exits mid-session.
+ * The renderer still fires pty:create when it mounts such a tab (it can't
+ * tell a spent shell from a fresh one), so the spawn is dropped here rather
+ * than handing back an interactive prompt no command shell would ever show. */
+function isSpentCommandShell(id: string): boolean {
+  const tab = findTabById(store.getSnapshot().state.terminals.panes, id)
+  return tab?.type === 'shell' && !!tab.command
 }
 // Resolves the harness version from disk so it works in every runtime
 // (Electron dev/packaged, headless dev, headless tarball). Electron's
@@ -3507,6 +3519,10 @@ function registerIpcHandlers(): void {
         : agentKind === 'cursor' ? config.cursorEnvVars
         : undefined
       const existed = ptyManager.hasTerminal(id)
+      if (!existed && isSpentCommandShell(id)) {
+        log('pty', `create id=${id} dropped — command shell already ran`)
+        return
+      }
       ptyManager.create(id, cwd, cmd, args, extraEnv, !isAgent, cols, rows)
       if (!existed) {
         // Creator becomes controller immediately so their first keystroke

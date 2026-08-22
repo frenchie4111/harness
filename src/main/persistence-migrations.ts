@@ -24,7 +24,8 @@ export interface PersistedTab {
   sessionId?: string
   /** For browser tabs: last URL so we can restore the tab on reload. */
   url?: string
-  /** For shell tabs: command passed via `zsh -ilc <command>` (agent-spawned). */
+  /** For shell tabs: the command the tab was created with (agent-spawned).
+   *  Kept for display only — restored tabs do not re-run it. */
   command?: string
   /** For shell tabs: cwd (absolute or relative to worktree root). */
   cwd?: string
