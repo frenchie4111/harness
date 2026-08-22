@@ -85,8 +85,8 @@ export class PtyManager {
   private store: Store | null = null
   private sendSignal: ((channel: string, ...args: unknown[]) => void) | null = null
   // Per-terminal raw-byte scrollback owned by main. Populated from disk on
-  // create() (if a history file exists), appended to from the PTY onData
-  // stream, and returned on getHistory(id). Persistence to
+  // first touch by either getHistory(id) or create() (whichever comes first),
+  // appended to from the PTY onData stream. Persistence to
   // userData/terminal-history/<id> happens on a throttled cadence and on
   // before-quit via flushAllHistory().
   private history = new Map<string, HistoryBuffer>()
@@ -209,20 +209,15 @@ export class PtyManager {
     }
 
     // Seed the history buffer from disk if a file exists. Renderer calls
-    // getHistory(id) right after createTerminal and writes the bytes into a
-    // fresh xterm instance before wiring up live data.
-    let buf = this.history.get(id)
-    if (!buf) {
-      buf = new HistoryBuffer()
-      const existing = loadTerminalHistory(id)
-      if (existing) buf.seed(existing)
-      this.history.set(id, buf)
-    }
+    // getHistory(id) right before createTerminal and writes the bytes into a
+    // fresh xterm instance before wiring up live data, so this usually finds
+    // the buffer already loaded and skips the read.
+    const buf = this.ensureHistoryBuffer(id)
 
     ptyProcess.onData((data: string) => {
       // Tee into the history ring buffer before forwarding, so a reload
       // right after output arrives still sees it.
-      buf!.append(data)
+      buf.append(data)
       this.historyDirty.add(id)
       this.ensureHistoryFlushTimer()
       this.perfMonitor?.recordTerminalBytes(id, data.length)
@@ -258,9 +253,25 @@ export class PtyManager {
     }
   }
 
-  /** Raw PTY scrollback for `id`, or empty string if none. */
+  /** Raw PTY scrollback for `id`, or empty string if none. Falls back to the
+   * persisted file when nothing is in memory yet: on a cold app start the
+   * renderer asks for history BEFORE it spawns, so reading only the in-memory
+   * map returned '' and the saved scrollback stayed invisible until a renderer
+   * reload happened to hit the buffer create() had since seeded. */
   getHistory(id: string): string {
-    return this.history.get(id)?.toString() || ''
+    return this.ensureHistoryBuffer(id).toString()
+  }
+
+  /** The buffer for `id`, seeded from disk on first touch. Both getHistory and
+   * create go through here so the file is read at most once per id. */
+  private ensureHistoryBuffer(id: string): HistoryBuffer {
+    const existing = this.history.get(id)
+    if (existing) return existing
+    const buf = new HistoryBuffer()
+    const persisted = loadTerminalHistory(id)
+    if (persisted) buf.seed(persisted)
+    this.history.set(id, buf)
+    return buf
   }
 
   /** Drop the in-memory buffer + delete the persisted file. Called on tab

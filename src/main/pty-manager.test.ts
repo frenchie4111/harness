@@ -36,6 +36,7 @@ vi.mock('./persistence', () => ({
 
 import { PtyManager } from './pty-manager'
 import * as pty from 'node-pty'
+import { loadTerminalHistory } from './persistence'
 
 describe('PtyManager.create — eager spawn contract for createShell (#203)', () => {
   beforeEach(() => {
@@ -65,5 +66,45 @@ describe('PtyManager.create — eager spawn contract for createShell (#203)', ()
     mgr.create(id, '/definitely/does/not/exist', '', ['-il'], undefined, true)
     expect(mgr.hasTerminal(id)).toBe(false)
     expect(pty.spawn).not.toHaveBeenCalled()
+  })
+})
+
+// On a cold app start the renderer asks for scrollback BEFORE it spawns, so
+// getHistory has to reach the persisted file itself — reading only the
+// in-memory map left restored tabs blank until something else seeded it.
+describe('PtyManager.getHistory — persisted scrollback across an app restart', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns the persisted scrollback when nothing is in memory yet', () => {
+    vi.mocked(loadTerminalHistory).mockReturnValueOnce('previous run output')
+    const mgr = new PtyManager()
+    expect(mgr.getHistory('shell-restored-1')).toBe('previous run output')
+  })
+
+  it('returns empty string when no history was persisted', () => {
+    const mgr = new PtyManager()
+    expect(mgr.getHistory('shell-restored-2')).toBe('')
+  })
+
+  it('reads the file once per id — the spawn that follows reuses the buffer', () => {
+    vi.mocked(loadTerminalHistory).mockReturnValueOnce('previous run output')
+    const mgr = new PtyManager()
+    const id = 'shell-restored-3'
+    mgr.getHistory(id)
+    mgr.create(id, tmpdir(), '', ['-il'], undefined, true)
+    expect(loadTerminalHistory).toHaveBeenCalledTimes(1)
+    expect(mgr.getHistory(id)).toBe('previous run output')
+  })
+
+  it('drops both the buffer and the file on forgetHistory so a closed tab does not resurrect', () => {
+    vi.mocked(loadTerminalHistory).mockReturnValue('previous run output')
+    const mgr = new PtyManager()
+    const id = 'shell-restored-4'
+    expect(mgr.getHistory(id)).toBe('previous run output')
+    vi.mocked(loadTerminalHistory).mockReturnValue(null)
+    mgr.forgetHistory(id)
+    expect(mgr.getHistory(id)).toBe('')
   })
 })
