@@ -85,9 +85,18 @@ function send(msg) {
   process.stdout.write(JSON.stringify(msg) + '\n')
 }
 
-function callControl(method, path, body) {
+// Backstop only. Node's http client has no default request timeout, so a
+// control-server handler that never responds would hang the tool call — and
+// therefore the agent — forever. Sits well above every server-side timeout so
+// the server's own (more specific) error wins the race in the normal case.
+const CALL_TIMEOUT_MS = 60_000
+// Worktree creation legitimately blocks on git fetch / PR checkout.
+const WORKTREE_CREATE_TIMEOUT_MS = 300_000
+
+function callControl(method, path, body, timeoutMs) {
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : undefined
+    const limit = timeoutMs || CALL_TIMEOUT_MS
     const req = http.request(
       {
         host: '127.0.0.1',
@@ -117,6 +126,10 @@ function callControl(method, path, body) {
         })
       }
     )
+    req.setTimeout(limit, () => {
+      // The 'timeout' event only fires — it doesn't abort — so destroy first.
+      req.destroy(new Error('Ness did not respond within ' + limit + 'ms: ' + method + ' ' + path))
+    })
     req.on('error', reject)
     if (data) req.write(data)
     req.end()
@@ -656,18 +669,23 @@ async function handleToolCall(name, args) {
     ) {
       throw new Error('agentKind must be "claude" or "codex"')
     }
-    const r = await callControl('POST', '/worktrees', {
-      terminalId: TERMINAL_ID,
-      repoRoot: args.repoRoot,
-      branchName: args.branchName,
-      prNumber: prNumber,
-      baseBranch: args.baseBranch,
-      initialPrompt: args.initialPrompt,
-      agentKind: args.agentKind,
-      model: args.model,
-      alias: args.alias,
-      forkConversation: args.forkConversation === true
-    })
+    const r = await callControl(
+      'POST',
+      '/worktrees',
+      {
+        terminalId: TERMINAL_ID,
+        repoRoot: args.repoRoot,
+        branchName: args.branchName,
+        prNumber: prNumber,
+        baseBranch: args.baseBranch,
+        initialPrompt: args.initialPrompt,
+        agentKind: args.agentKind,
+        model: args.model,
+        alias: args.alias,
+        forkConversation: args.forkConversation === true
+      },
+      WORKTREE_CREATE_TIMEOUT_MS
+    )
     const agentLabel = args.agentKind === 'codex' ? 'Codex' : 'Claude'
     const modelSuffix = args.model ? ` (model: ${args.model})` : ''
     const aliasSuffix = args.alias && args.alias.trim() ? ` (alias: "${args.alias.trim()}")` : ''
